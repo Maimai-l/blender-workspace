@@ -1,0 +1,21 @@
+# Comparison camera set (hand-matched to the reference photos). Used by render_views.py.
+VIEWS = {
+    'aerial':  dict(loc=(37.91, -62.43, 70.17), target=(37.82, -47.95, 56.38), lens=24.23, roll=-0.0092, res=(1400, 644),
+                    elev=48, azim=125, exposure=0.15),
+    'B3south': dict(loc=(20.65, 50.2, 1.45), target=(20.65, 30.2, 1.45), lens=22.0, shift=(0.0, 0.07), res=(1400, 644),
+                    elev=40, azim=330, exposure=0.6),
+    'B3north': dict(loc=(20.62, 34.2, 1.0), target=(20.62, 54.2, 2.0), lens=22.0, res=(1400, 1822),
+                    elev=40, azim=200, exposure=0.6),
+    'A5':      dict(loc=(29.6, 41.0, 1.6), target=(12.2, 40.4, 3.4), lens=26.0, res=(1400, 1000), elev=38, azim=95,
+                    exposure=0.6, clip=1.0),
+    'A2':      dict(loc=(35.2, 10.9, 1.1), target=(26.7, 11.9, 4.6), lens=20.0, shift=(0.20, 0.0), res=(1400, 1406),
+                    elev=40, azim=110, exposure=0.6),
+    'B1court': dict(loc=(35.15, 13.0, 1.0), target=(35.15, -5.0, 2.0), lens=16.0, res=(1400, 1046), elev=35, azim=150,
+                    exposure=0.6),
+    'B1pav':   dict(loc=(29.6, 16.4, 1.2), target=(35.4, 24.0, 2.6), lens=22.0, res=(1400, 1009), elev=40, azim=200,
+                    exposure=0.6),
+    'B2':      dict(loc=(55.2, 40.04, 1.0), target=(41.28, 40.04, 3.6), lens=30.0, res=(1400, 1596), elev=42, azim=120,
+                    exposure=0.6),
+    'A3porch': dict(loc=(59.2, 47.6, 1.55), target=(59.0, 32.0, 2.4), lens=20.0, res=(1400, 2318), elev=40, azim=110,
+                    exposure=2.2),
+}

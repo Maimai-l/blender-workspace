@@ -1,0 +1,5 @@
+   {
+     "mcpServers": {
+       "blender": { "type": "http", "url": "${BLENDER_MCP_URL}" }
+     }
+   }

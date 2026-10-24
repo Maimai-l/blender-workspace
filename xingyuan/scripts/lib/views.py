@@ -12,8 +12,8 @@ VIEWS = {
                     elev=40, azim=200, exposure=0.6),
     'A5':      dict(loc=(29.6, 41.0, 1.6), target=(12.2, 40.4, 3.4), lens=26.0, res=(1400, 1000), elev=38, azim=95,
                     exposure=0.6, clip=1.0),
-    'A2':      dict(loc=(35.2, 10.9, 1.1), target=(26.7, 11.9, 4.6), lens=20.0, shift=(0.20, 0.0), res=(1400, 1406),
-                    elev=40, azim=110, exposure=0.6),
+    'A2':      dict(loc=(45.40, 15.09, 1.90), target=(25.41, 14.96, 2.57), lens=42.03, roll=-0.0018, res=(1400, 958),
+                    elev=40, azim=110, exposure=0.6, stretch=1.467, hide=('B1_紫叶李',)),   # solved camera; photo stretched x1.47
     'B1pav':   dict(loc=(29.6, 16.4, 1.2), target=(35.4, 24.0, 2.6), lens=22.0, res=(1400, 1009), elev=40, azim=200,
                     exposure=0.6),
     'B2':      dict(loc=(55.2, 40.04, 1.0), target=(41.28, 40.04, 3.6), lens=30.0, res=(1400, 1596), elev=42, azim=120,

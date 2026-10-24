@@ -90,6 +90,31 @@ def _math(nt, op, a, b=None, loc=(0, 0), clamp=False):
             m.inputs[i].default_value = v
     return m.outputs[0]
 
+def _grime(nt, col, ao_strength=0.22, damp=0.0, damp_h=0.7, loc=(200, 300)):
+    """Darken a colour socket in crevices (ambient occlusion) and, optionally, near the base of walls
+    (rising damp / splash-back, measured from the local floor level z=0 or z=-0.6)."""
+    L = nt.links
+    ao = nt.nodes.new('ShaderNodeAmbientOcclusion'); ao.location = (loc[0] - 400, loc[1] + 200)
+    ao.inputs['Distance'].default_value = 0.35
+    ao.samples = 8
+    occ = _math(nt, 'SUBTRACT', 1.0, ao.outputs['AO'], (loc[0] - 200, loc[1] + 200))
+    k = _math(nt, 'MULTIPLY', occ, ao_strength, (loc[0] - 50, loc[1] + 200))
+    out = _mix(nt, k, col, (0.05, 0.045, 0.04), loc, blend='MIX')
+    if damp > 0:
+        g = nt.nodes.new('ShaderNodeNewGeometry'); g.location = (loc[0] - 600, loc[1] - 100)
+        sep = nt.nodes.new('ShaderNodeSeparateXYZ'); sep.location = (loc[0] - 450, loc[1] - 100)
+        L.new(g.outputs['Position'], sep.inputs[0])
+        # height above the nearer floor level (0 or -0.6)
+        za = _math(nt, 'ABSOLUTE', sep.outputs['Z'], None, (loc[0] - 300, loc[1] - 50))
+        zb = _math(nt, 'ABSOLUTE', _math(nt, 'ADD', sep.outputs['Z'], 0.6, (loc[0] - 350, loc[1] - 200)), None, (loc[0] - 300, loc[1] - 200))
+        h = _math(nt, 'MINIMUM', za, zb, (loc[0] - 200, loc[1] - 120))
+        f = _math(nt, 'SUBTRACT', 1.0, _math(nt, 'DIVIDE', h, damp_h, (loc[0] - 100, loc[1] - 120), clamp=True), (loc[0], loc[1] - 120))
+        nz = _noise(nt, g.outputs['Position'], 2.5, 4, 0.6, (loc[0] - 300, loc[1] - 350))
+        f2 = _math(nt, 'MULTIPLY', _math(nt, 'MULTIPLY', f, f, (loc[0] + 100, loc[1] - 120)), nz.outputs['Fac'], (loc[0] + 200, loc[1] - 150))
+        f3 = _math(nt, 'MULTIPLY', f2, damp, (loc[0] + 300, loc[1] - 150))
+        out = _mix(nt, f3, out, (0.20, 0.20, 0.17), (loc[0] + 450, loc[1]), blend='MULTIPLY')
+    return out
+
 # ------------------------------------------------------------------ materials
 def tile():
     """青瓦 - fired grey clay roof tile, per-instance tone variation, light weathering."""
@@ -123,7 +148,7 @@ def lacquer_red(name='M_RedLacquer', base=(0.215, 0.022, 0.014), rough=0.42):
     b3 = (base[0] * 1.12, base[1] * 1.35, base[2] * 1.35)
     tone = _ramp(nt, big.outputs['Fac'], [(0.3, b2), (0.7, b3)], (-600, 100))
     col = _mix(nt, _math(nt, 'MULTIPLY', rnd, 0.35, (-600, 350)), tone, b2, (-300, 200))
-    L.new(col, bs.inputs['Base Color'])
+    L.new(_grime(nt, col, ao_strength=0.18), bs.inputs['Base Color'])
     rr = _ramp(nt, grain.outputs['Fac'], [(0.3, (rough - 0.08,) * 3), (0.7, (rough + 0.12,) * 3)], (-300, -150))
     L.new(rr, bs.inputs['Roughness'])
     L.new(_bump(nt, grain.outputs['Fac'], 0.06, 0.002), bs.inputs['Normal'])
@@ -142,7 +167,7 @@ def plaster():
     n1 = _noise(nt, pos, 1.5, 6, 0.55, (-900, 100))
     n2 = _noise(nt, pos, 40.0, 4, 0.6, (-900, -300))
     col = _ramp(nt, n1.outputs['Fac'], [(0.25, (0.66, 0.645, 0.61)), (0.6, (0.76, 0.75, 0.715)), (0.85, (0.79, 0.785, 0.75))], (-500, 100))
-    L.new(col, bs.inputs['Base Color'])
+    L.new(_grime(nt, col, ao_strength=0.25, damp=0.9, damp_h=0.8), bs.inputs['Base Color'])
     bs.inputs['Roughness'].default_value = 0.93
     L.new(_bump(nt, n2.outputs['Fac'], 0.08, 0.003), bs.inputs['Normal'])
     bs.inputs['Specular IOR Level'].default_value = 0.3
@@ -202,7 +227,7 @@ def brick_dark():
     r.color_ramp.elements[1].color = (0.8, 0.8, 0.8, 1)
     return m2
 
-def granite(name='M_Granite', base=(0.42, 0.41, 0.39), dark=(0.20, 0.20, 0.19), light=(0.56, 0.55, 0.53), rough=0.68, scale=1.0):
+def granite(name='M_Granite', base=(0.34, 0.335, 0.32), dark=(0.17, 0.17, 0.16), light=(0.46, 0.455, 0.44), rough=0.68, scale=1.0):
     """花岗岩 - speckled granite with stains, per-slab variation."""
     m, nt, bs, out = _new(name)
     L = nt.links
@@ -221,7 +246,7 @@ def granite(name='M_Granite', base=(0.42, 0.41, 0.39), dark=(0.20, 0.20, 0.19), 
     rfrac = _math(nt, 'FRACT', rmix, None, (-700, 450))
     var = _ramp(nt, rfrac, [(0.0, (0.92, 0.92, 0.92)), (0.5, (0.98, 0.98, 0.975)), (1.0, (1.04, 1.035, 1.03))], (-600, 400))
     col2 = _mix(nt, 1.0, col, var, (-100, 150), blend='MULTIPLY')
-    L.new(col2, bs.inputs['Base Color'])
+    L.new(_grime(nt, col2, ao_strength=0.30), bs.inputs['Base Color'])
     rr = _ramp(nt, n2.outputs['Fac'], [(0.3, (rough - 0.1,) * 3), (0.7, (rough + 0.1,) * 3)], (-300, -350))
     L.new(rr, bs.inputs['Roughness'])
     L.new(_bump(nt, n1.outputs['Fac'], 0.05, 0.002), bs.inputs['Normal'])
@@ -365,7 +390,9 @@ def leaf(name, c0, c1, trans=0.35):
     rnd = _rand(nt)
     g = nt.nodes.new('ShaderNodeNewGeometry'); g.location = (-1000, -300)
     n = _noise(nt, g.outputs['Position'], 3.0, 2, 0.5, (-800, -200))
-    mixf = _math(nt, 'ADD', _math(nt, 'MULTIPLY', n.outputs['Fac'], 0.6, (-600, -200)), 0.2, (-450, -200))
+    # per-instance (spray) random + spatial noise -> colour between c0 and c1
+    mixf = _math(nt, 'ADD', _math(nt, 'MULTIPLY', n.outputs['Fac'], 0.45, (-600, -200)),
+                 _math(nt, 'MULTIPLY', rnd, 0.55, (-600, -350)), (-450, -200))
     c = _mix(nt, mixf, c0, c1, (-300, 100))
     L.new(c, bs.inputs['Base Color'])
     bs.inputs['Roughness'].default_value = 0.45
@@ -431,7 +458,7 @@ def build_all():
     brick()
     brick_dark()
     granite()
-    granite('M_GraniteOut', base=(0.36, 0.355, 0.335), dark=(0.18, 0.18, 0.17), light=(0.48, 0.47, 0.45), rough=0.72)
+    granite('M_GraniteOut', base=(0.29, 0.285, 0.27), dark=(0.15, 0.15, 0.14), light=(0.40, 0.395, 0.38), rough=0.72)
     stone_grey()
     pool_bed()
     ground()
@@ -443,8 +470,9 @@ def build_all():
     wood_brown()
     simple('M_Interior', (0.012, 0.010, 0.009), rough=0.9, spec=0.2)
     simple('M_Glass', (0.02, 0.025, 0.03), rough=0.05, spec=0.5)
-    simple('M_Gold', (0.83, 0.58, 0.26), rough=0.28, metal=1.0)
-    simple('M_BlackLacquer', (0.012, 0.012, 0.012), rough=0.32, coat=0.3)
+    simple('M_Gold', (0.86, 0.62, 0.28), rough=0.32, metal=1.0)
+    simple('M_PlaqueRed', (0.045, 0.012, 0.008), rough=0.45, spec=0.4)
+    simple('M_BlackLacquer', (0.012, 0.011, 0.010), rough=0.78, spec=0.2)
     simple('M_Paper', (0.62, 0.64, 0.66), rough=0.25, spec=0.5)
     simple('M_RedPaint', (0.23, 0.035, 0.025), rough=0.6)
     simple('M_Bronze', (0.12, 0.08, 0.045), rough=0.45, metal=0.85)
@@ -457,7 +485,7 @@ def build_all():
     simple('M_PanelDark', (0.030, 0.040, 0.036), rough=0.7, spec=0.3)
     simple('M_BlackStone', (0.010, 0.011, 0.011), rough=0.22, spec=0.5)
     bark()
-    leaf('M_LeafPurple', (0.075, 0.022, 0.028), (0.15, 0.042, 0.048), trans=0.25)
+    leaf('M_LeafPurple', (0.07, 0.018, 0.026), (0.20, 0.055, 0.06), trans=0.3)
     leaf('M_LeafBamboo', (0.045, 0.085, 0.020), (0.095, 0.15, 0.035), trans=0.3)
     simple('M_BambooCulm', (0.16, 0.20, 0.06), rough=0.4, spec=0.5)
     simple('M_LanternRed', (0.42, 0.03, 0.02), rough=0.6, spec=0.3)

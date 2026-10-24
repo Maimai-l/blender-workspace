@@ -76,7 +76,7 @@ def plaque(name, coll, center, facing, w, h, txt=None, tilt=8.0, frame='M_Gold',
     objs = [ob]
     if txt:
         n = len(txt)
-        size = min(h * 0.62, (w - 0.4) / n * 0.95)
+        size = min(h * 0.70, (w - 0.36) / n * 0.98)
         # traditional plaques read right to left: reverse the string for left-to-right layout
         tm = text_mesh(name + '_字', txt[::-1], size, coll, txt_mat, extrude=0.010, spacing=1.15)
         tm.data.transform(Matrix.Translation((0, -t / 2 - 0.012, 0)))
@@ -228,8 +228,8 @@ def _branch(mb, rng, p, d, L, r, depth, tips, m='M_Bark'):
         _branch(mb, rng, q, nd, L * rng.uniform(0.64, 0.80), r * 0.70, depth - 1, tips, m)
     tips.append(q)
 
-def leaf_src(name='SRC_leafspray_plum', m='M_LeafPurple', n=70, rad=0.38, L=0.085, W=0.040):
-    """A spray of small elliptic leaves inside a ball of radius rad (instanced many times per tree)."""
+def leaf_src(name='SRC_leafspray_plum', m='M_LeafPurple', n=60, rad=0.36, L=0.075, W=0.032):
+    """A spray of small elliptic, slightly folded leaves (6-vertex outline) inside a ball of radius rad."""
     o = bpy.data.objects.get(name)
     if o:
         return o
@@ -241,45 +241,59 @@ def leaf_src(name='SRC_leafspray_plum', m='M_LeafPurple', n=70, rad=0.38, L=0.08
             c = c.normalized() * rad
         a = rng.uniform(0, 2 * math.pi); b = rng.uniform(-0.5, 0.9)
         dx = Vector((math.cos(a) * math.cos(b), math.sin(a) * math.cos(b), math.sin(b) * 0.4)).normalized()
-        dy = dx.cross(Vector((rng.gauss(0, 0.3), rng.gauss(0, 0.3), 1.0)).normalized()).normalized()
+        nz = Vector((rng.gauss(0, 0.35), rng.gauss(0, 0.35), 1.0)).normalized()
+        dy = dx.cross(nz).normalized()
+        nz = dy.cross(dx).normalized()
         l = L * rng.uniform(0.8, 1.25); w = W * rng.uniform(0.8, 1.2)
-        mb.face([c, c + dx * l * 0.45 + dy * w, c + dx * l, c + dx * l * 0.45 - dy * w], m)
-        mb.face([c, c + dx * l * 0.45 - dy * w, c + dx * l, c + dx * l * 0.45 + dy * w], m)  # back side
+        fold = w * 0.35
+        pts = [c, c + dx * l * 0.25 + dy * w * 0.85 + nz * fold, c + dx * l * 0.6 + dy * w + nz * fold,
+               c + dx * l, c + dx * l * 0.6 - dy * w + nz * fold, c + dx * l * 0.25 - dy * w * 0.85 + nz * fold]
+        mb.face(pts, m)
     return mb.finish(name, C.lib_coll(), recalc=False)
 
-def tree(name, coll, base, seed=1, height=5.6, crown=2.3, leaf_src=None, n_spray=900):
-    """紫叶李-like tree: short trunk, 4-5 ascending limbs, dense oval crown of leaf sprays."""
+def tree(name, coll, base, seed=1, height=6.2, crown=1.95, leaf_src=None, n_spray=1500):
+    """紫叶李-like tree: trunk, limbs growing into ~14 leaf clumps on an oval crown shell."""
     rng = random.Random(seed)
     mb = C.MB()
-    tips = []
-    p = Vector(base)
-    lean = Vector((rng.uniform(-0.06, 0.06), rng.uniform(-0.06, 0.06), 1.0)).normalized()
+    p0 = Vector(base)
     trunk_h = 1.9 + rng.uniform(-0.15, 0.15)
-    mb.cyl(p - Vector((0, 0, 0.1)), p + lean * trunk_h, 0.105, 10, 'M_Bark', r1=0.085, smooth=True)
-    top = p + lean * trunk_h
-    nlimb = 5
-    for i in range(nlimb):
-        a = 2 * math.pi * i / nlimb + rng.uniform(-0.35, 0.35)
-        nd = Vector((math.cos(a) * 0.62, math.sin(a) * 0.62, 1.0)).normalized()
-        _branch(mb, rng, top, nd, height * 0.26, 0.058, 4, tips)
+    lean = Vector((rng.uniform(-0.05, 0.05), rng.uniform(-0.05, 0.05), 1.0)).normalized()
+    top = p0 + lean * trunk_h
+    mb.cyl(p0 - Vector((0, 0, 0.1)), top, 0.10, 10, 'M_Bark', r1=0.08, smooth=True)
+    cc = Vector((base[0], base[1], base[2] + trunk_h + (height - trunk_h) * 0.5))
+    ry = (height - trunk_h) * 0.52
+    # clump centres on the upper/outer part of the crown
+    clumps = []
+    for k in range(15):
+        u = Vector((rng.gauss(0, 1), rng.gauss(0, 1), abs(rng.gauss(0.2, 0.8)) - 0.25)).normalized()
+        rr = rng.uniform(0.55, 0.85)
+        clumps.append(cc + Vector((u.x * crown * rr, u.y * crown * rr, u.z * ry * rr)))
+    # limbs: from the trunk top to each clump, slightly bent, tapering; short twigs inside the clump
+    for q in clumps:
+        mid = top.lerp(q, 0.5) + Vector((rng.gauss(0, 0.15), rng.gauss(0, 0.15), 0.25))
+        pts = [top, mid, q]
+        for a, b, r0, r1 in ((pts[0], pts[1], 0.055, 0.04), (pts[1], pts[2], 0.04, 0.018)):
+            mb.cyl(a, b, r0, 6, 'M_Bark', r1=r1, smooth=True)
+        for t in range(3):
+            d = Vector((rng.gauss(0, 1), rng.gauss(0, 1), rng.gauss(0.3, 0.6))).normalized()
+            mb.cyl(q, q + d * rng.uniform(0.3, 0.55), 0.016, 5, 'M_Bark', r1=0.006, smooth=True)
     ob = mb.finish(name + '_枝干', coll)
-    # crown: ellipsoid, sprays biased to the outer shell and to branch tips
-    cc = Vector((base[0], base[1], base[2] + trunk_h + (height - trunk_h) * 0.52))
-    ry = (height - trunk_h) * 0.55
+    # leaf sprays: dense around clumps (outward-biased), plus a thin fill on the shell
     tr = []
-    for k in range(n_spray):
-        if k % 3 == 0 and tips:
-            q = rng.choice(tips) + Vector((rng.gauss(0, 0.25), rng.gauss(0, 0.25), rng.gauss(0, 0.2)))
-        else:
-            u = Vector((rng.gauss(0, 1), rng.gauss(0, 1), rng.gauss(0, 1))).normalized()
-            rr = rng.uniform(0.62, 1.0) ** 0.5
-            q = cc + Vector((u.x * crown * rr, u.y * crown * rr, u.z * ry * rr))
-        rel = q - cc
-        k2 = (rel.x / crown) ** 2 + (rel.y / crown) ** 2 + (rel.z / ry) ** 2
-        if k2 > 1.0:
-            q = cc + rel / math.sqrt(k2)
-        rot = (rng.uniform(-0.6, 0.6), rng.uniform(-0.6, 0.6), rng.uniform(0, 6.28))
-        tr.append((tuple(q), rot, rng.uniform(0.85, 1.35)))
+    per = int(n_spray * 0.85 / len(clumps))
+    for q in clumps:
+        out = (q - cc).normalized()
+        for k in range(per):
+            off = Vector((rng.gauss(0, 0.42), rng.gauss(0, 0.42), rng.gauss(0, 0.32)))
+            if off.dot(out) < 0:
+                off -= out * off.dot(out) * 1.6
+            pos = q + off
+            tr.append((tuple(pos), (rng.uniform(-0.6, 0.6), rng.uniform(-0.6, 0.6), rng.uniform(0, 6.28)), rng.uniform(0.8, 1.2)))
+    for k in range(n_spray - len(tr)):
+        u = Vector((rng.gauss(0, 1), rng.gauss(0, 1), rng.gauss(0, 1))).normalized()
+        rr = rng.uniform(0.75, 0.98)
+        pos = cc + Vector((u.x * crown * rr, u.y * crown * rr, u.z * ry * rr))
+        tr.append((tuple(pos), (rng.uniform(-0.6, 0.6), rng.uniform(-0.6, 0.6), rng.uniform(0, 6.28)), rng.uniform(0.8, 1.2)))
     C.instancer(name + '_叶', leaf_src, tr, coll)
     return ob
 
@@ -365,7 +379,7 @@ def build_props():
     cA2 = C.coll('A2 匾联', C.coll('A2'))
     cA5 = C.coll('A5 匾联', C.coll('A5'))
     # ---- plaques
-    plaque('A2_匾_芙蓉學堂', cA2, (24.65 + 0.17, 11.91, 3.70), (1, 0), 2.6, 0.78, '芙蓉學堂', tilt=6)
+    plaque('A2_匾_芙蓉學堂', cA2, (24.65 + 0.17, 11.91, 3.70), (1, 0), 2.6, 0.78, '芙蓉學堂', tilt=6, board='M_PlaqueRed')
     cA1 = C.coll('A1 匾联', C.coll('A1'))
     plaque('A1_匾_鳴鳳學堂', cA1, (45.65 - 0.17, 11.91, 3.70), (-1, 0), 2.6, 0.78, '鳴鳳學堂', tilt=6)
     plaque('A5_匾_太華春光', cA5, (10.15 + 0.17, 40.04, 3.70), (1, 0), 2.6, 0.78, '太華春光', tilt=6)
@@ -409,7 +423,7 @@ def build_props():
     ls = leaf_src()
     for i, (x, y) in enumerate(LY.PLANTERS_B1):
         planter('B1_树池%d' % (i + 1), cB1, x, y, size=2.0, wood=True)
-        tree('B1_紫叶李%d' % (i + 1), cB1, (x, y, LY.ZC + 0.44), seed=31 + i * 7, height=6.2 + 0.4 * (i % 2), crown=1.95, leaf_src=ls)
+        tree('B1_紫叶李%d' % (i + 1), cB1, (x, y, LY.ZC + 0.44), seed=31 + i * 7, height=6.3 + 0.4 * (i % 2), crown=2.0, leaf_src=ls)
     # ---- gate: red lanterns hanging under the south eave (red discs in the aerial view)
     mb = C.MB()
     for x in (32.75, 37.55):

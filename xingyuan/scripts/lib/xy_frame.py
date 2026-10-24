@@ -114,8 +114,8 @@ def wall_bay(fr, p, q, kind, out, z_top=2.0, dado=0.75, win=(0.95, 1.75), ww=Non
         span(a + 0.1, w0 - 0.08, win[0] + 0.003, z_top, -h + 0.02, h - 0.02, plaster)
         span(w1 + 0.08, b - 0.1, win[0] + 0.003, z_top, -h + 0.02, h - 0.02, plaster)
         span(w0, w1, win[1] + 0.084, z_top, -h + 0.02, h - 0.02, plaster)
-        span(w0 - 0.08, w0, win[0], win[1] + 0.08, -0.07, 0.07, RED)
-        span(w1, w1 + 0.08, win[0], win[1] + 0.08, -0.07, 0.07, RED)
+        span(w0 - 0.08, w0, win[0], win[1], -0.07, 0.07, RED)
+        span(w1, w1 + 0.08, win[0], win[1], -0.07, 0.07, RED)
         span(w0 - 0.08, w1 + 0.08, win[1], win[1] + 0.08, -0.07, 0.07, RED)
         nb = max(3, int(round(w / 0.11)))
         for k in range(1, nb):
@@ -130,8 +130,8 @@ def wall_bay(fr, p, q, kind, out, z_top=2.0, dado=0.75, win=(0.95, 1.75), ww=Non
         span(a + 0.1, d0 - 0.08, 0.0, 0.35, -h - 0.01, h + 0.01, brick)
         span(d1 + 0.08, b - 0.1, 0.0, 0.35, -h - 0.01, h + 0.01, brick)
         span(d0, d1, door_h + 0.104, z_top, -h + 0.02, h - 0.02, plaster)
-        span(d0 - 0.08, d0, 0.0, door_h + 0.08, -0.09, 0.09, RED)
-        span(d1, d1 + 0.08, 0.0, door_h + 0.08, -0.09, 0.09, RED)
+        span(d0 - 0.08, d0, 0.0, door_h, -0.09, 0.09, RED)
+        span(d1, d1 + 0.08, 0.0, door_h, -0.09, 0.09, RED)
         span(d0 - 0.08, d1 + 0.08, door_h, door_h + 0.1, -0.09, 0.09, RED)
         if kind == 'door':
             lw = door_w / 2

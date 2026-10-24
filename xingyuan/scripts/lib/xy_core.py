@@ -11,6 +11,8 @@ def coll(name, parent=None):
     c = bpy.data.collections.get(name)
     if c is None:
         c = bpy.data.collections.new(name)
+    elif parent is None and c.users > 0:
+        return c                      # already placed somewhere: leave it there
     par = parent if parent is not None else bpy.context.scene.collection
     if isinstance(par, str):
         par = coll(par)

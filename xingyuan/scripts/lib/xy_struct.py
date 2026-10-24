@@ -230,9 +230,9 @@ def build_gate():
     xa, xb = 31.83 - t / 2, 38.47 + t / 2
     dx0, dx1, dh = 33.65, 36.65, 2.60                    # passage opening (plan: ~3.1 m passage; photo: squat 3.0 x 2.6 opening)
     for (yy) in (-1.66, -5.93):
-        wall(xa, yy - t / 2, dx0, yy + t / 2)
-        wall(dx1, yy - t / 2, xb, yy + t / 2)
-        fr.box(dx0, yy - t / 2 + 0.02, dh, dx1, yy + t / 2 - 0.02, zt, 'M_Plaster')
+        wall(xa, yy - t / 2, dx0 - 0.05, yy + t / 2)          # wall ends tuck into the granite jambs
+        wall(dx1 + 0.05, yy - t / 2, xb, yy + t / 2)
+        fr.box(dx0, yy - t / 2 + 0.02, dh + 0.22, dx1, yy + t / 2 - 0.02, zt, 'M_Plaster')
         # granite door surround
         for (a0, a1, z0, z1) in ((dx0 - 0.2, dx0, 0.0, dh + 0.2), (dx1, dx1 + 0.2, 0.0, dh + 0.2), (dx0 - 0.2, dx1 + 0.2, dh, dh + 0.22)):
             fr.box(a0, yy - t / 2 - 0.04, z0, a1, yy + t / 2 + 0.04, z1, 'M_Granite')

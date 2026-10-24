@@ -153,11 +153,11 @@ def _gable(mb, F, P, D, v_face, out_sign, rng, roof_z=None):
     va, vb = (v_face, vin) if out_sign < 0 else (vin, v_face)
     # brick wall from the porch column line to the back (stone plinth), with a stone-framed door at the porch end
     du0, du1, dh = 0.50, 1.62, 2.55        # porch-end doorway (u range, height)
-    F.box(mb, du1, va, 0.0, D + 0.3, vb, 0.45, 'M_Granite')
-    F.box(mb, du1, va + 0.02, 0.45, D + 0.25, vb - 0.02, 4.45, BR)
-    F.box(mb, -0.28, va, 0.0, du0, vb, 0.45, 'M_Granite')
-    F.box(mb, -0.28, va + 0.02, 0.45, du0, vb - 0.02, 4.45, BR)
-    F.box(mb, du0, va + 0.02, dh, du1, vb - 0.02, 4.45, BR)
+    F.box(mb, du1 + 0.06, va, 0.0, D + 0.3, vb, 0.45, 'M_Granite')
+    F.box(mb, du1 + 0.06, va + 0.02, 0.45, D + 0.25, vb - 0.02, 4.45, BR)
+    F.box(mb, -0.28, va, 0.0, du0 - 0.06, vb, 0.45, 'M_Granite')
+    F.box(mb, -0.28, va + 0.02, 0.45, du0 - 0.06, vb - 0.02, 4.45, BR)
+    F.box(mb, du0, va + 0.02, dh + 0.18, du1, vb - 0.02, 4.45, BR)
     for (a0, a1, z0, z1) in ((du0 - 0.16, du0, 0.0, dh + 0.16), (du1, du1 + 0.16, 0.0, dh + 0.16), (du0 - 0.16, du1 + 0.16, dh, dh + 0.18)):
         F.box(mb, a0, va - 0.035, z0, a1, vb + 0.035, z1, 'M_Granite')
     F.box(mb, du0, va + 0.05, 0.0, du1, vb - 0.05, 0.06, 'M_Granite')       # threshold
@@ -230,7 +230,6 @@ def build_hall(key, ox, oy, rot, D, L, nb, front_doors, back_doors=(), open_bay=
     rng = random.Random(seed)
     C.clear_coll(key)
     top = C.coll(key)
-    c_plat = C.coll(key + ' 台基', top)
     c_wood = C.coll(key + ' 木构', top)
     c_wall = C.coll(key + ' 墙体门窗', top)
     c_roof = C.coll(key + ' 屋面', top)

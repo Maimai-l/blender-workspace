@@ -11,6 +11,7 @@ B_ROOF = 8.60      # ridge to eave edge (horizontal)
 H_EAVE = 4.905     # tile surface at the eave edge
 H_RIDGE = 9.11     # tile surface at the ridge
 OVER_V = 1.15      # roof overhang beyond the end column lines (gable ends)
+LIFT, LIFT_LEN = 0.42, 5.5   # 生起: eave rise toward the gable ends (A5 photo: ~0.4 m over the end bays)
 Z_COURT = -0.60
 
 class Frame:
@@ -138,14 +139,16 @@ def _leaf(mb, F, u, v0, v1, z0, z1, hinge, ang, side):
         blk(bv - 0.018, bv + 0.018, -0.022, 0.022, 1.0405, z1 - 0.1105, R)
 
 # ------------------------------------------------------------------ gable end (山面)
-def _gable(mb, F, P, D, v_face, out_sign, rng):
-    """Brick gable wall + timber gable frame with window band, tie beam, 叉手 and plaster tympanum.
-    v_face: wall outer face; out_sign: -1 if the exterior is toward -v."""
+def _gable(mb, F, P, D, v_face, out_sign, rng, roof_z=None):
+    """Brick gable wall + timber gable frame with window band, tie beam, 叉手 and red tympanum.
+    v_face: wall outer face; out_sign: -1 if the exterior is toward -v.
+    roof_z(u, v): actual tile-surface height (incl. eave lift); everything stays under its soffit."""
     R = 'M_RedLacquer'; W = 'M_Plaster'; BR = 'M_Brick'; G = 'M_Paper'
     uc = D / 2
     def soffit(u):
-        d = B_ROOF - abs(u - uc)
-        return P.f(d) - 0.22
+        if roof_z is not None:
+            return roof_z(u, v_face) - 0.225
+        return P.f(B_ROOF - abs(u - uc)) - 0.225
     vin = v_face - out_sign * 0.60           # inner face of the wall
     va, vb = (v_face, vin) if out_sign < 0 else (vin, v_face)
     # brick wall from the porch column line to the back (stone plinth), with a stone-framed door at the porch end
@@ -155,57 +158,57 @@ def _gable(mb, F, P, D, v_face, out_sign, rng):
     F.box(mb, -0.28, va, 0.0, du0, vb, 0.45, 'M_Granite')
     F.box(mb, -0.28, va + 0.02, 0.45, du0, vb - 0.02, 4.45, BR)
     F.box(mb, du0, va + 0.02, dh, du1, vb - 0.02, 4.45, BR)
-    # granite door surround, proud of both wall faces
     for (a0, a1, z0, z1) in ((du0 - 0.16, du0, 0.0, dh + 0.16), (du1, du1 + 0.16, 0.0, dh + 0.16), (du0 - 0.16, du1 + 0.16, dh, dh + 0.18)):
         F.box(mb, a0, va - 0.035, z0, a1, vb + 0.035, z1, 'M_Granite')
     F.box(mb, du0, va + 0.05, 0.0, du1, vb - 0.05, 0.06, 'M_Granite')       # threshold
-    # corner pilasters (red) at the porch end of the wall
     # timber gable frame in the outer plane
     vo = v_face + out_sign * 0.02            # slightly proud of the wall face
     vi = v_face - out_sign * 0.10
     v0, v1 = (vo, vi) if out_sign < 0 else (vi, vo)
+    def clipped_band(u0, u1, z0, z1, vv0, vv1, m, n=8):
+        """box from u0..u1, z0..z1 whose top follows min(z1, soffit(u)) (sampled in n slices)"""
+        for k in range(n):
+            a = u0 + (u1 - u0) * k / n; b = u0 + (u1 - u0) * (k + 1) / n
+            top = min(z1, soffit(a), soffit(b))
+            if top - z0 > 0.02:
+                F.box(mb, a, vv0, z0, b, vv1, top, m)
     # sill beam across the whole gable at 4.45-4.62
-    F.box(mb, -0.15, v0, 4.45, D + 0.15, v1, 4.62, R)
-    # window band 4.62-6.0 : panes between mullions
+    clipped_band(-0.15, D + 0.15, 4.45, 4.62, v0, v1, R, n=1)
+    # window band 4.62-5.98 : panes between mullions (inner part only)
     ua, ub = UF - 0.05, D - UF + 0.05
     mull = [ua, ua + 1.35, ub - 1.35, ub]
     F.box(mb, ua - 0.06, v0, 5.98, ub + 0.06, v1, 6.12, R)   # band head
     for mu in mull:
         F.box(mb, mu - 0.07, v0, 4.62, mu + 0.07, v1, 5.98, R)
-    # panes (paper / frosted glass look) slightly recessed
     pv0, pv1 = sorted((v_face - out_sign * 0.01, v_face - out_sign * 0.03))
     for (p0, p1) in ((mull[0], mull[1]), (mull[1], mull[2]), (mull[2], mull[3])):
         F.box(mb, p0 + 0.07, pv0, 4.62, p1 - 0.07, pv1, 5.98, G)
-    # outer parts of the band (porch side above ceiling and back side): plaster
-    for (p0, p1) in ((-0.15, mull[0] - 0.07), (mull[3] + 0.07, D + 0.15)):
-        F.box(mb, p0, v0 + out_sign * 0.01, 4.62, p1, v1 - out_sign * 0.0, 5.98, W)
-    # tie beam (四椽栿 end) 6.12-6.5
-    F.box(mb, -0.15, v0, 6.12, D + 0.15, v1, 6.50, R)
-    # tympanum plaster: polygon under the roof soffit from z=6.5 up
-    N = 24
-    us = [-0.2 + (D + 0.4) * i / N for i in range(N + 1)]
-    top = [(uu, max(6.5, soffit(uu))) for uu in us]
+    # outer ends of the gable above the sill (porch end and back end): white plaster up to the roof
+    vpw0, vpw1 = sorted((v_face - out_sign * 0.005, v_face - out_sign * 0.09))
+    clipped_band(-0.15, mull[0] - 0.07, 4.62, 9.0, vpw0, vpw1, W, n=10)
+    clipped_band(mull[3] + 0.07, D + 0.15, 4.62, 9.0, vpw0, vpw1, W, n=10)
+    # tie beam (四椽栿 end) 6.12-6.5 only where it fits under the roof
+    tb = [u for u in [k * 0.05 for k in range(int(D / 0.05) + 1)] if soffit(u) > 6.55]
+    tb0, tb1 = (min(tb), max(tb)) if tb else (uc - 2.5, uc + 2.5)
+    F.box(mb, tb0, v0, 6.12, tb1, v1, 6.50, R)
+    # red tympanum: from the band head / tie beam up to the soffit, between the plaster ends
+    N = 28
+    us = [mull[0] - 0.07 + (mull[3] - mull[0] + 0.14) * i / N for i in range(N + 1)]
     vpl = v_face - out_sign * 0.03
     for i in range(N):
-        (u0_, z0_), (u1_, z1_) = top[i], top[i + 1]
-        if z0_ <= 6.51 and z1_ <= 6.51:
+        u0_, u1_ = us[i], us[i + 1]
+        zf = 6.5 if (u0_ >= tb0 - 1e-6 and u1_ <= tb1 + 1e-6) else 6.12
+        z0_, z1_ = soffit(u0_), soffit(u1_)
+        if max(z0_, z1_) <= zf + 0.01:
             continue
-        q = [F.p(u0_, vpl, 6.5), F.p(u1_, vpl, 6.5), F.p(u1_, vpl, z1_), F.p(u0_, vpl, z0_)]
-        mb.face(q, 'M_RedPaint')
-    # lower plaster strip below 6.12 outside the band area handled above; also the space between soffit and band at the ends
-    for i in range(N):
-        (u0_, z0_), (u1_, z1_) = top[i], top[i + 1]
-        lo = 6.12
-        if max(z0_, z1_) > lo and (u1_ < mull[0] or u0_ > mull[3]):
-            pass
+        mb.face([F.p(u0_, vpl, zf), F.p(u1_, vpl, zf), F.p(u1_, vpl, max(z1_, zf)), F.p(u0_, vpl, max(z0_, zf))], 'M_RedPaint')
     # 叉手 (inverted-V struts) from the tie beam ends up to under the ridge purlin
     zt = soffit(uc) - 0.05
     for su in (-1, 1):
-        ub0 = uc + su * 3.1
+        ub0 = uc + su * min(3.1, (tb1 - tb0) / 2 - 0.2)
         p0 = (ub0, 6.5); p1 = (uc + su * 0.18, zt - 0.1)
         L = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
         ang = math.atan2(p1[1] - p0[1], p1[0] - p0[0])
-        # build as an oriented box in the (u,z) plane
         cu, cz = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2
         hu, hz = L / 2, 0.11
         du, dz = math.cos(ang), math.sin(ang)
@@ -258,16 +261,39 @@ def build_hall(key, ox, oy, rot, D, L, nb, front_doors, back_doors=(), open_bay=
                 brk_o.append(F.xf(Matrix.Translation((u, v, HC)) @ Matrix.Rotation(math.radians(-90), 4, 'Z')))
             else:
                 brk_i.append(F.xf(Matrix.Translation((u, v, HC)) @ Matrix.Rotation(math.radians(90), 4, 'Z')))
+    # intermediate (补间) sets at mid-bay on the porch and back lines: block on the 阑额 + simple bracket
+    brk_m = []
+    for (u, kind) in rows:
+        if kind == 'front':
+            continue
+        for j in range(nb):
+            vm = (vs[j] + vs[j + 1]) / 2
+            rz = 90 if kind == 'porch' else -90
+            brk_m.append(F.xf(Matrix.Translation((u, vm, HC + 0.17)) @ Matrix.Rotation(math.radians(rz), 4, 'Z')))
     C.instancer(key + '_柱', col_src, cols, c_wood)
     C.instancer(key + '_柱础', base_src, bases, c_wood)
     C.instancer(key + '_斗栱_外檐', bo, brk_o, c_wood)
     C.instancer(key + '_斗栱_内', bi, brk_i, c_wood)
+    C.instancer(key + '_斗栱_补间', bi, brk_m, c_wood)
 
     # ---------- beams, purlins, porch ceiling, crescent beams
     mb = C.MB()
     R = 'M_RedLacquer'
     for (u, kind) in rows:
         F.box(mb, u - 0.09, vs[0] - 0.05, HC - 0.26, u + 0.09, vs[-1] + 0.05, HC - 0.02, R)          # 阑额
+        if kind in ('porch', 'back'):
+            # 驼峰 blocks under the intermediate brackets
+            for j in range(nb):
+                vm = (vs[j] + vs[j + 1]) / 2
+                F.box(mb, u - 0.08, vm - 0.20, HC - 0.02, u + 0.08, vm + 0.20, HC + 0.17, R)
+        if kind == 'porch':
+            # 由额 0.5 m below the 阑额 with short struts between (open frieze, as in the photos)
+            F.box(mb, u - 0.075, vs[0] + 0.2, HC - 0.70, u + 0.075, vs[-1] - 0.2, HC - 0.53, R)
+            for j in range(nb):
+                n_s = 4
+                for k in range(1, n_s):
+                    vv = vs[j] + (vs[j + 1] - vs[j]) * k / n_s
+                    F.box(mb, u - 0.055, vv - 0.05, HC - 0.53, u + 0.055, vv + 0.05, HC - 0.26, R)
         if kind in ('porch', 'back'):
             F.box(mb, u - 0.065, vs[0] - 0.36, HC + 0.62, u + 0.065, vs[-1] + 0.36, HC + 0.80, R)  # 柱头方
             F.box(mb, u - 0.065, vs[0] - 0.36, HC + 0.86, u + 0.065, vs[-1] + 0.36, HC + 1.04, R)  # 2nd 方
@@ -351,24 +377,26 @@ def build_hall(key, ox, oy, rot, D, L, nb, front_doors, back_doors=(), open_bay=
     # plaster (栱眼壁) between brackets above the 阑额, in all three rows, up to the 柱头方 / roof
     for (u, kind) in rows:
         if kind == 'front':
-            F.box(mb, u - 0.04, vs[0], HC - 0.02, u + 0.04, vs[-1], HC + 0.38, 'M_Plaster')
+            F.box(mb, u - 0.04, vs[0], HC - 0.02, u + 0.04, vs[-1], HC + 0.38, 'M_PanelDark')
         else:
-            F.box(mb, u - 0.04, vs[0], HC - 0.02, u + 0.04, vs[-1], HC + 0.62, 'M_Plaster')
+            F.box(mb, u - 0.04, vs[0], HC - 0.02, u + 0.04, vs[-1], HC + 0.62, 'M_PanelDark')
     # back wall above the second 方 up to the roof soffit (closing the eave cavity)
     zt_back = P.f(B_ROOF - (D - D / 2)) - 0.22
     F.box(mb, D - 0.04, vs[0] - 0.3, HC + 1.04, D + 0.04, vs[-1] + 0.3, zt_back + 0.05, 'M_Plaster')
     # porch side: closing board above the ceiling up to the roof (hidden mostly)
     zt_front = P.f(B_ROOF - D / 2) - 0.22
     F.box(mb, -0.04, vs[0] - 0.3, HC + 1.04, 0.04, vs[-1] + 0.3, zt_front + 0.05, 'M_RedOrange')
-    # gables
-    _gable(mb, F, P, D, -0.30, -1, rng)
-    _gable(mb, F, P, D, L + 0.30, +1, rng)
+    # gables (clipped to the real roof surface incl. the eave lift)
+    shape_g = RF.RoofShape('gable', L / 2 + OVER_V, B_ROOF, P, lift=LIFT, lift_len=LIFT_LEN)
+    roof_z = lambda u, v: shape_g.z(v - L / 2, D / 2 - u)
+    _gable(mb, F, P, D, -0.30, -1, rng, roof_z)
+    _gable(mb, F, P, D, L + 0.30, +1, rng, roof_z)
     # interior: dark ceiling and back faces so open doors read as a dim room
     F.box(mb, UF + 0.15, 0.3, 4.40, D - 0.15, L - 0.3, 4.45, 'M_Interior')
     mb.finish(key + '_墙体门窗', c_wall)
 
     # ---------- roof
-    shape = RF.RoofShape('gable', L / 2 + OVER_V, B_ROOF, P, lift=0.30, lift_len=3.2)
+    shape = RF.RoofShape('gable', L / 2 + OVER_V, B_ROOF, P, lift=LIFT, lift_len=LIFT_LEN)
     # roof local (x along ridge, y across) -> hall: u = -y + D/2, v = x + L/2
     M_hr = Matrix(((0, -1, 0, D / 2), (1, 0, 0, L / 2), (0, 0, 1, 0), (0, 0, 0, 1)))
     M = F.M @ M_hr

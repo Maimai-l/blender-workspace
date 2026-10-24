@@ -3,8 +3,8 @@ import bpy, math, os
 from mathutils import Vector, Euler
 import xy_core as C
 
-def setup_world(sun_elev=42.0, sun_azim=215.0, strength=0.15, sun_strength=5.0, sun_angle=1.6, desat=0.55, dust=0.4,
-                cam_sat=1.6, cam_val=0.88):
+def setup_world(sun_elev=42.0, sun_azim=215.0, strength=0.15, sun_strength=5.0, sun_angle=1.6, desat=0.55, dust=0.15,
+                cam_sat=1.45, cam_val=0.85):
     """Physical sky for ambient light + Sun lamp for direct light.
     sun_azim: compass bearing the sun comes FROM (0 = north, 90 = east, 180 = south)."""
     sc = bpy.context.scene

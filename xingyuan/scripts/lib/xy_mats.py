@@ -105,10 +105,10 @@ def tile():
     weather = _ramp(nt, nz.outputs['Fac'], [(0.35, (0.0, 0.0, 0.0)), (0.75, (1.0, 1.0, 1.0))], (-450, 0))
     col = _mix(nt, _math(nt, 'MULTIPLY', weather, 0.30, (-250, 100)), base, (0.11, 0.108, 0.10), (-100, 250))
     L.new(col, bs.inputs['Base Color'])
-    rr = _ramp(nt, fine.outputs['Fac'], [(0.3, (0.52, 0.52, 0.52)), (0.7, (0.78, 0.78, 0.78))], (-250, -200))
+    rr = _ramp(nt, fine.outputs['Fac'], [(0.3, (0.70, 0.70, 0.70)), (0.7, (0.88, 0.88, 0.88))], (-250, -200))
     L.new(rr, bs.inputs['Roughness'])
     L.new(_bump(nt, fine.outputs['Fac'], 0.12, 0.004), bs.inputs['Normal'])
-    bs.inputs['Specular IOR Level'].default_value = 0.45
+    bs.inputs['Specular IOR Level'].default_value = 0.35
     return m
 
 def lacquer_red(name='M_RedLacquer', base=(0.215, 0.022, 0.014), rough=0.42):
@@ -234,17 +234,22 @@ def paver_dark():
     return granite('M_PaverDark', base=(0.20, 0.205, 0.205), dark=(0.12, 0.125, 0.125), light=(0.27, 0.275, 0.27), rough=0.8, scale=0.8)
 
 def water():
+    """Clear pond water: refractive surface + green-brown volume absorption (the stony bottom shows through)."""
     m, nt, bs, out = _new('M_Water')
     L = nt.links
     pos = _world_pos(nt)
     n = _noise(nt, pos, 1.4, 3, 0.45, (-700, -200))
     n2 = _noise(nt, pos, 7.0, 2, 0.4, (-700, -500))
     h = _math(nt, 'ADD', n.outputs['Fac'], _math(nt, 'MULTIPLY', n2.outputs['Fac'], 0.3, (-500, -500)), (-400, -300))
-    bs.inputs['Base Color'].default_value = (0.010, 0.034, 0.020, 1)
-    bs.inputs['Roughness'].default_value = 0.035
+    bs.inputs['Base Color'].default_value = (0.85, 0.95, 0.88, 1)
+    bs.inputs['Roughness'].default_value = 0.03
     bs.inputs['IOR'].default_value = 1.333
-    bs.inputs['Specular IOR Level'].default_value = 0.5
-    L.new(_bump(nt, h, 0.035, 0.02), bs.inputs['Normal'])
+    bs.inputs['Transmission Weight'].default_value = 1.0
+    L.new(_bump(nt, h, 0.03, 0.02), bs.inputs['Normal'])
+    va = nt.nodes.new('ShaderNodeVolumeAbsorption'); va.location = (600, -250)
+    va.inputs['Color'].default_value = (0.55, 0.78, 0.42, 1)
+    va.inputs['Density'].default_value = 1.1
+    L.new(va.outputs[0], out.inputs['Volume'])
     return m
 
 def simple(name, color, rough=0.5, metal=0.0, coat=0.0, spec=0.5, emit=None, emit_strength=0.0):
@@ -319,7 +324,7 @@ def pool_bed():
     pos = _world_pos(nt)
     v = _n(nt, 'ShaderNodeTexVoronoi', (-800, 0)); v.inputs['Scale'].default_value = 6.0
     L.new(pos, v.inputs['Vector'])
-    c = _ramp(nt, v.outputs['Distance'], [(0.0, (0.035, 0.04, 0.03)), (0.35, (0.06, 0.065, 0.05)), (0.6, (0.02, 0.025, 0.02))], (-400, 0))
+    c = _ramp(nt, v.outputs['Distance'], [(0.0, (0.16, 0.15, 0.11)), (0.35, (0.22, 0.20, 0.15)), (0.6, (0.10, 0.10, 0.075))], (-400, 0))
     L.new(c, bs.inputs['Base Color'])
     bs.inputs['Roughness'].default_value = 0.6
     L.new(_bump(nt, v.outputs['Distance'], 0.8, 0.05), bs.inputs['Normal'])
@@ -445,10 +450,11 @@ def build_all():
     simple('M_Bronze', (0.12, 0.08, 0.045), rough=0.45, metal=0.85)
     simple('M_Lamp', (0.9, 0.75, 0.5), rough=0.6, emit=(1.0, 0.72, 0.42), emit_strength=0.0)
     granite('M_StoneTurtle', base=(0.20, 0.20, 0.185), dark=(0.10, 0.105, 0.095), light=(0.28, 0.28, 0.265), rough=0.8, scale=0.8)
-    granite('M_PoolStone', base=(0.05, 0.06, 0.045), dark=(0.025, 0.03, 0.022), light=(0.08, 0.09, 0.07), rough=0.6, scale=0.5)
+    granite('M_PoolStone', base=(0.12, 0.13, 0.10), dark=(0.06, 0.07, 0.05), light=(0.20, 0.20, 0.16), rough=0.6, scale=0.5)
     marble()
     ceil_panel()
     simple('M_CeilRib', (0.035, 0.055, 0.048), rough=0.55)
+    simple('M_PanelDark', (0.030, 0.040, 0.036), rough=0.7, spec=0.3)
     simple('M_BlackStone', (0.010, 0.011, 0.011), rough=0.22, spec=0.5)
     bark()
     leaf('M_LeafPurple', (0.075, 0.022, 0.028), (0.15, 0.042, 0.048), trans=0.25)

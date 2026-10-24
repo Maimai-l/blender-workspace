@@ -2,8 +2,8 @@
 import sys, importlib, bpy, time
 LIB = r'C:\Users\blender\Documents\xingyuan\lib'
 if LIB not in sys.path: sys.path.insert(0, LIB)
-import xy_core, xy_mats, xy_roof, xy_parts, xy_site, xy_layout, xy_build_site, xy_hall, xy_frame, xy_struct, xy_props
-for m in (xy_core, xy_mats, xy_roof, xy_parts, xy_site, xy_layout, xy_build_site, xy_hall, xy_frame, xy_struct, xy_props):
+import xy_core, xy_mats, xy_roof, xy_parts, xy_site, xy_layout, xy_build_site, xy_hall, xy_frame, xy_struct, xy_props, xy_proxy
+for m in (xy_core, xy_mats, xy_roof, xy_parts, xy_site, xy_layout, xy_build_site, xy_hall, xy_frame, xy_struct, xy_props, xy_proxy):
     importlib.reload(m)
 T = time.time()
 STEPS = globals().get('STEPS', 'all')
@@ -33,4 +33,5 @@ if want('a31'):
     xy_struct.build_A31(); xy_struct.build_B2_walls(); print('A3-1/B2 %.1f' % (time.time() - T))
 if want('props'):
     xy_props.build_props(); print('props %.1f' % (time.time() - T))
+print('viewport proxies on', xy_proxy.apply(), 'instancers')
 print('objects', len(bpy.data.objects), 'total %.1fs' % (time.time() - T))

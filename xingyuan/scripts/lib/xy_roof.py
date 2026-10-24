@@ -54,7 +54,7 @@ class RoofShape:
             t = 1.0 - dx / self.lift_len
             dy = B - abs(y)
             fall = max(0.0, 1.0 - dy / (B * 0.85))
-            return self.lift * (t ** 2.0) * (fall ** 1.4)
+            return self.lift * (t ** 1.8) * (fall ** 1.4)
         # distance to the nearest corner measured along the eave, falloff by distance from eave
         dx, dy = A - abs(x), B - abs(y)
         d_edge = min(dx, dy)
@@ -442,8 +442,17 @@ def eave_boards(name, shape, M, collection, faces, fly_len=0.62):
     return mb.finish(name, collection)
 
 # ------------------------------------------------------------------ ridges
-RIDGE_SEC = [(-0.20, -0.16), (-0.20, 0.05), (-0.215, 0.05), (-0.215, 0.11), (-0.20, 0.11), (-0.20, 0.17),
-             (-0.165, 0.17), (-0.165, 0.42), (-0.19, 0.42), (-0.19, 0.48)]
+def _stack_sec():
+    pts = [(-0.20, -0.16), (-0.20, 0.03), (-0.222, 0.03), (-0.222, 0.075), (-0.20, 0.075)]
+    z = 0.075
+    w = -0.188
+    for k in range(8):                       # 8 thin stacked tile courses, each with a small drip lip
+        pts += [(w, z), (w, z + 0.035), (w - 0.012, z + 0.035), (w - 0.012, z + 0.047)]
+        z += 0.047
+        w += 0.003
+    pts += [(w, z), (-0.19, z), (-0.19, 0.48)]
+    return pts
+RIDGE_SEC = _stack_sec()
 def _ridge_section(scale=1.0, cap_r=0.10, vscale=1.0):
     left = RIDGE_SEC
     cap = [(-cap_r * math.cos(math.pi * k / 8), 0.48 + 0.02 + cap_r * math.sin(math.pi * k / 8)) for k in range(9)]

@@ -104,7 +104,7 @@ STAIRS = [
 ]
 
 # B1 tree planters (from the aerial and the B1 photos)
-PLANTERS_B1 = [(31.60, 3.60), (38.70, 3.60), (31.60, 14.40), (38.70, 14.40)]
+PLANTERS_B1 = [(32.00, 4.70), (38.30, 4.70), (32.00, 15.30), (38.30, 15.30)]   # from the calibrated aerial photo
 
 SITE_BOX = (-8.0, -22.0, 78.0, 64.0)
 

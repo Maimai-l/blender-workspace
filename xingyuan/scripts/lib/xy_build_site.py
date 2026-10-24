@@ -136,7 +136,14 @@ def build_site():
         x0, y0 = R.xy(i0, j0); x1, y1 = R.xy(i1, j1)
         mbw.face([Vector((x0, y0, LY.Z_WATER)), Vector((x1, y0, LY.Z_WATER)), Vector((x1, y1, LY.Z_WATER)), Vector((x0, y1, LY.Z_WATER))], 'M_Water')
         mbb.face([Vector((x0, y0, LY.Z_POOL)), Vector((x1, y0, LY.Z_POOL)), Vector((x1, y1, LY.Z_POOL)), Vector((x0, y1, LY.Z_POOL))], 'M_PoolBed')
-    ow = mbw.finish('B3_许愿池_水面', C.coll('B3 铺地', C.coll('B3')), recalc=False, merge=0.001)
+    # closed water volume: the box from the surface down to the bed (walls slightly inset from the pool walls)
+    wb = C.MB()
+    for (i0, j0, i1, j1) in S.rects_from_mask(pool):
+        x0, y0 = R.xy(i0, j0); x1, y1 = R.xy(i1, j1)
+        wb.box((x0 + 0.002, y0 + 0.002, LY.Z_POOL + 0.002), (x1 - 0.002, y1 - 0.002, LY.Z_WATER), 'M_Water')
+    mbw.bm.free()
+    ow = wb.finish('B3_许愿池_水面', C.coll('B3 铺地', C.coll('B3')), recalc=True)
+    ow.data.polygons.foreach_set('use_smooth', [False] * len(ow.data.polygons))
     ob = mbb.finish('B3_许愿池_池底', C.coll('B3 铺地', C.coll('B3')), recalc=False, merge=0.001)
 
     # ---------------- apron around the complex and the entrance plaza

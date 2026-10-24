@@ -175,7 +175,7 @@ def stele(coll, cx, cy, z_water, z_bottom):
     tm = turtle(None, cx, cy, zp, heading=math.pi, s=0.62)
     tob = tm.finish('B3_碑_龟趺', coll, merge=0.0005)
     zt = zp + 0.62 * 0.75
-    W, T, H = 0.72, 0.24, 2.05
+    W, T, H = 0.88, 0.26, 2.15
     mb.box((cx - W / 2, cy - T / 2, zt - 0.05), (cx + W / 2, cy + T / 2, zt + H), 'M_Marble')
     # rounded top cap
     mb.box((cx - W / 2 + 0.02, cy - T / 2 + 0.01, zt + H), (cx + W / 2 - 0.02, cy + T / 2 - 0.01, zt + H + 0.05), 'M_Marble')
@@ -254,7 +254,7 @@ def tree(name, coll, base, seed=1, height=5.6, crown=2.3, leaf_src=None, n_spray
     tips = []
     p = Vector(base)
     lean = Vector((rng.uniform(-0.06, 0.06), rng.uniform(-0.06, 0.06), 1.0)).normalized()
-    trunk_h = 1.45 + rng.uniform(-0.15, 0.15)
+    trunk_h = 1.9 + rng.uniform(-0.15, 0.15)
     mb.cyl(p - Vector((0, 0, 0.1)), p + lean * trunk_h, 0.105, 10, 'M_Bark', r1=0.085, smooth=True)
     top = p + lean * trunk_h
     nlimb = 5
@@ -357,7 +357,7 @@ def bamboo_bed(name, coll, x0, y0, x1, y1, z0=LY.ZC, density=3.2, seed=3, hmax=6
 
 # ------------------------------------------------------------------ build
 def build_props():
-    for k in ('B1 陈设', 'B2 陈设', 'B3 陈设', 'A2 匾联', 'A5 匾联'):
+    for k in ('B1 陈设', 'B2 陈设', 'B3 陈设', 'A1 匾联', 'A2 匾联', 'A5 匾联'):
         C.clear_coll(k)
     cB1 = C.coll('B1 陈设', C.coll('B1'))
     cB2 = C.coll('B2 陈设', C.coll('B2'))
@@ -366,12 +366,15 @@ def build_props():
     cA5 = C.coll('A5 匾联', C.coll('A5'))
     # ---- plaques
     plaque('A2_匾_芙蓉學堂', cA2, (24.65 + 0.17, 11.91, 3.70), (1, 0), 2.6, 0.78, '芙蓉學堂', tilt=6)
+    cA1 = C.coll('A1 匾联', C.coll('A1'))
+    plaque('A1_匾_鳴鳳學堂', cA1, (45.65 - 0.17, 11.91, 3.70), (-1, 0), 2.6, 0.78, '鳴鳳學堂', tilt=6)
     plaque('A5_匾_太華春光', cA5, (10.15 + 0.17, 40.04, 3.70), (1, 0), 2.6, 0.78, '太華春光', tilt=6)
     plaque('B1亭_匾_春色滿園', cB1, (35.15, 21.38 - 0.25, 2.62), (0, -1), 2.2, 0.72, '春色滿園', tilt=14)
     plaque('B3南亭_匾_步蟾', cB3, (20.65, 30.47 + 0.25, 2.62), (0, 1), 1.9, 0.68, '步蟾', tilt=12)
     plaque('B3北亭_匾', cB3, (20.62, 49.6 - 0.25, 2.72), (0, -1), 2.0, 0.66, None, tilt=12)
     # ---- couplet boards (blank: text not legible in the photos)
     for (nm, cxy, r, f, cl) in (('A2_楹联_左', (26.7, 10.26), 0.19, (1, 0), cA2), ('A2_楹联_右', (26.7, 13.55), 0.19, (1, 0), cA2),
+                                ('A1_楹联_左', (43.6, 13.56), 0.19, (-1, 0), cA1), ('A1_楹联_右', (43.6, 10.26), 0.19, (-1, 0), cA1),
                                 ('A5_楹联_左', (12.2, 38.39), 0.19, (1, 0), cA5), ('A5_楹联_右', (12.2, 41.69), 0.19, (1, 0), cA5),
                                 ('B1亭_楹联_左', (33.6, 21.38), 0.18, (0, -1), cB1), ('B1亭_楹联_右', (36.7, 21.38), 0.18, (0, -1), cB1),
                                 ('B3南亭_楹联_左', (18.8, 30.47), 0.18, (0, 1), cB3), ('B3南亭_楹联_右', (22.5, 30.47), 0.18, (0, 1), cB3),
@@ -405,8 +408,8 @@ def build_props():
     # ---- B1 planters and purple-leaf trees
     ls = leaf_src()
     for i, (x, y) in enumerate(LY.PLANTERS_B1):
-        planter('B1_树池%d' % (i + 1), cB1, x, y, wood=(y > 9.0))
-        tree('B1_紫叶李%d' % (i + 1), cB1, (x, y, LY.ZC + 0.44), seed=31 + i * 7, height=5.8 + 0.4 * (i % 2), crown=2.15, leaf_src=ls)
+        planter('B1_树池%d' % (i + 1), cB1, x, y, size=2.0, wood=True)
+        tree('B1_紫叶李%d' % (i + 1), cB1, (x, y, LY.ZC + 0.44), seed=31 + i * 7, height=6.2 + 0.4 * (i % 2), crown=1.95, leaf_src=ls)
     # ---- gate: red lanterns hanging under the south eave (red discs in the aerial view)
     mb = C.MB()
     for x in (32.75, 37.55):

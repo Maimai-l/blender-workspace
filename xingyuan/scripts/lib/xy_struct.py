@@ -71,7 +71,7 @@ def corridor(name, coll, axis, rows, stations, roof_span, rails=((), ()), walls=
             gables=gables, rafters=True, d_in=1.45, xuanyu=False, ridge_scale=0.62, deck_sof=0.205)
 
 # ------------------------------------------------------------------ pavilion frame
-def pav_frame(name, coll, cols, perim, H, rails=(), walls=(), brk_dirs=None, lotus=True, beams_extra=()):
+def pav_frame(name, coll, cols, perim, H, rails=(), walls=(), brk_dirs=None, lotus=True, beams_extra=(), corner='diag'):
     """cols: list of (x, y); perim: ordered list of perimeter column positions (closed loop).
     rails: list of (p, q) pairs; walls: list of (p, q, kind, normal)."""
     fr = FR.Frame(name, coll)
@@ -102,7 +102,10 @@ def pav_frame(name, coll, cols, perim, H, rails=(), walls=(), brk_dirs=None, lot
         on_left = abs(x - min(xs)) < 1e-3; on_right = abs(x - max(xs)) < 1e-3
         on_bot = abs(y - min(ys)) < 1e-3; on_top = abs(y - max(ys)) < 1e-3
         if (on_left or on_right) and (on_bot or on_top):
-            d = ((-1 if on_left else 1) * 0.7071, (-1 if on_bot else 1) * 0.7071)
+            if corner == 'y':          # gable roof: corner brackets face the eave sides only
+                d = (0, -1 if on_bot else 1)
+            else:
+                d = ((-1 if on_left else 1) * 0.7071, (-1 if on_bot else 1) * 0.7071)
         elif on_left or on_right:
             d = (-1 if on_left else 1, 0)
         else:
@@ -167,7 +170,7 @@ def build_pavilions():
     rails = [((31.5, 21.38), (33.6, 21.38)), ((36.7, 21.38), (38.8, 21.38)),
              ((38.8, 21.38), (38.8, 23.48)), ((38.8, 23.48), (38.8, 26.58)),
              ((31.5, 21.38), (31.5, 23.48)), ((31.5, 23.48), (31.5, 26.58))]
-    pav_frame('B1亭', c, perim, perim, 3.10, rails=rails)
+    pav_frame('B1亭', c, perim, perim, 3.10, rails=rails, corner='y')
     FR.roof('B1亭', c, 'gable', 35.15, 23.98, 4.85, 3.90, 3.55, 6.24, along='x', horn=0.30, horn_len=0.7,
             gables=(True, True), d_in=1.6, ridge_scale=0.8)
     # ---- B3 south pavilion (歇山, ridge E-W)
@@ -202,7 +205,7 @@ def build_pavilions():
              ((22.47, 56.86), (24.27, 56.86), 'plain', (0, 1)),
              ((24.27, 53.5), (24.27, 56.86), 'window', (1, 0)), ((16.98, 53.5), (16.98, 56.86), 'window', (-1, 0))]
     pav_frame('B3北亭', c, perim, perim, 3.20, rails=rails, walls=walls)
-    FR.roof('B3北亭', c, 'pyramid', 20.62, 53.23, 4.95, 4.95, 4.15, 7.0, along='x', lift=0.26, lift_len=2.0,
+    FR.roof('B3北亭', c, 'pyramid', 20.62, 53.23, 4.95, 4.95, 4.15, 7.2, along='x', lift=0.48, lift_len=2.4,
             d_in=1.5, finial=0.62, ridge_scale=0.8)
 
 def build_gate():
@@ -225,7 +228,7 @@ def build_gate():
         fr.box(x0, y0, 0.0, x1, y1, 0.45, 'M_Granite')
         fr.box(x0 + 0.02, y0 + 0.02, 0.45, x1 - 0.02, y1 - 0.02, zt, 'M_Plaster')
     xa, xb = 31.83 - t / 2, 38.47 + t / 2
-    dx0, dx1, dh = 34.0, 36.3, 2.95                      # passage opening
+    dx0, dx1, dh = 33.65, 36.65, 2.60                    # passage opening (plan: ~3.1 m passage; photo: squat 3.0 x 2.6 opening)
     for (yy) in (-1.66, -5.93):
         wall(xa, yy - t / 2, dx0, yy + t / 2)
         wall(dx1, yy - t / 2, xb, yy + t / 2)
@@ -310,8 +313,10 @@ def build_A31():
         FR.wall_bay(fr, (x0, yy), (xs[1], yy), 'window', nrm, z_top=H - 0.22, ww=1.2)
         FR.wall_bay(fr, (xs[1], yy), (x1, yy), 'window', nrm, z_top=H - 0.22, ww=1.2)
     fr.finish()
-    FR.roof('A3-1', c, 'gable', (x0 + x1) / 2, (y0 + y1) / 2, 5.15, 3.80, 3.25, 5.48, along='y', horn=0.28, horn_len=0.6,
-            d_in=1.6, ridge_scale=0.72)
+    # roof runs north into A3's south gable wall (y = 31.49), normal overhang at the south end
+    ya, yb = y0 - 0.85, 31.47
+    FR.roof('A3-1', c, 'gable', (x0 + x1) / 2, (ya + yb) / 2, (yb - ya) / 2, 3.80, 3.25, 5.48, along='y', horn=0.28, horn_len=0.6,
+            d_in=1.6, ridge_scale=0.72, gables=(True, False))
 
 def build_B2_walls():
     C.clear_coll('B2 院墙')

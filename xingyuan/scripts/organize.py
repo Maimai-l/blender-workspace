@@ -2,10 +2,16 @@
 import bpy
 sc = bpy.context.scene
 root = sc.collection
-for name in ('TEST', 'A1 台基', 'A2 台基', 'A3 台基', 'A4 台基', 'A5 台基'):
+for name in ('TEST', '_TEST', 'A1 台基', 'A2 台基', 'A3 台基', 'A4 台基', 'A5 台基'):
     c = bpy.data.collections.get(name)
-    if c is not None and not c.objects and not c.children:
+    if c is not None and (name == '_TEST' or (not c.objects and not c.children)):
+        for o in list(c.objects):
+            bpy.data.objects.remove(o, do_unlink=True)
         bpy.data.collections.remove(c)
+# superseded node groups
+for ng in list(bpy.data.node_groups):
+    if ng.name.startswith('XY_Foliage_old'):
+        bpy.data.node_groups.remove(ng)
 # temporary cameras from inspection renders
 for o in list(bpy.data.objects):
     if o.type == 'CAMERA' and not (o.name.startswith('CAM_对照_') or o.name.startswith('CAM_效果_')):
@@ -14,7 +20,7 @@ for cd in list(bpy.data.cameras):
     if cd.users == 0:
         bpy.data.cameras.remove(cd)
 # order of top-level collections
-order = ['A1', 'A2', 'A3', 'A3-1', 'A4', 'A5', 'B1', 'B2', 'B3', '廊道', '地面', '灯光与相机', '_LIB']
+order = ['A1', 'A2', 'A3', 'A3-1', 'A4', 'A5', 'B1', 'B2', 'B3', '廊道', '地面', '环境', '灯光与相机', '_LIB']
 kids = {c.name: c for c in root.children}
 for n in order:
     if n in kids:

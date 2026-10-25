@@ -106,7 +106,7 @@ STAIRS = [
 # B1 tree planters (from the aerial and the B1 photos)
 PLANTERS_B1 = [(32.00, 4.70), (38.30, 4.70), (32.00, 15.30), (38.30, 15.30)]   # from the calibrated aerial photo
 
-SITE_BOX = (-8.0, -22.0, 78.0, 64.0)
+SITE_BOX = (-8.0, -36.0, 78.0, 64.0)   # covers the env terraces / plaza next to the complex
 
 # B2 bamboo garden: E-W path between the A4 and A3 stairs (dark stone) + a narrow N-S flagstone path; bamboo elsewhere
 B2_PATH = (42.90, 37.84, 57.30, 42.24)

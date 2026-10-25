@@ -29,6 +29,7 @@ def poke(p):
     return None
 report = {}
 pts = []
+BOX0 = (-6.0, -12.0, 76.0, 62.0)
 for o in bpy.data.objects:
     if o.type != 'MESH' or any(k in o.name for k in ROOF_KEYS) or o.name.startswith(SKIP) or any(s in o.name for s in SKIP):
         continue
@@ -46,11 +47,17 @@ for inst in dg.object_instances:
         continue
     ob = inst.object
     M = inst.matrix_world.copy()
+    t = M.translation
+    if not (BOX0[0] - 8 < t.x < BOX0[2] + 8 and BOX0[1] - 8 < t.y < BOX0[3] + 8):
+        continue
     src = bpy.data.objects.get(ob.name) or ob
     verts = src.data.vertices if src.type == 'MESH' else []
     step = max(1, len(verts) // 400)
     for k in range(0, len(verts), step):
         pts.append((par, M @ verts[k].co))
+# only points that could be under a roof deck: over the complex and above the eave line's lowest point
+BOX = (-6.0, -12.0, 76.0, 62.0)
+pts = [(n, p) for (n, p) in pts if p.z > 3.0 and BOX[0] < p.x < BOX[2] and BOX[1] < p.y < BOX[3]]
 for (name, p) in pts:
     r = poke(p)
     if r:

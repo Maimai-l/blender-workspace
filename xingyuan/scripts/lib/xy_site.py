@@ -41,6 +41,40 @@ class Paver:
             if f is not None:
                 self.rand.append((f, r))
 
+    def poly(self, P2, z, m, gap=0.005, bev=0.007, drop=0.012, jitter=0.0018, rnd=None):
+        """A slab with an arbitrary (small, roughly convex, CCW) outline P2 [(x, y), ...]: bevelled top + sides."""
+        n = len(P2)
+        if n < 3:
+            return
+        A = 0.0
+        cx = cy = 0.0
+        for i in range(n):
+            x1, y1 = P2[i]; x2, y2 = P2[(i + 1) % n]
+            c = x1 * y2 - x2 * y1
+            A += c; cx += (x1 + x2) * c; cy += (y1 + y2) * c
+        if A <= 1e-6:
+            return
+        cx /= 3 * A; cy /= 3 * A
+        def ins(p, d):
+            vx, vy = p[0] - cx, p[1] - cy
+            L = math.hypot(vx, vy)
+            k = 0.0 if L < 1e-9 else max(0.0, (L - d) / L)
+            return (cx + vx * k, cy + vy * k)
+        r = self.rng.random() if rnd is None else rnd
+        dz = (self.rng.random() - 0.5) * 2 * jitter
+        tx = (self.rng.random() - 0.5) * jitter * 0.8
+        ty = (self.rng.random() - 0.5) * jitter * 0.8
+        T = [Vector((q[0], q[1], z + dz + tx * (q[0] - cx) + ty * (q[1] - cy))) for q in (ins(p, gap / 2 + bev) for p in P2)]
+        B = [Vector((q[0], q[1], z - drop)) for q in (ins(p, gap / 2) for p in P2)]
+        f = self.mb.face(T, m)
+        if f is not None:
+            self.rand.append((f, r))
+        for i in range(n):
+            j = (i + 1) % n
+            f = self.mb.face([B[i], B[j], T[j], T[i]], m)
+            if f is not None:
+                self.rand.append((f, r))
+
     def field(self, x0, y0, x1, y1, z, m, sw=0.6, sl=0.9, along='y', stagger=0.5, gap=0.005, M=None,
               border=None, clip=None):
         """Fill a rectangle with running-bond slabs. along: direction of the long side ('x' or 'y').

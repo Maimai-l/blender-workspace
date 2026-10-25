@@ -92,6 +92,7 @@ def setup_render(samples=256, res=(1920, 1080), engine='CYCLES', exposure=0.0, l
         cy.diffuse_bounces = 4
         cy.glossy_bounces = 4
         cy.transmission_bounces = 6
+        cy.volume_bounces = 1          # pond water: single scattering gives its murky green body colour
         cy.sample_clamp_indirect = 6.0
         cy.sample_clamp_direct = 0.0
         cy.caustics_reflective = False

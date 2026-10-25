@@ -4,7 +4,11 @@ from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 from mathutils.kdtree import KDTree
 dg = bpy.context.evaluated_depsgraph_get()
+# optional: ONLY = name prefix of the objects to test against everything; SKIP = name prefixes left out entirely
+ONLY = globals().get('ONLY')
+SKIP = tuple(globals().get('SKIP', ('环境_地形', '环境_远景地面', '环境_水体')))
 objs = [o for o in bpy.data.objects if o.type == 'MESH' and not o.name.startswith('SRC_') and o.visible_get()
+        and not o.name.startswith(SKIP)
         and not any(m.type == 'NODES' for m in o.modifiers) and len(o.data.polygons) > 0]
 data = {}
 for o in objs:
@@ -24,6 +28,8 @@ count = 0
 for ai, an in enumerate(names):
     bmA, tA = data[an]
     for bn in names[ai:]:
+        if ONLY and not (an.startswith(ONLY) or bn.startswith(ONLY)):
+            continue
         if not ov(bbs[an], bbs[bn]):
             continue
         bmB, tB = data[bn]

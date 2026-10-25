@@ -37,7 +37,9 @@ def _mask(R, rects):
 
 SITE_PREFIXES = ('B1_庭院铺地', 'B2_庭院铺地', 'B3_庭院铺地', 'B3_许愿池')
 
-def build_site():
+def build_site(env=True):
+    """env=True: the paving outside the complex (terrace, plaza, ...) and the ground come from xy_env_pave /
+    xy_terrain; here the apron stops at those zones and no far ground is made."""
     rng = random.Random(11)
     C.clear_coll('地面')
     g = C.coll('地面')
@@ -147,11 +149,20 @@ def build_site():
     ob = mbb.finish('B3_许愿池_池底', C.coll('B3 铺地', C.coll('B3')), recalc=False, merge=0.001)
 
     # ---------------- apron around the complex and the entrance plaza
+    envm = np.zeros((R.ny, R.nx), dtype=bool)
+    if env:
+        import xy_env_pave as EP, xy_geo2d as G2
+        M = G2.Mask(*LY.SITE_BOX, res=RES)
+        Z = EP.zones()
+        for k in ('red', 'crazy', 'gray'):
+            M.fill_poly(Z[k])
+        envm = M.m
     near = _dilate(raised | pool | _mask(R, [LY.COURTS[k]['rect'] for k in LY.COURTS]), int(round(3.0 / RES)))
-    plaza = _mask(R, [(23.0, -20.0, 47.3, -6.0)])
-    apron = (near | plaza) & ~used
+    plaza = np.zeros_like(near) if env else _mask(R, [(23.0, -20.0, 47.3, -6.0)])
+    apron = (near | plaza) & ~used & ~envm
     pv = S.Paver(seed=77)
-    edge_all = apron | raised | pool | coping | _mask(R, [LY.COURTS[k]['rect'] for k in LY.COURTS])
+    edge_own = apron | raised | pool | coping | _mask(R, [LY.COURTS[k]['rect'] for k in LY.COURTS])
+    edge_all = edge_own | envm
     apron_paved = apron & _erode(edge_all, int(round(0.25 / RES)))          # leave the kerb band free
     rects = S.rects_from_mask(apron_paved)
     S.pave_rects(pv, R, rects, LY.ZC, 'M_GraniteOut', 0.60, 0.90, along='y', origin=(LY.XC, 0.0), stagger=0.5)
@@ -163,27 +174,28 @@ def build_site():
     used |= apron
     # outer edge kerb of the apron (low granite edging)
     mbk = C.MB()
-    S.edge_walls(mbk, R, edge_all, LY.ZC, lambda x, y: (LY.ZC - 0.08), lambda x, y: ('M_StoneGrey', 'M_StoneGrey'), curb_w=0.25, curb_len=1.0, rng=rng)
+    S.edge_walls(mbk, R, edge_own, LY.ZC, lambda x, y: (LY.ZC - 0.08), lambda x, y: ('M_StoneGrey', 'M_StoneGrey'), curb_w=0.25, curb_len=1.0, rng=rng,
+                 skip_fn=lambda x, y: at(envm, x, y))
     mbk.finish('地面_外围路缘', g, recalc=False)
-    # far ground (gravel / compacted earth) slightly lower
-    mbg = C.MB()
+    site_all = edge_all | used
+    # far ground (gravel / compacted earth) slightly lower - only without the garden environment
+    mbg = C.MB() if not env else None
     X0, Y0, X1, Y1 = -400, -400, 470, 460
     zg = LY.ZC - 0.08
     # ground everywhere except under the paved site (cut out with the site mask -> rectangles)
     site = edge_all | used
-    hole = S.rects_from_mask(site)
-    # outer frame
-    hx0, hy0 = R.x0, R.y0; hx1, hy1 = R.x0 + R.nx * RES, R.y0 + R.ny * RES
-    for (a0, b0, a1, b1) in ((X0, Y0, X1, hy0), (X0, hy1, X1, Y1), (X0, hy0, hx0, hy1), (hx1, hy0, X1, hy1)):
-        mbg.face([Vector((a0, b0, zg)), Vector((a1, b0, zg)), Vector((a1, b1, zg)), Vector((a0, b1, zg))], 'M_Ground')
-    for (i0, j0, i1, j1) in S.rects_from_mask(~site):
-        x0, y0 = R.xy(i0, j0); x1, y1 = R.xy(i1, j1)
-        mbg.face([Vector((x0, y0, zg)), Vector((x1, y0, zg)), Vector((x1, y1, zg)), Vector((x0, y1, zg))], 'M_Ground')
-    mbg.finish('地面_基地', g, recalc=False)
+    if mbg is not None:
+        hx0, hy0 = R.x0, R.y0; hx1, hy1 = R.x0 + R.nx * RES, R.y0 + R.ny * RES
+        for (a0, b0, a1, b1) in ((X0, Y0, X1, hy0), (X0, hy1, X1, Y1), (X0, hy0, hx0, hy1), (hx1, hy0, X1, hy1)):
+            mbg.face([Vector((a0, b0, zg)), Vector((a1, b0, zg)), Vector((a1, b1, zg)), Vector((a0, b1, zg))], 'M_Ground')
+        for (i0, j0, i1, j1) in S.rects_from_mask(~site):
+            x0, y0 = R.xy(i0, j0); x1, y1 = R.xy(i1, j1)
+            mbg.face([Vector((x0, y0, zg)), Vector((x1, y0, zg)), Vector((x1, y1, zg)), Vector((x0, y1, zg))], 'M_Ground')
+        mbg.finish('地面_基地', g, recalc=False)
 
     # ---------------- stairs
     mbs = C.MB()
     for (top, d, w, n, zt, zb, name) in LY.STAIRS:
         S.stairs(mbs, top, d, w, zt, zb, n, run=0.38, m='M_Granite', side_w=0.34, sides=True, m_side='M_Granite')
     o = mbs.finish('地面_台阶', g, recalc=True)
-    return R, raised, pool
+    return R, raised, pool, site_all

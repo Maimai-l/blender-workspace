@@ -12,4 +12,15 @@ HEROES = {
                         elev=45, azim=150, exposure=0.4),
     'hero_B2':     dict(loc=(55.5, 40.04, 1.6), target=(42.0, 40.04, 3.4), lens=26.0, res=(1920, 1080),
                         elev=64, azim=176, exposure=0.6),
+    # garden (environment)
+    'hero_garden': dict(loc=(-21.6, -9.6, 1.65), target=(-15.5, 6.0, 1.9), lens=24.0, res=(1920, 1080),
+                        elev=38, azim=200, exposure=0.5),
+    'hero_lotus':  dict(loc=(8.6, -6.2, 1.65), target=(-6.0, -2.0, 0.6), lens=26.0, res=(1920, 1080),
+                        elev=36, azim=150, exposure=0.5),
+    'hero_pond':   dict(loc=(-3.0, 12.6, 2.2), target=(-12.0, -2.0, -1.0), lens=28.0, res=(1920, 1080),
+                        elev=40, azim=140, exposure=0.5),
+    'hero_plaza':  dict(loc=(53.5, -30.5, 2.3), target=(37.0, -6.0, 3.2), lens=24.0, res=(1920, 1080),
+                        elev=40, azim=215, exposure=0.15),
+    'hero_site':   dict(loc=(-38.0, -58.0, 46.0), target=(22.0, 14.0, -2.0), lens=26.0, res=(1920, 1080),
+                        elev=42, azim=215, exposure=0.35),
 }

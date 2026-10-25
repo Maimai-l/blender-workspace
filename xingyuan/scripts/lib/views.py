@@ -3,7 +3,7 @@
 # B1court / B3north estimated from known sizes in the photo; the others hand-matched.
 VIEWS = {
     'aerial':  dict(loc=(37.91, -62.43, 70.17), target=(37.82, -47.95, 56.38), lens=24.23, roll=-0.0092, res=(1400, 644),
-                    elev=48, azim=125, exposure=0.15),
+                    elev=33, azim=351, exposure=0.45),   # sun of the photo (from the gable / lamp-post shadows)
     'B1court': dict(loc=(35.15, 11.1, 0.5), target=(37.15, -8.9, 0.5), lens=11.1, res=(1400, 1046), elev=35, azim=150,
                     exposure=0.6),
     'B3south': dict(loc=(20.65, 50.2, 1.45), target=(20.65, 30.2, 1.45), lens=22.0, shift=(0.0, 0.07), res=(1400, 644),
@@ -19,5 +19,5 @@ VIEWS = {
     'B2':      dict(loc=(55.2, 40.04, 1.0), target=(41.28, 40.04, 3.6), lens=30.0, res=(1400, 1596), elev=42, azim=120,
                     exposure=0.6),
     'A3porch': dict(loc=(59.2, 47.6, 1.55), target=(59.0, 32.0, 2.4), lens=20.0, res=(1400, 2318), elev=40, azim=110,
-                    exposure=2.2),
+                    exposure=2.8),   # porch in shade (as in the photo); the garden trees east of A3 also screen the sky
 }

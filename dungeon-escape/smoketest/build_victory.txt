@@ -1,0 +1,46 @@
+[000.5s] Autopilot started, mode Victory, scene Dungeon
+[000.7s] PASS  GameManager present
+[002.7s] PASS  Title screen shown at launch
+[002.9s] PASS  Clicked BEGIN on the title screen
+[002.9s] PASS  Gameplay started from title
+[005.8s] Frame benchmark (start cell): 3.30 ms per frame at 1600x900 (about 303 fps, vsync off)
+[005.9s] PASS  Pause menu opens (time stopped)
+[005.9s] PASS  Pause menu closes
+[005.9s] PASS  Autopilot route found (19 markers)
+[005.9s] -> AP_00_Move
+[006.4s] -> AP_01_Move
+[007.4s] -> AP_02_Move
+[008.8s] -> AP_03_Jump
+[009.3s] Jumping at AP_03_Jump
+[009.4s] -> AP_04_Move
+[010.2s] -> AP_05_Move
+[012.1s] -> AP_06_Move
+[013.4s] -> AP_07_Move
+[015.4s] -> AP_08_Move
+[022.5s] -> AP_09_Key
+[024.5s] Key collected at 21.6s
+[024.6s] -> AP_10_Move
+[026.0s] -> AP_11_Move
+[027.9s] -> AP_12_Move
+[030.0s] -> AP_13_Door
+[034.8s] Door opened at 31.9s
+[035.1s] Frame benchmark (great hall): 2.50 ms per frame at 1600x900 (about 400 fps, vsync off)
+[035.1s] -> AP_14_Move
+[035.8s] -> AP_15_Arena
+[049.3s] Frame benchmark (arena, boss wave): 3.40 ms per frame at 1600x900 (about 294 fps, vsync off)
+[063.3s] Arena cleared at 60.4s
+[063.4s] -> AP_16_Move
+[065.3s] -> AP_17_Move
+[067.7s] -> AP_18_Exit
+[070.9s] Exit reached at 68.0s
+[070.9s] PASS  Victory screen reached after the exit
+[070.9s] Playtime 68.0s, kills 8, damage taken 78
+[070.9s] PASS  Completed in under five minutes (68s)
+[072.5s] PASS  Clicked PLAY AGAIN on the victory screen
+[072.5s] PASS  Scene reloaded after restart
+[072.5s] PASS  Restart drops straight into gameplay
+[073.5s] PASS  Progress reset after restart
+[073.5s] PASS  Health full after restart
+[073.5s] PASS  Player back at the spawn point
+[073.6s] Performance: average 1711 fps, worst frame 29 ms, 1600x900
+[073.6s] RESULT: PASS  (checks passed 15, failed 0)

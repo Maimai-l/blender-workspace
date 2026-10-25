@@ -1,0 +1,43 @@
+[000.0s] Autopilot started, mode Victory, scene Dungeon
+[000.9s] PASS  GameManager present
+[003.0s] PASS  Title screen shown at launch
+[003.0s] PASS  Clicked BEGIN on the title screen
+[003.0s] PASS  Gameplay started from title
+[006.0s] PASS  Pause menu opens (time stopped)
+[006.0s] PASS  Pause menu closes
+[006.0s] PASS  Autopilot route found (19 markers)
+[006.0s] -> AP_00_Move
+[006.5s] -> AP_01_Move
+[007.5s] -> AP_02_Move
+[008.9s] -> AP_03_Jump
+[009.3s] Jumping at AP_03_Jump
+[009.4s] -> AP_04_Move
+[010.1s] -> AP_05_Move
+[012.0s] -> AP_06_Move
+[013.3s] -> AP_07_Move
+[015.3s] -> AP_08_Move
+[023.4s] -> AP_09_Key
+[024.7s] Key collected at 21.3s
+[024.7s] -> AP_10_Move
+[026.1s] -> AP_11_Move
+[028.1s] -> AP_12_Move
+[030.7s] -> AP_13_Door
+[036.0s] Door opened at 32.0s
+[036.0s] -> AP_14_Move
+[036.7s] -> AP_15_Arena
+[063.9s] Arena cleared at 59.3s
+[063.9s] -> AP_16_Move
+[066.3s] -> AP_17_Move
+[068.6s] -> AP_18_Exit
+[071.9s] Exit reached at 67.3s
+[071.9s] PASS  Victory screen reached after the exit
+[071.9s] Playtime 67.3s, kills 8, damage taken 112
+[071.9s] PASS  Completed in under five minutes (67s)
+[073.4s] PASS  Clicked PLAY AGAIN on the victory screen
+[073.7s] PASS  Scene reloaded after restart
+[073.7s] PASS  Restart drops straight into gameplay
+[074.5s] PASS  Progress reset after restart
+[074.5s] PASS  Health full after restart
+[074.5s] PASS  Player back at the spawn point
+[074.5s] Performance: average 50 fps, worst frame 20 ms, 1101x505
+[074.5s] RESULT: PASS  (checks passed 15, failed 0)

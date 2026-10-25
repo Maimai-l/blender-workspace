@@ -1,0 +1,31 @@
+[000.5s] Autopilot started, mode Defeat, scene Dungeon
+[000.7s] PASS  GameManager present
+[002.7s] PASS  Title screen shown at launch
+[002.9s] PASS  Clicked BEGIN on the title screen
+[002.9s] PASS  Gameplay started from title
+[005.7s] Frame benchmark (start cell): 3.02 ms per frame at 1600x900 (about 331 fps, vsync off)
+[005.9s] PASS  Pause menu opens (time stopped)
+[005.9s] PASS  Pause menu closes
+[005.9s] PASS  Autopilot route found (19 markers)
+[005.9s] -> AP_00_Move
+[006.4s] -> AP_01_Move
+[007.4s] -> AP_02_Move
+[008.8s] -> AP_03_Jump
+[009.2s] Jumping at AP_03_Jump
+[009.3s] -> AP_04_Move
+[010.1s] -> AP_05_Move
+[012.1s] -> AP_06_Move
+[013.4s] -> AP_07_Move
+[015.4s] -> AP_08_Move
+[016.9s] Waiting near the guards to be defeated
+[033.9s] PASS  Player can be killed by enemies (health reached 0)
+[036.3s] PASS  Defeat screen shown
+[037.8s] PASS  Checkpoint retry hidden before the door was opened
+[037.8s] PASS  Clicked RESTART on the defeat screen
+[037.9s] PASS  Scene reloaded after restart
+[037.9s] PASS  Restart drops straight into gameplay
+[038.9s] PASS  Progress reset after restart
+[038.9s] PASS  Health full after restart
+[038.9s] PASS  Player back at the spawn point
+[038.9s] Performance: average 1764 fps, worst frame 11 ms, 1600x900
+[038.9s] RESULT: PASS  (checks passed 16, failed 0)

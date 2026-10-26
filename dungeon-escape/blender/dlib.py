@@ -3,7 +3,7 @@
 import bpy, bmesh, math, random, os
 from mathutils import Vector, Matrix, Euler, Quaternion
 
-UNITY = r"D:/Unity/Projects/Test 3D Project/Assets/DungeonEscape"
+UNITY = r"D:/Unity/Projects/Dungeon Escape/Assets/DungeonEscape"
 MODELS = UNITY + "/Models"
 WORK = r"C:/Users/blender/Documents/DungeonEscape"
 

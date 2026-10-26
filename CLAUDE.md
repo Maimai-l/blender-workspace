@@ -12,7 +12,7 @@
 - Cycles 已设为用显卡渲染：偏好设置里计算设备是 `OPTIX`，只启用了 RTX 5070 Ti。新建场景时 `scene.cycles.device` 要设成 `GPU`，否则仍走 CPU。实测 960×540、256 采样：显卡 1.5 秒，CPU 4.4 秒。很小的渲染因为要加载内核，显卡反而略慢。
 - 视口和 EEVEE 始终用显卡，与上面的 Cycles 设置无关。
 - MCP 插件 1.8：资源库（Poly Haven、Sketchfab、Poly Pizza）和 3D 生成全部关闭，数据收集也关闭。
-- Unity 6000.4.2f1，当前项目是 `D:/Unity/Projects/Test 3D Project`。MCP 服务是 mcp-for-unity 3.4.11（地址来自 `UNITY_MCP_URL`），有 48 个工具，其中包括 `blender_bridge`。
+- Unity 6000.4.2f1（`D:\Program Files\Editor\Unity.exe`，从 Unity Hub 启动），当前项目是 `D:/Unity/Projects/Dungeon Escape`（2026-10-26 由 `Test 3D Project` 改名；项目自带的 git 远端 `Maimai-l/Test-3D-Project` 和 Unity Cloud 上的项目名没有改）。MCP 服务是 mcp-for-unity 3.4.11（地址来自 `UNITY_MCP_URL`），有 48 个工具，其中包括 `blender_bridge`。
 - Blender 和 Claude 的沙箱不共享文件系统。MCP 地址来自 `.mcp.json` 里的 `BLENDER_MCP_URL`，断线重连不会清掉场景。
 
 ## 经验

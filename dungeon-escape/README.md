@@ -6,9 +6,9 @@ Unity 6（6000.4.2f1，URP）第三人称地牢逃脱游戏。角色、环境、
 
 | 内容 | 位置（用户电脑） |
 | --- | --- |
-| Unity 项目 | `D:/Unity/Projects/Test 3D Project` |
+| Unity 项目 | `D:/Unity/Projects/Dungeon Escape` |
 | 游戏场景（唯一的构建场景） | `Assets/DungeonEscape/Scenes/Dungeon.unity` |
-| Windows 构建 | `D:/Unity/Projects/Test 3D Project/Builds/Windows/DungeonEscape.exe` |
+| Windows 构建 | `D:/Unity/Projects/Dungeon Escape/Builds/Windows/DungeonEscape.exe` |
 | Blender 文件和建模脚本 | `C:\Users\blender\Documents\DungeonEscape\`（`*.blend`，`scripts\*.py`） |
 | 冒烟测试记录和截图 | 构建：`Builds/Windows/SmokeTest/`；编辑器：`C:\Users\blender\Documents\DungeonEscape\SmokeTest\` |
 

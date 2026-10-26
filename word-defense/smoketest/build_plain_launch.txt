@@ -1,0 +1,6 @@
+launched 02:15:41; after 15 s: running=True responding=True window='Word Defense' memory=651 MB cpu=52.6 s
+closed via window close: exit code 0
+Player.log written 02:15:56, 44 lines
+problem lines: 0
+  [WD] vocabulary.db loaded from C:\Users\blender\Documents\vocabulary.db: 95297 rows, medium band 0.4–0.6 -> 1113 words and 42 boss sentences (760 ms)
+

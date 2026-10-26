@@ -1,0 +1,19 @@
+Save -> close -> reopen (tools/snippets/reopen_deferred.cs, then reopen_check.cs)
+
+before: saved 2026-10-27 01:54:38 | editor up 10325 s | scene Assets/WordDefense/Scenes/WordDefense.unity dirty=False
+        EditorApplication.OpenProject(...) closed the editor; a new Unity process started at 01:54:39
+now:    2026-10-27 01:55:04 | editor up 25 s | compiling=False playing=False
+active scene: Assets/WordDefense/Scenes/WordDefense.unity loaded=True dirty=False roots=7
+missing scripts=0 | WordDefense components=12 | GameManager refs: castle=True cannon=True cam=True fonts=True
+components: Main Camera:CameraRig, Clouds:Ambient, WindmillBlades:Ambient, WD_Castle:Castle, WD_Cannon:Cannon, Crystal0:Ambient, Crystal1:Ambient, Crystal2:Ambient, Crystal3:Ambient, Crystal4:Ambient, PortalCore:Ambient, Game:GameManager
+player: product=Word Defense company=WordDefense 1600x900 mode=Windowed runInBackground=True splash=False colorSpace=Linear
+build scenes: Assets/WordDefense/Scenes/WordDefense.unity
+models: WD_Boss, WD_Brute, WD_Cannon, WD_Castle, WD_Portal, WD_Scout, WD_Shell, WD_Soldier, WD_World
+vocabulary copy in StreamingAssets: True
+console after reopen: 0 errors, 0 warnings
+
+clean recompile (CompilationPipeline.RequestScriptCompilation with CleanBuildCache), 01:55:16 -> done 01:55:38
+errors: 0
+warnings: 8, all in the MCP plugin package D:\Unity\Packages\unity-mcp\MCPForUnity\Runtime\Helpers\ (CS0618 obsolete Unity APIs); none in Assets/WordDefense
+
+Play Mode in the reopened editor: editor_victory_after_reopen.txt (30/30), editor_defeat_after_reopen.txt (13/13)

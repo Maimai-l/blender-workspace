@@ -1,0 +1,103 @@
+Mono path[0] = 'D:/Unity/Projects/Word Defence/Builds/Windows/WordDefense_Data/Managed'
+Mono config path = 'D:/Unity/Projects/Word Defence/Builds/Windows/MonoBleedingEdge/etc'
+CodeReloadManager initialized
+Input System module state changed to: Initialized.
+[Physics::Module] Initialized fallback backend.
+[Physics::Module] Id: 0xdecafbad
+Initialize engine version: 6000.4.2f1 (7a4c1aeef971)
+[Subsystems] Discovering subsystems at path D:/Unity/Projects/Word Defence/Builds/Windows/WordDefense_Data/UnitySubsystems
+[D3D12 Device Filter] Vendor Name: NVIDIA
+[D3D12 Device Filter] Device Name: NVIDIA GeForce RTX 5070 Ti
+[D3D12 Device Filter] Driver Version: 32.0.16.1742
+[D3D12 Device Filter] Feature Level: 12.2
+[D3D12 Device Filter] Graphics Memory: 15995 MB
+[D3D12 Device Filter] Processor Count: 28
+[D3D12 Device Filter] Device Type: Discrete
+GfxDevice: creating device client; kGfxThreadingModeSplitJobs
+d3d12: failed to query info queue interface (0x80004002).
+Direct3D:
+    Version:         Direct3D 12 [level 12.2]
+    Renderer:        NVIDIA GeForce RTX 5070 Ti (ID=0x2c05)
+    Vendor:          NVIDIA
+    VRAM:            15995 MB
+    App VRAM Budget: 15227 MB
+    Driver:          32.0.16.1742
+Begin MonoManager ReloadAssembly
+- Finished resetting the current domain, in  0.001 seconds
+[Physics::Module] Selected backend.
+[Physics::Module] Name: PhysX
+[Physics::Module] Id: 0xf2b8ea05
+[Physics::Module] SDK Version: 4.1.2
+[Physics::Module] Integration Version: 1.0.0
+[Physics::Module] Threading Mode: Multi-Threaded
+<RI> Initializing input.
+Using Windows.Gaming.Input
+UnloadTime: 0.290900 ms
+Failed to get first mouse position!
+[AUTOPILOT] [000.3s] AutoPilot Victory | Unity 6000.4.2f1 | player | 1600x900
+[WD] vocabulary.db loaded from C:\Users\blender\Documents\vocabulary.db: 95297 rows, medium band 0.4–0.6 -> 1113 words and 42 boss sentences (777 ms)
+[AUTOPILOT] [000.8s] PASS  title screen reached and vocabulary.db loaded
+[AUTOPILOT] [000.8s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 777 ms
+[AUTOPILOT] [000.8s] PASS  word pool and boss sentences built from the local database
+[AUTOPILOT] [000.8s] PASS  every pool word has medium difficulty (0.4-0.6)
+[AUTOPILOT] [001.9s] PASS  clicked 开始守城 on the title screen
+[AUTOPILOT] [001.9s] PASS  game started: wave 1, castle at full health
+[AUTOPILOT] [001.9s] boss sentence: Census data show that the number of unwed couples living together rose sharply last year. | keywords census=统计, data=数据, show=显示, year=年
+[AUTOPILOT] [004.2s] letting 'alien' reach the castle on purpose
+[AUTOPILOT] [017.2s] PASS  wrong match: shell bounces off, combo resets (2 -> 0), cannon jams, the shell stays, the enemy shows its meaning '统计'
+[AUTOPILOT] [030.8s] event: 记忆深刻 phone
+[AUTOPILOT] [040.1s] PASS  an enemy reaching the castle damages it (100 -> 90)
+[AUTOPILOT] [040.5s] wave 2 | speed x1.24 | score 835 | hp 90
+[AUTOPILOT] [043.5s] PASS  Esc pauses the game (time stops)
+[AUTOPILOT] [044.2s] PASS  clicked 继续 in the pause menu
+[AUTOPILOT] [044.2s] PASS  继续 resumes the game
+[AUTOPILOT] [044.4s] PASS  3 correct in a row charge 寒霜齐射; Space slows every enemy (2.31 -> 0.81 m/s)
+[AUTOPILOT] [067.4s] wave 3 | speed x1.33 | score 2375 | hp 90
+[AUTOPILOT] [097.5s] wave 4 | speed x1.53 | score 5210 | hp 90
+[AUTOPILOT] [108.7s] event: 记忆深刻 tempo
+[AUTOPILOT] [110.1s] event: 记忆深刻 ozone
+[AUTOPILOT] [111.8s] event: 记忆深刻 egoism
+[AUTOPILOT] [113.7s] event: 记忆深刻 bell
+[AUTOPILOT] [116.8s] event: 记忆深刻 tundra
+[AUTOPILOT] [118.7s] event: 记忆深刻 alien
+[AUTOPILOT] [120.3s] event: 记忆深刻 yearn
+[AUTOPILOT] [122.9s] wave 5 | speed x1.72 | score 8710 | hp 90
+[AUTOPILOT] [128.0s] PASS  boss: a later keyword's meaning out of order is rejected (顺序不对), progress kept
+[AUTOPILOT] [129.6s] PASS  boss keyword 1 broken in order (1/4)
+[AUTOPILOT] [130.3s] event: 记忆深刻 data
+[AUTOPILOT] [130.3s] PASS  boss keyword 2 broken in order (2/4)
+[AUTOPILOT] [131.0s] event: 记忆深刻 show
+[AUTOPILOT] [131.0s] PASS  boss keyword 3 broken in order (3/4)
+[AUTOPILOT] [131.8s] event: 记忆深刻 year
+[AUTOPILOT] [131.8s] PASS  boss keyword 4 broken in order (4/4)
+[AUTOPILOT] [135.4s] PASS  boss sentence broken -> victory screen
+[AUTOPILOT] [135.4s] PASS  castle damage tested
+[AUTOPILOT] [135.4s] PASS  wrong-answer feedback tested
+[AUTOPILOT] [135.4s] PASS  slow-all skill tested
+[AUTOPILOT] [135.4s] PASS  boss order rule tested
+[AUTOPILOT] [135.4s] PASS  a word became 记忆深刻 after fast correct answers
+[AUTOPILOT] [135.4s] PASS  enemy speed rises with progress (x1.00 at wave 1 -> x1.53 at wave 4 -> x1.86 at the boss)
+[AUTOPILOT] [135.4s] PASS  a shell always matched an enemy on the field (350292 frames, 0 violations)
+[AUTOPILOT] [135.4s] PASS  3-4 shells in the tray (0 of 674396 frames below 3 during refills)
+[AUTOPILOT] [135.4s] PASS  all 20 enemy words and 20 shell meanings come from vocabulary.db
+[AUTOPILOT] [135.4s] result: score 10210, accuracy 95%, best combo 30, hits 39, wrong 2, leaks 1, homing hits 0, time 132 s
+[AUTOPILOT] [137.0s] Frame benchmark (victory screen): 0.72 ms per frame at 1600x900 (about 1390 fps, vsync off)
+[AUTOPILOT] [137.0s] PASS  clicked 再来一局 on the victory screen
+Unloading 5 Unused Serialized files (Serialized files now loaded: 0)
+UnloadTime: 3.704000 ms
+Unloading 440 unused Assets to reduce memory usage. Loaded Objects now: 3156.
+Total: 3.378400 ms (FindLiveObjects: 0.100700 ms CreateObjectMapping: 0.031800 ms MarkObjects: 2.766200 ms  DeleteObjects: 0.479500 ms)
+
+[AUTOPILOT] [137.0s] PASS  restart: fresh game (wave 1, score 0, full castle)
+[AUTOPILOT] [137.0s] PASS  memory carried over: 3 记忆深刻 word(s) in the new deck
+[AUTOPILOT] [140.5s] PASS  记忆深刻 shell 'egoism' fired itself and homed in (second game)
+[AUTOPILOT] [141.0s] PASS  记忆深刻 shells track their target automatically
+[AUTOPILOT] [141.0s] RESULT: PASS  (checks passed 31, failed 0)
+[Physics::Module] Cleanup current backend.
+[Physics::Module] Id: 0xf2b8ea05
+Input System module state changed to: ShutdownInProgress.
+Input Polling Thread exited.
+Input System module state changed to: Shutdown.
+CodeReloadManager destroyed
+
+

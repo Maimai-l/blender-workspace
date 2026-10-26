@@ -1,0 +1,54 @@
+[000.3s] AutoPilot Victory | Unity 6000.4.2f1 | editor | 1920x1080
+[001.3s] PASS  title screen reached and vocabulary.db loaded
+[001.3s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 937 ms
+[001.3s] PASS  word pool and boss sentences built from the local database
+[001.3s] PASS  every pool word has medium difficulty (0.4-0.6)
+[002.3s] PASS  clicked 开始守城 on the title screen
+[002.3s] PASS  game started: wave 1, castle at full health
+[002.3s] boss sentence: Refraining from food at night gives our bodies time to assimilate nutrients and rest. | keywords food=食物, night=晚上, rest=休息
+[004.7s] letting 'deploy' reach the castle on purpose
+[019.5s] PASS  wrong match: shell bounces off, combo resets (2 -> 0), cannon jams, the shell stays, the enemy shows its meaning '食物'
+[024.8s] event: 记忆深刻 outset
+[032.4s] PASS  an enemy reaching the castle damages it (100 -> 92)
+[032.9s] wave 2 | speed x1.21 | score 835 | hp 92
+[035.9s] PASS  Esc pauses the game (time stops)
+[036.7s] PASS  clicked 继续 in the pause menu
+[036.7s] PASS  继续 resumes the game
+[036.9s] PASS  3 correct in a row charge 寒霜齐射; Space slows every enemy (1.71 -> 0.60 m/s)
+[061.9s] wave 3 | speed x1.31 | score 2375 | hp 92
+[087.3s] event: 记忆深刻 baby
+[087.8s] wave 4 | speed x1.50 | score 5260 | hp 92
+[096.0s] event: 记忆深刻 enigma
+[099.4s] event: 记忆深刻 ankle
+[101.0s] event: 记忆深刻 tempt
+[104.4s] event: 记忆深刻 steam
+[108.2s] event: 记忆深刻 floor
+[108.9s] event: 记忆深刻 deploy
+[110.3s] event: 记忆深刻 mind
+[111.9s] event: 记忆深刻 wither
+[112.5s] wave 5 | speed x1.68 | score 8810 | hp 92
+[117.8s] PASS  boss: a later keyword's meaning out of order is rejected (顺序不对), progress kept
+[119.5s] PASS  boss keyword 1 broken in order (1/3)
+[120.2s] event: 记忆深刻 night
+[120.3s] PASS  boss keyword 2 broken in order (2/3)
+[121.0s] event: 记忆深刻 rest
+[121.0s] PASS  boss keyword 3 broken in order (3/3)
+[124.7s] PASS  boss sentence broken -> victory screen
+[124.7s] PASS  castle damage tested
+[124.7s] PASS  wrong-answer feedback tested
+[124.7s] PASS  slow-all skill tested
+[124.7s] PASS  boss order rule tested
+[124.7s] PASS  a word became 记忆深刻 after fast correct answers
+[124.7s] PASS  enemy speed rises with progress (x1.00 at wave 1 -> x1.50 at wave 4 -> x1.82 at the boss)
+[124.7s] PASS  a shell always matched an enemy on the field (2688 frames, 0 violations)
+[124.7s] PASS  3-4 shells in the tray (0 of 5903 frames below 3 during refills)
+[124.7s] PASS  all 19 enemy words and 19 shell meanings come from vocabulary.db
+[124.7s] result: score 9850, accuracy 95%, best combo 30, hits 38, wrong 2, leaks 1, homing hits 0, time 121 s
+[126.3s] PASS  clicked 再来一局 on the victory screen
+[126.5s] PASS  restart: fresh game (wave 1, score 0, full castle)
+[126.5s] PASS  memory carried over: 4 记忆深刻 word(s) in the new deck
+[129.7s] PASS  记忆深刻 shell 'baby' fired itself and homed in (second game)
+[130.3s] PASS  记忆深刻 shells track their target automatically
+[130.3s] RESULT: PASS  (checks passed 30, failed 0)
+
+

@@ -1,0 +1,55 @@
+[000.3s] AutoPilot Victory | Unity 6000.4.2f1 | player | 1600x900
+[000.8s] PASS  title screen reached and vocabulary.db loaded
+[000.8s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 777 ms
+[000.8s] PASS  word pool and boss sentences built from the local database
+[000.8s] PASS  every pool word has medium difficulty (0.4-0.6)
+[001.9s] PASS  clicked 开始守城 on the title screen
+[001.9s] PASS  game started: wave 1, castle at full health
+[001.9s] boss sentence: Census data show that the number of unwed couples living together rose sharply last year. | keywords census=统计, data=数据, show=显示, year=年
+[004.2s] letting 'alien' reach the castle on purpose
+[017.2s] PASS  wrong match: shell bounces off, combo resets (2 -> 0), cannon jams, the shell stays, the enemy shows its meaning '统计'
+[030.8s] event: 记忆深刻 phone
+[040.1s] PASS  an enemy reaching the castle damages it (100 -> 90)
+[040.5s] wave 2 | speed x1.24 | score 835 | hp 90
+[043.5s] PASS  Esc pauses the game (time stops)
+[044.2s] PASS  clicked 继续 in the pause menu
+[044.2s] PASS  继续 resumes the game
+[044.4s] PASS  3 correct in a row charge 寒霜齐射; Space slows every enemy (2.31 -> 0.81 m/s)
+[067.4s] wave 3 | speed x1.33 | score 2375 | hp 90
+[097.5s] wave 4 | speed x1.53 | score 5210 | hp 90
+[108.7s] event: 记忆深刻 tempo
+[110.1s] event: 记忆深刻 ozone
+[111.8s] event: 记忆深刻 egoism
+[113.7s] event: 记忆深刻 bell
+[116.8s] event: 记忆深刻 tundra
+[118.7s] event: 记忆深刻 alien
+[120.3s] event: 记忆深刻 yearn
+[122.9s] wave 5 | speed x1.72 | score 8710 | hp 90
+[128.0s] PASS  boss: a later keyword's meaning out of order is rejected (顺序不对), progress kept
+[129.6s] PASS  boss keyword 1 broken in order (1/4)
+[130.3s] event: 记忆深刻 data
+[130.3s] PASS  boss keyword 2 broken in order (2/4)
+[131.0s] event: 记忆深刻 show
+[131.0s] PASS  boss keyword 3 broken in order (3/4)
+[131.8s] event: 记忆深刻 year
+[131.8s] PASS  boss keyword 4 broken in order (4/4)
+[135.4s] PASS  boss sentence broken -> victory screen
+[135.4s] PASS  castle damage tested
+[135.4s] PASS  wrong-answer feedback tested
+[135.4s] PASS  slow-all skill tested
+[135.4s] PASS  boss order rule tested
+[135.4s] PASS  a word became 记忆深刻 after fast correct answers
+[135.4s] PASS  enemy speed rises with progress (x1.00 at wave 1 -> x1.53 at wave 4 -> x1.86 at the boss)
+[135.4s] PASS  a shell always matched an enemy on the field (350292 frames, 0 violations)
+[135.4s] PASS  3-4 shells in the tray (0 of 674396 frames below 3 during refills)
+[135.4s] PASS  all 20 enemy words and 20 shell meanings come from vocabulary.db
+[135.4s] result: score 10210, accuracy 95%, best combo 30, hits 39, wrong 2, leaks 1, homing hits 0, time 132 s
+[137.0s] Frame benchmark (victory screen): 0.72 ms per frame at 1600x900 (about 1390 fps, vsync off)
+[137.0s] PASS  clicked 再来一局 on the victory screen
+[137.0s] PASS  restart: fresh game (wave 1, score 0, full castle)
+[137.0s] PASS  memory carried over: 3 记忆深刻 word(s) in the new deck
+[140.5s] PASS  记忆深刻 shell 'egoism' fired itself and homed in (second game)
+[141.0s] PASS  记忆深刻 shells track their target automatically
+[141.0s] RESULT: PASS  (checks passed 31, failed 0)
+
+

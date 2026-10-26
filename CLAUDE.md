@@ -21,3 +21,7 @@
 - 判断颜色看渲染结果，`material` 模式的预览光会把颜色冲淡。
 - 最终展示图用 `render.render()` 加 `look(image="Render Result")`，视口里的 `rendered` 截图有噪点。
 - 不要靠赋值来试探偏好设置（`bpy.context.preferences`）：赋值会真的改掉设置，而且 Blender 退出时会自动保存偏好。只读取不改；非要改，先记下原值，用完改回去。
+- Unity 编辑器在后台时 Play Mode 不走帧（开了 Run In Background 也一样），`EditorApplication.delayCall` 也不触发，但 `EditorApplication.update` 照常运行。无人值守跑 Play Mode 时，在 `update` 里先设 `EditorApplication.isPaused = true`，再调 `EditorApplication.Step()` 推帧；重开项目（`EditorApplication.OpenProject`）这类延后操作也挂到 `update` 上执行。
+- 用 `Step()` 推帧时，`Time.timeScale` 为 0 的帧里 `unscaledDeltaTime` 也是 0，协程可能停在 `yield return null` 不再恢复，所以暂停期间要执行的逻辑放在 `Update` 里。这时 Unity 打印的 “JobTempAlloc” 内部提示可以忽略。
+- 域重载（进出 Play Mode、重新编译、重开项目）后，mcp-for-unity 的端口可能在 6400 和 6401 之间切换，之后的调用报 “upstream request failed”，但 `mcpforunity://instances` 里实例仍显示在运行。用 `set_active_instance` 传当前端口号（如 `"6400"`）重新指定即可恢复。
+- 电脑锁屏时（Windows 没有前台窗口），构建出的游戏窗口不往屏幕输出画面：`ScreenCapture` 截到的是旧画面（启动画面的底色 RGB 35,31,32），帧率计数会到上千，没有意义。截图要把摄像机渲染到 RenderTexture 再读回；测性能要让摄像机在正常游戏循环里渲染到 RenderTexture，几十帧后用 `ReadPixels` 等显卡做完再计时。不要循环调用 `Camera.Render()` 来测，在 URP 下每次约 100 毫秒，反映不了真实帧耗时。

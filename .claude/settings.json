@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "deny": [
+      "mcp__exec__Agent",
+      "mcp__exec__NotebookEdit",
+      "mcp__exec__ReportFindings",
+      "mcp__exec__WebSearch",
+      "mcp__exec__WebFetch",
+      "mcp__exec__Skill",
+      "mcp__exec__EnterWorktree",
+      "mcp__exec__ExitWorktree",
+      "mcp__exec__SendMessage",
+      "mcp__exec__ListAgents",
+      "mcp__exec__ScheduleWakeup",
+      "mcp__exec__RemoteTrigger",
+      "mcp__exec__Monitor",
+      "mcp__exec__ToolSearch",
+      "mcp__exec__CronCreate",
+      "mcp__exec__CronDelete",
+      "mcp__exec__CronList",
+      "mcp__exec__Workflow"
+    ]
+  }
+}

@@ -70,24 +70,56 @@ namespace WordDefense.EditorTools
         public static void BuildFonts()
         {
             Folders();
-            var inter = MakeFont(Fonts + "/Inter-SemiBold.ttf", Fonts + "/WD_Inter_SemiBold SDF.asset", 0, 90, 1024);
-            var zh = MakeFont(Fonts + "/NotoSansSC-VF.ttf", Fonts + "/WD_NotoSC_Regular SDF.asset", 4 << 16, 64, 2048);
-            var zhBold = MakeFont(Fonts + "/NotoSansSC-VF.ttf", Fonts + "/WD_NotoSC_Bold SDF.asset", 6 << 16, 64, 2048);
-            var zhBlack = MakeFont(Fonts + "/NotoSansSC-VF.ttf", Fonts + "/WD_NotoSC_Black SDF.asset", 7 << 16, 64, 2048);
+            // English: Source Serif 4. Chinese: 思源宋体 (Noto Serif SC). Both SIL Open Font License 1.1.
+            var latin = MakeFont(Fonts + "/SourceSerif4-Semibold.ttf", Fonts + "/WD_Serif_Semibold SDF.asset", 0, 72, 1024, 12);
+            var latinIt = MakeFont(Fonts + "/SourceSerif4-It.ttf", Fonts + "/WD_Serif_Italic SDF.asset", 0, 72, 1024, 12);
+            var latinBoldIt = MakeFont(Fonts + "/SourceSerif4-SemiboldIt.ttf", Fonts + "/WD_Serif_SemiboldItalic SDF.asset", 0, 72, 1024, 12);
+            var song = MakeFont(Fonts + "/NotoSerifSC-SemiBold.otf", Fonts + "/WD_Song_SemiBold SDF.asset", 0, 64, 2048, 10);
+            var songBold = MakeFont(Fonts + "/NotoSerifSC-Bold.otf", Fonts + "/WD_Song_Bold SDF.asset", 0, 64, 2048, 10);
+            var songBlack = MakeFont(Fonts + "/NotoSerifSC-Black.otf", Fonts + "/WD_Song_Black SDF.asset", 0, 64, 2048, 10);
             // English text falls back to Chinese glyphs and the other way round
-            SetFallback(inter, zhBold);
-            SetFallback(zh, inter);
-            SetFallback(zhBold, inter);
-            SetFallback(zhBlack, inter);
+            foreach (var l in new[] { latin, latinIt, latinBoldIt }) SetFallback(l, songBold);
+            foreach (var z in new[] { song, songBold, songBlack }) SetFallback(z, latin);
+            foreach (var f in new[] { latin, latinIt, latinBoldIt, song, songBold, songBlack }) MakeHalo(f);
             var settings = AssetDatabase.LoadAssetAtPath<TMP_Settings>("Assets/TextMesh Pro/Resources/TMP Settings.asset");
             if (settings != null)
             {
                 var so = new SerializedObject(settings);
                 var p = so.FindProperty("m_defaultFontAsset");
-                if (p != null) p.objectReferenceValue = zhBold;
+                if (p != null) p.objectReferenceValue = songBold;
                 so.ApplyModifiedPropertiesWithoutUndo();
             }
             AssetDatabase.SaveAssets();
+        }
+
+        public static readonly string[] FontAssets =
+        {
+            "WD_Serif_Semibold SDF", "WD_Serif_Italic SDF", "WD_Serif_SemiboldItalic SDF", "WD_Song_SemiBold SDF", "WD_Song_Bold SDF", "WD_Song_Black SDF",
+        };
+
+        /// <summary>A TMP material preset with a soft paper underlay: a halo that keeps ink type legible over the scene.</summary>
+        static Material MakeHalo(TMP_FontAsset f)
+        {
+            if (f == null || f.material == null) return null;
+            string path = Fonts + "/" + f.name + " Halo.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m == null)
+            {
+                m = new Material(f.material);
+                AssetDatabase.CreateAsset(m, path);
+            }
+            m.shader = f.material.shader;
+            m.CopyPropertiesFromMaterial(f.material);
+            m.name = f.name + " Halo";
+            m.EnableKeyword("UNDERLAY_ON");
+            m.SetColor("_UnderlayColor", new Color(1f, 0.996f, 0.98f, 0.9f));
+            m.SetFloat("_UnderlayOffsetX", 0f);
+            m.SetFloat("_UnderlayOffsetY", 0f);
+            m.SetFloat("_UnderlayDilate", 0.9f);
+            m.SetFloat("_UnderlaySoftness", 0.55f);
+            ShaderUtilities.UpdateShaderRatios(m);
+            EditorUtility.SetDirty(m);
+            return m;
         }
 
         static void SetFallback(TMP_FontAsset fa, TMP_FontAsset fb)
@@ -98,7 +130,7 @@ namespace WordDefense.EditorTools
             EditorUtility.SetDirty(fa);
         }
 
-        static TMP_FontAsset MakeFont(string fontPath, string assetPath, int faceIndex, int pointSize, int atlas)
+        static TMP_FontAsset MakeFont(string fontPath, string assetPath, int faceIndex, int pointSize, int atlas, int padding = 9)
         {
             var existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(assetPath);
             if (existing != null) return existing;
@@ -117,7 +149,7 @@ namespace WordDefense.EditorTools
                     string n = ps[i].Name.ToLowerInvariant();
                     if (n.Contains("face")) args[i] = faceIndex;
                     else if (n.Contains("sampling") || n.Contains("pointsize")) args[i] = pointSize;
-                    else if (n.Contains("padding")) args[i] = 9;
+                    else if (n.Contains("padding")) args[i] = padding;
                     else if (n.Contains("rendermode")) args[i] = GlyphRenderMode.SDFAA;
                     else if (n.Contains("width")) args[i] = atlas;
                     else if (n.Contains("height")) args[i] = atlas;
@@ -129,7 +161,7 @@ namespace WordDefense.EditorTools
             }
             else
             {
-                fa = TMP_FontAsset.CreateFontAsset(font, pointSize, 9, GlyphRenderMode.SDFAA, atlas, atlas, AtlasPopulationMode.Dynamic, true);
+                fa = TMP_FontAsset.CreateFontAsset(font, pointSize, padding, GlyphRenderMode.SDFAA, atlas, atlas, AtlasPopulationMode.Dynamic, true);
             }
             fa.name = Path.GetFileNameWithoutExtension(assetPath);
             AssetDatabase.CreateAsset(fa, assetPath);
@@ -503,10 +535,13 @@ namespace WordDefense.EditorTools
             gm.bruteModel = Model("WD_Brute");
             gm.bossModel = Model("WD_Boss");
             gm.shellModel = Model("WD_Shell");
-            gm.fontEn = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_Inter_SemiBold SDF.asset");
-            gm.fontZh = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_NotoSC_Regular SDF.asset");
-            gm.fontZhBold = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_NotoSC_Bold SDF.asset");
-            gm.fontZhBlack = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_NotoSC_Black SDF.asset");
+            gm.fontLatin = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_Serif_Semibold SDF.asset");
+            gm.fontLatinItalic = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_Serif_Italic SDF.asset");
+            gm.fontLatinBoldItalic = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_Serif_SemiboldItalic SDF.asset");
+            gm.fontSong = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_Song_SemiBold SDF.asset");
+            gm.fontSongBold = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_Song_Bold SDF.asset");
+            gm.fontSongBlack = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Fonts + "/WD_Song_Black SDF.asset");
+            gm.fontHalos = FontAssets.Select(n => AssetDatabase.LoadAssetAtPath<Material>(Fonts + "/" + n + " Halo.mat")).Where(m => m != null).ToArray();
             gm.fxAdditive = AssetDatabase.LoadAssetAtPath<Material>(Mats + "/FX_Additive.mat");
             gm.fxAlpha = AssetDatabase.LoadAssetAtPath<Material>(Mats + "/FX_Alpha.mat");
             gm.fxSoft = AssetDatabase.LoadAssetAtPath<Texture2D>(Tex + "/fx_soft.png");

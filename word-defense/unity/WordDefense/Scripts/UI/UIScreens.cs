@@ -1,6 +1,7 @@
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using WordDefense.Data;
 
@@ -8,13 +9,17 @@ namespace WordDefense
 {
     public partial class UIRoot
     {
-        RectTransform titleScreen, pauseScreen, resultScreen;
-        CanvasGroup titleGroup, pauseGroup, resultGroup;
-        TextMeshProUGUI titleDbInfo, titleMemInfo, startLabel;
+        RectTransform titleScreen, rulesScreen, pauseScreen, resultScreen;
+        CanvasGroup titleGroup, rulesGroup, pauseGroup, resultGroup;
+        TextMeshProUGUI titleStatus;
         Button startButton;
+        bool rulesOpen;
         GameState resultFor = GameState.Loading;
 
         public Button StartButton { get { return startButton; } }
+        public Button RulesButton { get; private set; }
+        public Button RulesCloseButton { get; private set; }
+        public bool RulesOpen { get { return rulesOpen; } }
         public Button ResultRestartButton { get; private set; }
         public Button ResultTitleButton { get; private set; }
         public Button PauseResumeButton { get; private set; }
@@ -23,6 +28,7 @@ namespace WordDefense
         void BuildScreens()
         {
             BuildTitle();
+            BuildRules();
             BuildPause();
             resultScreen = UIKit.Stretch(screenLayer, "Result");
             resultGroup = resultScreen.gameObject.AddComponent<CanvasGroup>();
@@ -30,50 +36,74 @@ namespace WordDefense
             resultScreen.gameObject.SetActive(false);
         }
 
-        // ------------------------------------------------------------ title
+        // ------------------------------------------------------------ title: the name, one line, start
         void BuildTitle()
         {
             titleScreen = UIKit.Stretch(screenLayer, "Title");
             titleGroup = titleScreen.gameObject.AddComponent<CanvasGroup>();
-            var shade = UIKit.Fill(titleScreen, "Shade", UIKit.HRamp(0.45f), UIKit.A(UIKit.Hex("#0B0E1F"), 0.96f), false);
-            shade.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 180f);
-            shade.rectTransform.anchorMax = new Vector2(0.78f, 1f);
-            UIKit.Fill(titleScreen, "Tint", UIKit.White(), UIKit.A(UIKit.Hex("#0B0E1F"), 0.4f), false);
-            UIKit.Fill(titleScreen, "Vignette", UIKit.Vignette(), UIKit.A(UIKit.Hex("#0B0E1F"), 0.55f), false);
+            var page = UIKit.Fill(titleScreen, "Page", UIKit.PageRamp(1.4f), UIKit.A(UIKit.Paper, 0.97f), false);
+            page.rectTransform.anchorMax = new Vector2(0.68f, 1f);
+            var left = UIKit.Rect(titleScreen, "Column", new Vector2(0f, 0.5f), new Vector2(156f, 0f), new Vector2(900f, 600f), new Vector2(0f, 0.5f));
+            UIKit.Text(left, "Name", "单词守城", 176f, UIKit.Ink, TextAlignmentOptions.Left,
+                new Vector2(0f, 0.5f), new Vector2(-8f, 128f), new Vector2(900f, 210f), UIKit.SongBlack, new Vector2(0f, 0.5f));
+            UIKit.Halo(UIKit.Text(left, "Line", "看单词，选释义，守住城堡", 34f, UIKit.InkA(0.82f), TextAlignmentOptions.Left,
+                new Vector2(0f, 0.5f), new Vector2(0f, 4f), new Vector2(900f, 50f), UIKit.Song, new Vector2(0f, 0.5f)));
+            startButton = UIKit.Button(left, "StartButton", "开始游戏", new Vector2(0f, 0.5f), new Vector2(0f, -112f), new Vector2(300f, 80f),
+                UIKit.ButtonStyle.Primary, () => gm.StartGame(), 32f, new Vector2(0f, 0.5f));
+            RulesButton = UIKit.Button(left, "RulesButton", "玩法", new Vector2(0f, 0.5f), new Vector2(316f, -112f), new Vector2(160f, 80f),
+                UIKit.ButtonStyle.Secondary, () => rulesOpen = true, 32f, new Vector2(0f, 0.5f));
+            titleStatus = UIKit.Text(left, "Status", "", 24f, UIKit.InkA(0.6f), TextAlignmentOptions.Left,
+                new Vector2(0f, 0.5f), new Vector2(0f, -196f), new Vector2(900f, 36f), UIKit.Song, new Vector2(0f, 0.5f));
+        }
 
-            var left = UIKit.Rect(titleScreen, "Left", new Vector2(0f, 0.5f), new Vector2(150f, 20f), new Vector2(860f, 760f), new Vector2(0f, 0.5f));
-            UIKit.Text(left, "Kicker", "ENGLISH VOCABULARY  ·  TOWER DEFENSE", 18f, UIKit.Amber, TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(430f, 270f), new Vector2(860f, 30f), UIKit.FontEn, FontStyles.Normal, 6f);
-            var logo = UIKit.Text(left, "Logo", "单词守城", 150f, UIKit.TextHi, TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(430f, 160f), new Vector2(860f, 180f), UIKit.FontZhBlack, FontStyles.Normal, 4f);
-            logo.enableVertexGradient = true;
-            logo.colorGradient = new VertexGradient(Color.white, Color.white, UIKit.Hex("#D8E2FF"), UIKit.Hex("#FFE3A3"));
-            UIKit.Text(left, "Latin", "WORD DEFENSE", 40f, UIKit.A(Color.white, 0.75f), TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(430f, 52f), new Vector2(860f, 50f), UIKit.FontEn, FontStyles.Normal, 26f);
-            UIKit.Img(left, "Rule", UIKit.HGradient(), UIKit.Amber, new Vector2(0f, 0.5f), new Vector2(110f, 12f), new Vector2(220f, 3f));
-            UIKit.Text(left, "Tagline", "看英文，选释义，守住你的城堡。", 32f, UIKit.TextMid, TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(430f, -36f), new Vector2(860f, 44f), UIKit.FontZh);
-            startButton = UIKit.Button(left, "StartButton", "开始守城", new Vector2(0f, 0.5f), new Vector2(180f, -150f), new Vector2(360f, 92f), UIKit.Amber, UIKit.Ink, () => gm.StartGame(), 36f);
-            startLabel = startButton.transform.Find("Label").GetComponent<TextMeshProUGUI>();
-            titleDbInfo = UIKit.Text(left, "DbInfo", "", 20f, UIKit.TextMid, TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(430f, -250f), new Vector2(860f, 28f), UIKit.FontZh);
-            titleMemInfo = UIKit.Text(left, "MemInfo", "", 20f, UIKit.TextMid, TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(430f, -284f), new Vector2(860f, 28f), UIKit.FontZh);
-
-            var card = UIKit.Panel(titleScreen, "HowTo", new Vector2(1f, 0.5f), new Vector2(-130f, 10f), new Vector2(640f, 600f), 30, null, true, new Vector2(1f, 0.5f));
-            UIKit.Text(card, "Head", "怎么玩", 30f, UIKit.TextHi, TextAlignmentOptions.Left, new Vector2(0f, 1f), new Vector2(240f, -52f), new Vector2(400f, 40f));
-            string[][] rows =
+        // ------------------------------------------------------------ 玩法: one plain sentence per rule, and the keys
+        void BuildRules()
+        {
+            rulesScreen = UIKit.Stretch(screenLayer, "Rules");
+            rulesGroup = rulesScreen.gameObject.AddComponent<CanvasGroup>();
+            rulesGroup.alpha = 0f;
+            var dim = UIKit.Fill(rulesScreen, "Dim", UIKit.White(), UIKit.InkA(0.28f), false);
+            dim.raycastTarget = true;
+            const float W = 900f, Pad = 72f, TextW = W - 2f * Pad;
+            var sheet = UIKit.Rect(rulesScreen, "Sheet", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(W, 700f));
+            UIKit.PaperShadow(sheet, 6, 1.4f);
+            UIKit.Fill(sheet, "Paper", UIKit.Rounded(6), UIKit.Paper).raycastTarget = true;
+            UIKit.Text(sheet, "Heading", "玩法", 52f, UIKit.Ink, TextAlignmentOptions.Left,
+                new Vector2(0f, 1f), new Vector2(Pad, -84f), new Vector2(600f, 70f), UIKit.SongBlack, new Vector2(0f, 0.5f));
+            string[] rules =
             {
-                new[] { "shell", "点选下方的中文释义炮弹", "键 1–4，每次 3 到 4 个可选" },
-                new[] { "pointer", "再点击头顶单词对应的敌人", "答对击倒；答错炮弹被弹开，炮台短暂装填" },
-                new[] { "flake", "连续答对 3 次：寒霜齐射", "空格键，全体敌人减速 6 秒" },
-                new[] { "star", "快速答对两次：记忆深刻", "此后它的炮弹自动追踪，不用再点敌人" },
-                new[] { "crown", "Boss 是一句英文长句", "按顺序击中句中每个关键词的释义" },
+                "点下方的一个释义，再点它对应的单词",
+                "敌人走到城堡会削减耐久，耐久归零即失败",
+                "连续答对 3 次后，可以让所有敌人减速",
+                "又快又准答对的单词会记忆深刻：它的释义变为金色，点击后自动追踪目标",
+                "Boss 是一个英文句子，要按顺序击中句中关键词的释义",
             };
-            Color[] tint = { UIKit.Amber, UIKit.TextHi, UIKit.Ice, UIKit.Amber, UIKit.Coral };
-            for (int i = 0; i < rows.Length; i++)
+            float y = -146f;
+            for (int i = 0; i < rules.Length; i++)
             {
-                float y = -126f - i * 96f;
-                UIKit.Img(card, "IconBg" + i, UIKit.Circle(128), UIKit.A(tint[i], 0.14f), new Vector2(0f, 1f), new Vector2(76f, y), new Vector2(60f, 60f));
-                var ic = UIKit.Img(card, "Icon" + i, UIKit.Icon(rows[i][0], 96), tint[i], new Vector2(0f, 1f), new Vector2(76f, y), new Vector2(30f, 30f));
-                if (rows[i][0] == "pointer") ic.rectTransform.localScale = new Vector3(1f, 1f, 1f);
-                UIKit.Text(card, "Row" + i, rows[i][1], 26f, UIKit.TextHi, TextAlignmentOptions.Left, new Vector2(0f, 1f), new Vector2(350f, y + 14f), new Vector2(480f, 34f));
-                UIKit.Text(card, "Sub" + i, rows[i][2], 19f, UIKit.TextLow, TextAlignmentOptions.Left, new Vector2(0f, 1f), new Vector2(350f, y - 18f), new Vector2(480f, 28f), UIKit.FontZh);
+                var t = UIKit.Text(sheet, "Rule" + (i + 1), rules[i], 28f, UIKit.Ink, TextAlignmentOptions.TopLeft,
+                    new Vector2(0f, 1f), new Vector2(Pad, y), new Vector2(TextW, 40f), UIKit.Song, new Vector2(0f, 1f));
+                t.textWrappingMode = TextWrappingModes.Normal;
+                t.lineSpacing = 6f;
+                t.ForceMeshUpdate();
+                float h = t.preferredHeight;
+                t.rectTransform.sizeDelta = new Vector2(TextW, h);
+                y -= h + 22f;
             }
+            y -= 22f;
+            string[][] keys = { new[] { "1 – 4", "选择释义" }, new[] { "空格", "减速" }, new[] { "Esc", "暂停" }, new[] { "右键", "取消选择" } };
+            for (int i = 0; i < keys.Length; i++)
+            {
+                float x = Pad + (i % 2) * 340f, ky = y - (i / 2) * 56f - 19f;
+                var cap = UIKit.Keycap(sheet, "Key" + i, keys[i][0], new Vector2(0f, 1f), new Vector2(x, ky), 38f, new Vector2(0f, 0.5f));
+                UIKit.Text(sheet, "KeyLabel" + i, keys[i][1], 24f, UIKit.InkA(0.72f), TextAlignmentOptions.Left,
+                    new Vector2(0f, 1f), new Vector2(x + cap.sizeDelta.x + 14f, ky), new Vector2(240f, 38f), UIKit.Song, new Vector2(0f, 0.5f));
+            }
+            y -= 2f * 56f + 24f;
+            RulesCloseButton = UIKit.Button(sheet, "CloseButton", "关闭", new Vector2(1f, 0f), new Vector2(-Pad, 56f), new Vector2(160f, 64f),
+                UIKit.ButtonStyle.Primary, () => rulesOpen = false, 28f, new Vector2(1f, 0f));
+            sheet.sizeDelta = new Vector2(W, -y + 56f + 64f + 8f);
+            rulesScreen.gameObject.SetActive(false);
         }
 
         // ------------------------------------------------------------ pause
@@ -81,88 +111,105 @@ namespace WordDefense
         {
             pauseScreen = UIKit.Stretch(screenLayer, "Pause");
             pauseGroup = pauseScreen.gameObject.AddComponent<CanvasGroup>();
-            var dim = UIKit.Fill(pauseScreen, "Dim", UIKit.White(), new Color(0.03f, 0.04f, 0.1f, 0.8f), false);
+            var dim = UIKit.Fill(pauseScreen, "Page", UIKit.White(), UIKit.A(UIKit.Paper, 0.88f), false);
             dim.raycastTarget = true;
-            var p = UIKit.Panel(pauseScreen, "Panel", new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(540f, 500f), 32);
-            UIKit.Text(p, "Title", "已暂停", 60f, UIKit.TextHi, TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, -86f), new Vector2(500f, 80f), UIKit.FontZhBlack);
-            UIKit.Text(p, "Sub", "按 Esc 继续", 22f, UIKit.TextLow, TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(500f, 30f), UIKit.FontZh);
-            PauseResumeButton = UIKit.Button(p, "ResumeButton", "继续", new Vector2(0.5f, 0.5f), new Vector2(0f, -10f), new Vector2(360f, 76f), UIKit.Amber, UIKit.Ink, () => gm.Resume(), 30f);
-            PauseRestartButton = UIKit.Button(p, "RestartButton", "重新开始", new Vector2(0.5f, 0.5f), new Vector2(0f, -102f), new Vector2(360f, 70f), UIKit.GlassLight, UIKit.TextHi, () => gm.Restart(true), 28f);
-            UIKit.Button(p, "TitleButton", "返回标题", new Vector2(0.5f, 0.5f), new Vector2(0f, -188f), new Vector2(360f, 70f), UIKit.GlassLight, UIKit.TextHi, () => gm.Restart(false), 28f);
+            UIKit.Text(pauseScreen, "Title", "已暂停", 84f, UIKit.Ink, TextAlignmentOptions.Center,
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 160f), new Vector2(800f, 110f), UIKit.SongBlack);
+            PauseResumeButton = UIKit.Button(pauseScreen, "ResumeButton", "继续", new Vector2(0.5f, 0.5f), new Vector2(0f, 20f), new Vector2(340f, 80f),
+                UIKit.ButtonStyle.Primary, () => gm.Resume(), 32f);
+            PauseRestartButton = UIKit.Button(pauseScreen, "RestartButton", "重新开始", new Vector2(0.5f, 0.5f), new Vector2(0f, -76f), new Vector2(340f, 72f),
+                UIKit.ButtonStyle.Secondary, () => gm.Restart(true), 28f);
+            UIKit.Button(pauseScreen, "TitleButton", "返回标题", new Vector2(0.5f, 0.5f), new Vector2(0f, -164f), new Vector2(340f, 72f),
+                UIKit.ButtonStyle.Secondary, () => gm.Restart(false), 28f);
         }
 
-        // ------------------------------------------------------------ result
+        // ------------------------------------------------------------ result: outcome, numbers, the sentence, the words
         void BuildResult(bool won)
         {
             for (int i = resultScreen.childCount - 1; i >= 0; i--) Destroy(resultScreen.GetChild(i).gameObject);
-            var dim = UIKit.Fill(resultScreen, "Dim", UIKit.Vignette(), new Color(0.03f, 0.04f, 0.1f, 0.8f), false);
-            dim.raycastTarget = true;
-            UIKit.Fill(resultScreen, "Dim2", UIKit.White(), new Color(0.03f, 0.04f, 0.1f, 0.7f), false);
-            var p = UIKit.Panel(resultScreen, "Panel", new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(1280f, 960f), 34);
-            Color accent = won ? UIKit.Mint : UIKit.Coral;
-            UIKit.Img(p, "Glow", UIKit.RadialGlow(), UIKit.A(accent, 0.16f), new Vector2(0.5f, 1f), new Vector2(0f, -40f), new Vector2(900f, 300f));
-            UIKit.Text(p, "Kicker", won ? "VICTORY" : "DEFEAT", 20f, accent, TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, -48f), new Vector2(600f, 30f), UIKit.FontEn, FontStyles.Normal, 14f);
-            UIKit.Text(p, "Title", won ? "守城成功" : "城堡失守", 76f, UIKit.TextHi, TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, -110f), new Vector2(900f, 96f), UIKit.FontZhBlack);
-            UIKit.Text(p, "Sub", won ? "长句 Boss 已被击破，城堡安然无恙。" : "别灰心：答错和漏掉的词，下一局会优先再出现。", 23f, UIKit.TextMid, TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, -168f), new Vector2(1000f, 32f), UIKit.FontZh);
+            resultScreen.gameObject.SetActive(true);   // text is measured below, which needs an active hierarchy (alpha is still 0)
+            var page = UIKit.Fill(resultScreen, "Page", UIKit.White(), UIKit.A(UIKit.Paper, 0.95f), false);
+            page.raycastTarget = true;
+            var col = UIKit.Rect(resultScreen, "Column", new Vector2(0.5f, 1f), new Vector2(0f, 0f), new Vector2(1500f, 1080f), new Vector2(0.5f, 1f));
+            float y = -136f;
+            UIKit.Text(col, "Title", won ? "守城成功" : "城堡失守", 92f, UIKit.Ink, TextAlignmentOptions.Left,
+                new Vector2(0f, 1f), new Vector2(-6f, y), new Vector2(1000f, 120f), UIKit.SongBlack, new Vector2(0f, 0.5f));
 
-            // stats
+            // the numbers, as a small label/value grid
             int secs = Mathf.RoundToInt(gm.SessionSeconds);
             string[][] stats =
             {
                 new[] { "得分", gm.Score.ToString("N0") },
                 new[] { "正确率", gm.Accuracy + "%" },
-                new[] { "最佳连击", "×" + gm.BestCombo },
+                new[] { "最高连击", gm.BestCombo.ToString() },
                 new[] { "用时", (secs / 60) + ":" + (secs % 60).ToString("00") },
             };
+            y -= 104f;
             for (int i = 0; i < stats.Length; i++)
             {
-                float x = -435f + i * 290f;
-                var tile = UIKit.Panel(p, "Stat" + i, new Vector2(0.5f, 1f), new Vector2(x, -262f), new Vector2(270f, 104f), 22, UIKit.GlassLight, false);
-                UIKit.Text(tile, "Label", stats[i][0], 20f, UIKit.TextLow, TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, -26f), new Vector2(250f, 28f), UIKit.FontZh);
-                UIKit.Text(tile, "Value", stats[i][1], 44f, UIKit.TextHi, TextAlignmentOptions.Center, new Vector2(0.5f, 0f), new Vector2(0f, 36f), new Vector2(250f, 54f), UIKit.FontEn);
+                float x = i * 250f;
+                UIKit.Text(col, "Label" + i, stats[i][0], 22f, UIKit.InkA(0.58f), TextAlignmentOptions.Left,
+                    new Vector2(0f, 1f), new Vector2(x, y), new Vector2(240f, 30f), UIKit.Song, new Vector2(0f, 0.5f));
+                UIKit.Text(col, "Value" + i, stats[i][1], 54f, UIKit.Ink, TextAlignmentOptions.Left,
+                    new Vector2(0f, 1f), new Vector2(x - 2f, y - 50f), new Vector2(240f, 64f), UIKit.Latin, new Vector2(0f, 0.5f));
             }
+            y -= 108f;
+            Rule(col, y);
 
-            // boss sentence
+            // the Boss sentence and, once it is broken, its translation
             var bs = gm.Deck != null ? gm.Deck.Boss : null;
-            var box = UIKit.Panel(p, "Sentence", new Vector2(0.5f, 1f), new Vector2(0f, -410f), new Vector2(1140f, 140f), 22, UIKit.GlassLight, false);
-            if (bs != null)
+            if (bs != null && won)
             {
-                int cur = gm.Boss != null ? gm.Boss.Current : 0;
-                if (won) cur = bs.Keywords.Count;
-                var t = UIKit.Text(box, "En", BossMarkup(new BossSentenceView { sentence = bs, current = cur, active = false }), 27f, UIKit.TextHi, TextAlignmentOptions.Center,
-                    new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(1080f, 70f), UIKit.FontEn);
-                t.textWrappingMode = TextWrappingModes.Normal;
-                t.enableAutoSizing = true; t.fontSizeMin = 18f; t.fontSizeMax = 27f;
-                UIKit.Text(box, "Zh", won ? bs.Chinese : "Boss 未被击破 · 关键词 " + cur + " / " + bs.Keywords.Count, 22f, won ? UIKit.TextMid : UIKit.TextLow, TextAlignmentOptions.Center,
-                    new Vector2(0.5f, 0f), new Vector2(0f, 28f), new Vector2(1080f, 32f), UIKit.FontZh);
+                y -= 34f;
+                var en = UIKit.Text(col, "Sentence", BossMarkup(new BossSentenceView { sentence = bs, current = bs.Keywords.Count, active = false }), 34f, UIKit.Ink,
+                    TextAlignmentOptions.TopLeft, new Vector2(0f, 1f), new Vector2(0f, y), new Vector2(1500f, 100f), UIKit.LatinItalic, new Vector2(0f, 1f));
+                en.textWrappingMode = TextWrappingModes.Normal;
+                en.lineSpacing = 4f;
+                en.ForceMeshUpdate();
+                float h = Mathf.Max(en.preferredHeight, 44f);
+                en.rectTransform.sizeDelta = new Vector2(1500f, h);
+                y -= h + 14f;
+                UIKit.Text(col, "Translation", bs.Chinese, 28f, UIKit.InkA(0.78f), TextAlignmentOptions.TopLeft,
+                    new Vector2(0f, 1f), new Vector2(0f, y), new Vector2(1500f, 40f), UIKit.Song, new Vector2(0f, 1f));
+                y -= 70f;
+                Rule(col, y);
             }
 
-            // words
-            UIKit.Text(p, "WordsHead", "本局单词", 24f, UIKit.TextHi, TextAlignmentOptions.Left, new Vector2(0.5f, 1f), new Vector2(-470f, -520f), new Vector2(200f, 32f));
-            UIKit.Text(p, "Legend", "<color=#FFC34D>★</color> 记忆深刻   <color=#3EE0A1>●</color> 答对   <color=#FF5C6C>●</color> 答错或漏掉   条形 = 记忆强度", 18f, UIKit.TextLow, TextAlignmentOptions.Right,
-                new Vector2(0.5f, 1f), new Vector2(285f, -520f), new Vector2(600f, 28f), UIKit.FontZh);
-            var words = gm.Deck != null ? gm.Deck.Words.Where(w => w.Spawned > 0 || w.IsKeyword).OrderByDescending(w => w.Wrong + w.Missed).ThenByDescending(w => w.Correct).Take(20).ToList() : new System.Collections.Generic.List<SessionWord>();
+            // the words of this game: red pen for mistakes, gold for 记忆深刻
+            y -= 46f;
+            UIKit.Text(col, "WordsHeading", "本局单词", 28f, UIKit.Ink, TextAlignmentOptions.Left,
+                new Vector2(0f, 1f), new Vector2(0f, y), new Vector2(400f, 40f), UIKit.SongBold, new Vector2(0f, 0.5f));
+            y -= 54f;
+            var words = gm.Deck != null
+                ? gm.Deck.Words.Where(w => w.Spawned > 0 || w.IsKeyword).OrderByDescending(w => w.Wrong + w.Missed).ThenByDescending(w => gm.IsVivid(w)).ThenByDescending(w => w.Correct).Take(20).ToList()
+                : new System.Collections.Generic.List<SessionWord>();
+            const int perCol = 5;
+            float listBottom = y - (Mathf.Min(words.Count, perCol) - 1) * 44f;
             for (int i = 0; i < words.Count; i++)
             {
                 var w = words[i];
-                int col = i / 10, row = i % 10;
-                float x = col == 0 ? -285f : 285f;
-                float y = -560f - row * 28f;
+                float x = (i / perCol) * 380f;
+                float wy = y - (i % perCol) * 44f;
                 bool bad = w.Wrong + w.Missed > 0;
-                bool good = w.Correct > 0;
-                Color dot = bad ? UIKit.Coral : (good ? UIKit.Mint : UIKit.TextLow);
-                UIKit.Img(p, "Dot", UIKit.Circle(32), dot, new Vector2(0.5f, 1f), new Vector2(x - 255f, y), new Vector2(10f, 10f));
-                UIKit.Text(p, "W", w.Word, 21f, UIKit.TextHi, TextAlignmentOptions.Left, new Vector2(0.5f, 1f), new Vector2(x - 150f, y), new Vector2(190f, 28f), UIKit.FontEn);
-                UIKit.Text(p, "G", w.Gloss, 19f, UIKit.TextMid, TextAlignmentOptions.Left, new Vector2(0.5f, 1f), new Vector2(x + 40f, y), new Vector2(170f, 28f), UIKit.FontZh);
-                float strength = gm.Memory != null ? gm.Memory.Strength(w.Word) : 0f;
-                UIKit.Img(p, "Track", UIKit.Rounded(3), new Color(1f, 1f, 1f, 0.08f), new Vector2(0.5f, 1f), new Vector2(x + 180f, y), new Vector2(90f, 6f), true);
-                var bar = UIKit.Img(p, "Bar", UIKit.Rounded(3), gm.IsVivid(w) ? UIKit.Amber : UIKit.Mint, new Vector2(0.5f, 1f), new Vector2(x + 135f, y), new Vector2(Mathf.Max(6f, 90f * strength), 6f), true);
-                bar.rectTransform.pivot = new Vector2(0f, 0.5f);
-                if (gm.IsVivid(w)) UIKit.Img(p, "Star", UIKit.Icon("star", 64), UIKit.Amber, new Vector2(0.5f, 1f), new Vector2(x + 245f, y), new Vector2(18f, 18f));
+                bool vivid = gm.IsVivid(w);
+                var t = UIKit.Text(col, "Word" + i, UIKit.Tag(UIKit.Latin, w.Word) + "  " + w.Gloss, 26f, UIKit.Ink, TextAlignmentOptions.Left,
+                    new Vector2(0f, 1f), new Vector2(x + 30f, wy), new Vector2(340f, 40f), UIKit.Song, new Vector2(0f, 0.5f));
+                if (bad) UIKit.Img(col, "Mark" + i, UIKit.Icon("cross", 64), UIKit.RedPen, new Vector2(0f, 1f), new Vector2(x + 10f, wy), new Vector2(20f, 20f));
+                else if (vivid) UIKit.Img(col, "Mark" + i, UIKit.Icon("star", 64), UIKit.Gold, new Vector2(0f, 1f), new Vector2(x + 10f, wy), new Vector2(22f, 22f));
             }
 
-            ResultRestartButton = UIKit.Button(p, "AgainButton", "再来一局", new Vector2(0.5f, 0f), new Vector2(-150f, 58f), new Vector2(270f, 74f), UIKit.Amber, UIKit.Ink, () => gm.Restart(true), 30f);
-            ResultTitleButton = UIKit.Button(p, "TitleButton", "返回标题", new Vector2(0.5f, 0f), new Vector2(150f, 58f), new Vector2(270f, 74f), UIKit.GlassLight, UIKit.TextHi, () => gm.Restart(false), 28f);
+            float by = Mathf.Max(listBottom - 110f, -1080f + 96f);
+            ResultRestartButton = UIKit.Button(col, "AgainButton", "再来一局", new Vector2(0f, 1f), new Vector2(0f, by), new Vector2(300f, 80f),
+                UIKit.ButtonStyle.Primary, () => gm.Restart(true), 32f, new Vector2(0f, 0.5f));
+            ResultTitleButton = UIKit.Button(col, "TitleButton", "返回标题", new Vector2(0f, 1f), new Vector2(316f, by), new Vector2(220f, 80f),
+                UIKit.ButtonStyle.Secondary, () => gm.Restart(false), 30f, new Vector2(0f, 0.5f));
+        }
+
+        static void Rule(Transform parent, float y)
+        {
+            var r = UIKit.Img(parent, "Rule", UIKit.White(), UIKit.InkA(0.14f), new Vector2(0f, 1f), new Vector2(0f, y), new Vector2(1500f, 2f));
+            r.rectTransform.pivot = new Vector2(0f, 0.5f);
+            r.rectTransform.anchoredPosition = new Vector2(0f, y);
         }
 
         // ------------------------------------------------------------ state
@@ -177,37 +224,38 @@ namespace WordDefense
                     resultGroup.alpha = 0f;
                 }
             }
+            if (gm.State != GameState.Title && gm.State != GameState.Loading) rulesOpen = false;
         }
 
         float resultT;
 
         void UpdateScreens(float dt)
         {
+            var kb = Keyboard.current;
+            bool enter = kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame);
             bool title = gm.State == GameState.Title || gm.State == GameState.Loading;
             titleGroup.alpha = UIKit.Smooth(titleGroup.alpha, title ? 1f : 0f, 7f, dt);
-            titleGroup.blocksRaycasts = title;
+            titleGroup.blocksRaycasts = title && !rulesOpen;
             titleScreen.gameObject.SetActive(titleGroup.alpha > 0.01f || title);
             if (title)
             {
                 bool ready = Vocabulary.Ready;
                 startButton.interactable = ready;
-                startLabel.text = ready ? "开始守城" : (Vocabulary.Failed ? "词库读取失败" : "词库加载中…");
-                if (ready)
-                {
-                    var st = Vocabulary.Stats;
-                    string src = System.IO.Path.GetFileName(Vocabulary.SourcePath);
-                    bool docs = Vocabulary.SourcePath.IndexOf("StreamingAssets", System.StringComparison.OrdinalIgnoreCase) < 0;
-                    titleDbInfo.text = "词库  " + src + (docs ? "（文档文件夹）" : "（随游戏附带）") + "  ·  中等难度 difficulty " + st.Band + "  ·  " + Vocabulary.Pool.Count.ToString("N0") + " 个单词  ·  " + Vocabulary.BossSentences.Count + " 个 Boss 长句";
-                    var mem = gm.Memory;
-                    if (mem != null)
-                        titleMemInfo.text = mem.Games > 0 ? "学习记录：已玩 " + mem.Games + " 局，胜 " + mem.Wins + " 局，练过 " + mem.Count + " 个词" : "学习记录：第一次守城，祝你好运！";
-                }
-                else if (Vocabulary.Failed) titleDbInfo.text = "<color=#FF5C6C>" + Vocabulary.Error + "</color>";
+                string status = ready ? "" : (Vocabulary.Failed ? "<color=" + UIKit.Css(UIKit.RedPen) + ">无法读取词库</color>  请把 vocabulary.db 放在“文档”文件夹中" : "正在载入词库…");
+                if (titleStatus.text != status) titleStatus.text = status;
+                if (enter && ready && !rulesOpen) gm.StartGame();
             }
+            rulesGroup.alpha = UIKit.Smooth(rulesGroup.alpha, rulesOpen ? 1f : 0f, 14f, dt);
+            rulesGroup.blocksRaycasts = rulesOpen;
+            rulesScreen.gameObject.SetActive(rulesOpen || rulesGroup.alpha > 0.01f);
+            if (rulesOpen && kb != null && (kb.escapeKey.wasPressedThisFrame || enter)) rulesOpen = false;
+
             bool paused = gm.State == GameState.Paused;
-            pauseGroup.alpha = UIKit.Smooth(pauseGroup.alpha, paused ? 1f : 0f, 12f, dt);
+            pauseGroup.alpha = UIKit.Smooth(pauseGroup.alpha, paused ? 1f : 0f, 14f, dt);
             pauseGroup.blocksRaycasts = paused;
             pauseScreen.gameObject.SetActive(paused || pauseGroup.alpha > 0.01f);
+            if (paused && enter) gm.Resume();
+
             bool result = gm.State == GameState.Victory || gm.State == GameState.Defeat;
             resultScreen.gameObject.SetActive(result);
             if (result)
@@ -215,7 +263,7 @@ namespace WordDefense
                 resultT += dt;
                 resultGroup.alpha = UIKit.Smooth(resultGroup.alpha, 1f, 6f, dt);
                 resultGroup.blocksRaycasts = true;
-                resultScreen.localScale = Vector3.one * Mathf.Lerp(1.04f, 1f, Ease.OutCubic(Mathf.Clamp01(resultT / 0.5f)));
+                if (enter && resultT > 0.6f) gm.Restart(true);
             }
             else resultT = 0f;
         }

@@ -3,69 +3,70 @@ using System.Linq;
 using System.Text;
 using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace WordDefense
 {
     public partial class UIRoot
     {
-        // ============================================================ word tags
+        // ============================================================ headword labels above the enemies
         class Tag
         {
             public Enemy enemy;
-            public RectTransform rt, pill;
-            public Image bg, shadow, star, dot, flake, ring, pointer, revealBg;
-            public TextMeshProUGUI word, reveal, chip;
+            public RectTransform rt, label;
+            public Image shadow, paper, outline, pointer, underline, star, flake, crown, crownHalo;
+            public TextMeshProUGUI word, reveal;
             public CanvasGroup group;
-            public float width, push, appear, hover, alpha = 1f;
+            public float wordW, revealW, revealK, push, appear, hover, alpha = 1f;
             public Vector2 basePos;
             public bool boss;
-            public string shownWord;
+            public string shownWord, shownReveal;
         }
         readonly Dictionary<Enemy, Tag> tags = new Dictionary<Enemy, Tag>();
         readonly List<Tag> tagOrder = new List<Tag>();
+        const float TagH = 48f, BossTagH = 54f, TagPad = 18f;
 
         public bool TagScreenPos(Enemy e, out Vector2 screen)
         {
             Tag t;
             screen = Vector2.zero;
             if (e == null || !tags.TryGetValue(e, out t) || t.rt == null) return false;
-            screen = ScreenOf(t.pill);
+            screen = ScreenOf(t.label);
             return true;
         }
 
         Tag MakeTag(Enemy e)
         {
             var t = new Tag { enemy = e, boss = e is BossEnemy };
-            t.rt = UIKit.Rect(tagLayer, "Tag_" + (e.Word != null ? e.Word.Word : "?"), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(200f, 60f), new Vector2(0.5f, 0f));
+            float h = t.boss ? BossTagH : TagH;
+            Color paper = t.boss ? UIKit.Ink : UIKit.Paper;
+            t.rt = UIKit.Rect(tagLayer, "Headword_" + (e.Word != null ? e.Word.Word : "?"), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(200f, h + 14f), new Vector2(0.5f, 0f));
             t.group = t.rt.gameObject.AddComponent<CanvasGroup>();
-            t.pill = UIKit.Rect(t.rt, "Pill", new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(200f, t.boss ? 58f : 46f), new Vector2(0.5f, 0f));
-            t.shadow = UIKit.Img(t.pill, "Shadow", UIKit.Shadow(23, 10), new Color(0.03f, 0.04f, 0.1f, 0.45f), new Vector2(0.5f, 0.5f), new Vector2(0f, -4f), new Vector2(240f, 86f), true);
-            t.shadow.rectTransform.anchorMin = Vector2.zero; t.shadow.rectTransform.anchorMax = Vector2.one;
-            t.shadow.rectTransform.offsetMin = new Vector2(-20f, -24f); t.shadow.rectTransform.offsetMax = new Vector2(20f, 16f);
-            t.ring = UIKit.Fill(t.pill, "Ring", UIKit.Rounded(t.boss ? 29 : 23, 3f), UIKit.A(UIKit.Amber, 0f), true, -4f);
-            t.bg = UIKit.Fill(t.pill, "Bg", UIKit.Rounded(t.boss ? 29 : 23), t.boss ? UIKit.A(UIKit.Ink, 0.94f) : UIKit.Paper);
-            t.bg.raycastTarget = true;
-            t.pointer = UIKit.Img(t.rt, "Pointer", UIKit.Icon("pointer", 32), t.boss ? UIKit.A(UIKit.Ink, 0.94f) : UIKit.Paper, new Vector2(0.5f, 0f), new Vector2(0f, 6f), new Vector2(18f, 12f));
-            t.word = UIKit.Text(t.pill, "Word", "", t.boss ? 32f : 28f, t.boss ? UIKit.Amber : UIKit.Ink, TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f), new Vector2(0f, 1f), new Vector2(400f, 44f), UIKit.FontEn);
-            t.star = UIKit.Img(t.pill, "Star", UIKit.Icon("star", 64), UIKit.Amber, new Vector2(0f, 0.5f), new Vector2(22f, 0f), new Vector2(20f, 20f));
-            t.dot = UIKit.Img(t.pill, "Urgent", UIKit.Circle(32), UIKit.Coral, new Vector2(1f, 0.5f), new Vector2(-16f, 0f), new Vector2(10f, 10f));
-            t.flake = UIKit.Img(t.pill, "Flake", UIKit.Icon("flake", 64), UIKit.Ice, new Vector2(1f, 1f), new Vector2(-4f, -2f), new Vector2(22f, 22f));
+            t.label = UIKit.Rect(t.rt, "Label", new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(200f, h), new Vector2(0.5f, 0f));
+            t.shadow = UIKit.PaperShadow(t.label, 6);
+            t.outline = UIKit.Fill(t.label, "Target", UIKit.Rounded(8, 3f), UIKit.InkA(0f), true, -5f);
+            t.paper = UIKit.Fill(t.label, "Paper", UIKit.Rounded(6), paper);
+            t.paper.raycastTarget = true;
+            t.pointer = UIKit.Img(t.rt, "Pointer", UIKit.Icon("pointer", 32), paper, new Vector2(0.5f, 0f), new Vector2(0f, 6f), new Vector2(18f, 12f));
+            t.underline = UIKit.Img(t.label, "Urgent", UIKit.Rounded(2), UIKit.RedPen, new Vector2(0.5f, 0f), new Vector2(0f, 7f), new Vector2(40f, 3f), true);
+            t.star = UIKit.Img(t.label, "Star", UIKit.Icon("star", 64), UIKit.Gold, new Vector2(0f, 0.5f), new Vector2(TagPad + 9f, 1f), new Vector2(20f, 20f));
+            t.flake = UIKit.Img(t.label, "Frozen", UIKit.Icon("flake", 64), UIKit.Frost, new Vector2(1f, 1f), new Vector2(-2f, -2f), new Vector2(22f, 22f));
+            t.word = UIKit.Text(t.label, "Word", "", t.boss ? 34f : 32f, t.boss ? UIKit.Paper : UIKit.Ink, TextAlignmentOptions.Left,
+                new Vector2(0f, 0.5f), new Vector2(TagPad, 2f), new Vector2(400f, h), UIKit.Latin, new Vector2(0f, 0.5f));
+            t.reveal = UIKit.Text(t.label, "Meaning", "", 26f, UIKit.RedPen, TextAlignmentOptions.Left,
+                new Vector2(0f, 0.5f), new Vector2(TagPad, 1f), new Vector2(400f, h), UIKit.SongBold, new Vector2(0f, 0.5f));
             if (t.boss)
             {
-                var chipBg = UIKit.Img(t.pill, "ChipBg", UIKit.Rounded(12), UIKit.Coral, new Vector2(0.5f, 1f), new Vector2(0f, 2f), new Vector2(150f, 26f), true);
-                t.chip = UIKit.Text(t.pill, "Chip", "BOSS", 16f, Color.white, TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, 2f), new Vector2(150f, 26f), UIKit.FontZhBold);
+                t.crownHalo = UIKit.Img(t.rt, "CrownHalo", UIKit.IconHalo("crown", 128), UIKit.A(UIKit.Paper, 0.85f), new Vector2(0.5f, 0f), new Vector2(0f, 12f + h + 16f), new Vector2(30f, 30f));
+                t.crown = UIKit.Img(t.rt, "Crown", UIKit.Icon("crown", 128), UIKit.GoldInk, new Vector2(0.5f, 0f), new Vector2(0f, 12f + h + 16f), new Vector2(30f, 30f));
             }
-            t.revealBg = UIKit.Img(t.rt, "RevealBg", UIKit.Rounded(16), UIKit.A(UIKit.Coral, 0.95f), new Vector2(0.5f, 0f), new Vector2(0f, t.boss ? 108f : 92f), new Vector2(160f, 34f), true);
-            t.reveal = UIKit.Text(t.rt, "Reveal", "", 20f, Color.white, TextAlignmentOptions.Center, new Vector2(0.5f, 0f), new Vector2(0f, t.boss ? 108f : 92f), new Vector2(400f, 34f), UIKit.FontZhBold);
-            var b = t.pill.gameObject.AddComponent<Button>();
-            b.targetGraphic = t.bg;
+            var b = t.label.gameObject.AddComponent<Button>();
+            b.targetGraphic = t.paper;
             b.transition = Selectable.Transition.None;
             b.navigation = new Navigation { mode = Navigation.Mode.None };
             var enemy = e;
             b.onClick.AddListener(() => gm.ClickEnemy(enemy));
-            t.pill.gameObject.AddComponent<TagHover>().enemy = e;
+            t.label.gameObject.AddComponent<TagHover>().enemy = e;
             t.appear = 0f;
             return t;
         }
@@ -76,28 +77,23 @@ namespace WordDefense
             if (t.boss)
             {
                 var b = (BossEnemy)t.enemy;
-                if (b.Defeated) w = "";
-                if (t.chip != null) t.chip.text = b.Defeated ? "击破" : "BOSS · 关键词 " + Mathf.Min(b.Effective + 1, b.Keywords.Count) + "/" + b.Keywords.Count;
+                w = b.Defeated || b.TargetWord == null ? "" : b.TargetWord.Word + "<sup><color=" + UIKit.Css(UIKit.Gold) + ">" + Mathf.Min(b.Effective + 1, b.Keywords.Count) + "</color></sup>";
             }
             if (w == t.shownWord) return;
             t.shownWord = w;
             t.word.text = w;
-            float tw = t.word.GetPreferredValues(w).x;
-            t.width = tw + (t.boss ? 64f : 40f);
-            if (t.boss && t.width < 210f) t.width = 210f;
+            t.wordW = t.word.GetPreferredValues(w).x;
         }
 
         void UpdateTags(float dt)
         {
             if (gm == null || gm.cam == null) return;
-            // create / remove
             foreach (var e in gm.Enemies)
                 if (e != null && !tags.ContainsKey(e)) { var t = MakeTag(e); tags[e] = t; tagOrder.Add(t); }
             for (int i = tagOrder.Count - 1; i >= 0; i--)
             {
                 var t = tagOrder[i];
-                bool gone = t.enemy == null || (!t.enemy.Alive && t.alpha <= 0.01f);
-                if (gone)
+                if (t.enemy == null || (!t.enemy.Alive && t.alpha <= 0.01f))
                 {
                     if (t.rt) Destroy(t.rt.gameObject);
                     tags.Remove(t.enemy);
@@ -112,7 +108,7 @@ namespace WordDefense
                 bool vis;
                 t.basePos = ToCanvas(e.TagWorld, out vis);
                 SetTagWord(t);
-                t.appear = Mathf.MoveTowards(t.appear, 1f, dt / 0.3f);
+                t.appear = Mathf.MoveTowards(t.appear, 1f, dt / 0.25f);
                 bool fading = !e.Alive || e.Doomed;
                 t.alpha = Mathf.MoveTowards(t.alpha, fading ? 0f : 1f, dt / (fading ? 0.25f : 0.2f));
                 t.group.alpha = showTags && vis ? t.alpha * Mathf.Clamp01(e.Emerge * 2f) : 0f;
@@ -120,43 +116,55 @@ namespace WordDefense
                 bool vivid = !t.boss && e.Word != null && gm.IsVivid(e.Word);
                 bool urgent = e.Progress > 0.74f && !t.boss;
                 bool frozen = e.IsFrozen;
-                bool hovered = hover == e && gm.SelectedSlot >= 0;
-                t.hover = UIKit.Smooth(t.hover, hovered ? 1f : 0f, 18f, dt);
-                float w = t.width + (vivid ? 22f : 0f);
-                t.pill.sizeDelta = new Vector2(w, t.boss ? 58f : 46f);
-                t.word.rectTransform.anchoredPosition = new Vector2(vivid ? 10f : 0f, t.boss ? -2f : 1f);
+                bool targeted = hover == e && gm.SelectedSlot >= 0;
+                t.hover = UIKit.Smooth(t.hover, targeted ? 1f : 0f, 18f, dt);
+
+                // after a wrong answer the label shows the word's real meaning in red, like a correction in the margin
+                bool revealing = Time.time < e.RevealUntil && !string.IsNullOrEmpty(e.RevealText);
+                if (revealing && t.shownReveal != e.RevealText)
+                {
+                    t.shownReveal = e.RevealText;
+                    t.reveal.text = e.RevealText;
+                    t.reveal.color = t.boss ? UIKit.Hex("#FF9AA4") : UIKit.RedPen;   // on the Boss's ink label the red pen needs to be lighter
+                    t.revealW = t.reveal.GetPreferredValues(e.RevealText).x;
+                }
+                t.revealK = UIKit.Smooth(t.revealK, revealing ? 1f : 0f, 14f, dt);
+                t.reveal.enabled = t.revealK > 0.02f;
+                t.reveal.alpha = Mathf.Clamp01(t.revealK * 1.6f - 0.4f);
+
+                float starW = vivid ? 26f : 0f;
+                float w = TagPad * 2f + starW + t.wordW + t.revealK * (14f + t.revealW);
+                float h = t.boss ? BossTagH : TagH;
+                t.label.sizeDelta = new Vector2(w, h);
+                t.word.rectTransform.anchoredPosition = new Vector2(TagPad + starW, 2f);
+                t.reveal.rectTransform.anchoredPosition = new Vector2(TagPad + starW + t.wordW + 14f, 1f);
                 t.star.enabled = vivid;
-                t.dot.enabled = urgent;
-                if (urgent) t.dot.color = UIKit.A(UIKit.Coral, 0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 10f));
                 t.flake.enabled = frozen;
+                t.underline.enabled = urgent;
+                if (urgent)
+                {
+                    t.underline.rectTransform.sizeDelta = new Vector2(t.wordW, 3f);
+                    t.underline.rectTransform.anchoredPosition = new Vector2(-w / 2f + TagPad + starW + t.wordW / 2f, 8f);
+                }
                 if (!t.boss)
                 {
-                    Color bgc = frozen ? UIKit.Hex("#E3F6FF", 0.97f) : (urgent ? UIKit.Hex("#FFF0F1", 0.97f) : UIKit.Paper);
-                    t.bg.color = bgc;
-                    t.pointer.color = bgc;
-                    t.word.color = urgent ? UIKit.Hex("#B3263A") : UIKit.Ink;
+                    Color pc = frozen ? UIKit.Hex("#E6F2FB") : UIKit.Paper;
+                    t.paper.color = pc;
+                    t.pointer.color = pc;
                 }
-                t.ring.color = UIKit.A(UIKit.Amber, t.hover);
-                bool revealing = Time.time < e.RevealUntil && !string.IsNullOrEmpty(e.RevealText);
-                if (revealing && t.reveal.text != "= " + e.RevealText)
-                {
-                    t.reveal.text = "= " + e.RevealText;
-                    t.revealBg.rectTransform.sizeDelta = new Vector2(t.reveal.GetPreferredValues(t.reveal.text).x + 30f, 34f);
-                }
-                t.reveal.enabled = revealing;
-                t.revealBg.enabled = revealing;
-                float shake = Time.time - e.LastWrongTime < 0.4f ? Mathf.Sin(Time.time * 60f) * 8f * (1f - (Time.time - e.LastWrongTime) / 0.4f) : 0f;
-                float scale = (0.6f + 0.4f * Ease.OutBack(t.appear)) * (1f + 0.12f * t.hover) * (t.boss ? 1f : Mathf.Lerp(0.9f, 1.06f, Mathf.Clamp01(e.Progress * 1.3f)));
+                t.outline.color = UIKit.InkA(t.hover);
+                float shake = Time.time - e.LastWrongTime < 0.4f ? Mathf.Sin(Time.time * 60f) * 7f * (1f - (Time.time - e.LastWrongTime) / 0.4f) : 0f;
+                float scale = (0.85f + 0.15f * Ease.OutCubic(t.appear)) * (1f + 0.06f * t.hover) * (t.boss ? 1f : Mathf.Lerp(0.92f, 1.04f, Mathf.Clamp01(e.Progress * 1.3f)));
                 t.rt.localScale = Vector3.one * scale;
-                t.pill.anchoredPosition = new Vector2(shake, 12f);
+                t.label.anchoredPosition = new Vector2(shake, 12f);
             }
-            // declutter: tags lower on screen (closer to the castle side of the camera) keep their place
+            // declutter: labels lower on screen keep their place, the others step up out of the way
             var order = tagOrder.Where(t => t.group.alpha > 0.01f).OrderBy(t => t.basePos.y).ToList();
             var placed = new List<Rect>();
             foreach (var t in order)
             {
-                float h = (t.boss ? 58f : 46f) + 10f;
-                float w = t.pill.sizeDelta.x * t.rt.localScale.x;
+                float h = (t.boss ? BossTagH : TagH) + 10f;
+                float w = t.label.sizeDelta.x * t.rt.localScale.x;
                 float want = 0f;
                 for (int pass = 0; pass < 6; pass++)
                 {
@@ -166,68 +174,36 @@ namespace WordDefense
                         if (r.Overlaps(o)) { want = o.yMax - t.basePos.y + 2f; moved = true; }
                     if (!moved) break;
                 }
-                // keep tags below the top HUD cards
-                float maxY = root.rect.height * 0.5f - 150f - h;
+                float maxY = root.rect.height * 0.5f - 130f - h;   // stay below the top line of the HUD
                 if (t.basePos.y + want > maxY) want = maxY - t.basePos.y;
                 t.push = UIKit.Smooth(t.push, want, 12f, dt);
                 placed.Add(new Rect(t.basePos.x - w / 2f, t.basePos.y + want, w, h));
                 t.rt.anchoredPosition = t.basePos + new Vector2(0f, t.push);
-                t.pointer.rectTransform.anchoredPosition = new Vector2(0f, 6f);
                 t.pointer.enabled = Mathf.Abs(t.push) < 8f;
             }
         }
 
-        // ============================================================ boss sentence panel
-        RectTransform bossPanel;
+        // ============================================================ the Boss: an example sentence, keywords numbered in reading order
+        RectTransform bossStrip;
         CanvasGroup bossGroup;
-        TextMeshProUGUI bossHeader, bossSentence, bossTranslation, bossProgress;
-        Image bossCrown;
-        int bossShownCurrent = -2;
+        TextMeshProUGUI bossSentence, bossTranslation;
+        int bossShownKey = -2;
         float bossPop;
-        bool bossTranslationShown;
 
-        void BuildBossPanel()
+        void BuildBossStrip()
         {
-            bossPanel = UIKit.Panel(hudLayer, "BossPanel", new Vector2(0.5f, 1f), new Vector2(0f, -24f), new Vector2(980f, 170f), 26, null, true, new Vector2(0.5f, 1f));
-            bossGroup = bossPanel.gameObject.AddComponent<CanvasGroup>();
+            bossStrip = UIKit.Rect(hudLayer, "BossSentence", new Vector2(0.5f, 1f), new Vector2(0f, -28f), new Vector2(1100f, 110f), new Vector2(0.5f, 1f));
+            bossGroup = bossStrip.gameObject.AddComponent<CanvasGroup>();
             bossGroup.alpha = 0f;
             bossGroup.blocksRaycasts = false;
-            bossCrown = UIKit.Img(bossPanel, "Crown", UIKit.Icon("crown", 64), UIKit.Coral, new Vector2(0f, 1f), new Vector2(40f, -30f), new Vector2(28f, 28f));
-            bossHeader = UIKit.Text(bossPanel, "Header", "Boss · 按顺序击中关键词的释义", 20f, UIKit.Coral, TextAlignmentOptions.Left, new Vector2(0f, 1f), new Vector2(64f + 300f, -30f), new Vector2(600f, 28f), UIKit.FontZhBold);
-            bossHeader.rectTransform.pivot = new Vector2(0f, 0.5f);
-            bossHeader.rectTransform.anchoredPosition = new Vector2(64f, -30f);
-            bossProgress = UIKit.Text(bossPanel, "Progress", "", 20f, UIKit.TextMid, TextAlignmentOptions.Right, new Vector2(1f, 1f), new Vector2(-150f, -30f), new Vector2(260f, 28f), UIKit.FontZh);
-            bossSentence = UIKit.Text(bossPanel, "Sentence", "", 29f, new Color(1f, 1f, 1f, 0.92f), TextAlignmentOptions.Center, new Vector2(0.5f, 1f), new Vector2(0f, -84f), new Vector2(920f, 70f), UIKit.FontEn);
+            UIKit.PaperShadow(bossStrip, 6);
+            UIKit.Fill(bossStrip, "Paper", UIKit.Rounded(6), UIKit.Paper);
+            bossSentence = UIKit.Text(bossStrip, "Sentence", "", 30f, UIKit.Ink, TextAlignmentOptions.Center,
+                new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(1040f, 60f), UIKit.LatinItalic, new Vector2(0.5f, 1f));
             bossSentence.textWrappingMode = TextWrappingModes.Normal;
-            bossSentence.lineSpacing = 16f;
-            bossTranslation = UIKit.Text(bossPanel, "Translation", "", 20f, UIKit.TextMid, TextAlignmentOptions.Center, new Vector2(0.5f, 0f), new Vector2(0f, 24f), new Vector2(920f, 30f), UIKit.FontZh);
-        }
-
-        public static string BossMarkup(BossSentenceView v)
-        {
-            var s = v.sentence;
-            var sb = new StringBuilder();
-            int pos = 0;
-            string en = UIKit.FontEn != null ? UIKit.FontEn.name : "";
-            string zh = UIKit.FontZhBold != null ? UIKit.FontZhBold.name : "";
-            for (int i = 0; i < s.Keywords.Count; i++)
-            {
-                var k = s.Keywords[i];
-                if (k.CharStart < pos) continue;
-                sb.Append(s.English.Substring(pos, k.CharStart - pos));
-                string word = s.English.Substring(k.CharStart, k.CharLength);
-                if (i < v.current)
-                    sb.Append("<color=#3EE0A1>").Append(word).Append("</color><font=\"").Append(zh).Append("\"><size=62%><color=#3EE0A1> ").Append(k.Gloss).Append("</color></size></font>");
-                else if (i < v.current + v.pending)
-                    sb.Append("<color=#FFC34D>").Append(word).Append("</color><size=55%><voffset=0.9em><color=#FFC34D>").Append(i + 1).Append("</color></voffset></size>");
-                else if (i == v.current + v.pending && v.active)
-                    sb.Append("<mark=#FFC34D38><color=#FFC34D><b>").Append(word).Append("</b></color></mark><size=55%><voffset=0.9em><color=#FFC34D>").Append(i + 1).Append("</color></voffset></size>");
-                else
-                    sb.Append("<u>").Append(word).Append("</u><size=55%><voffset=0.9em><color=#7F89AA>").Append(i + 1).Append("</color></voffset></size>");
-                pos = k.CharStart + k.CharLength;
-            }
-            if (pos < s.English.Length) sb.Append(s.English.Substring(pos));
-            return sb.ToString();
+            bossSentence.lineSpacing = 6f;
+            bossTranslation = UIKit.Text(bossStrip, "Translation", "", 24f, UIKit.InkA(0.78f), TextAlignmentOptions.Center,
+                new Vector2(0.5f, 0f), new Vector2(0f, 20f), new Vector2(1040f, 34f), UIKit.Song, new Vector2(0.5f, 0f));
         }
 
         public struct BossSentenceView
@@ -238,34 +214,58 @@ namespace WordDefense
             public bool active;
         }
 
-        void UpdateBossPanel(float dt)
+        /// <summary>The sentence with its keywords set in bold italic and numbered; hit keywords turn gold and carry their meaning.</summary>
+        public static string BossMarkup(BossSentenceView v)
         {
-            bool show = gm.Deck != null && gm.Deck.Boss != null && (gm.Phase == GamePhase.BossIntro || gm.Phase == GamePhase.Boss || (gm.Phase == GamePhase.Ending && gm.Boss != null)) && gm.State != GameState.Victory && gm.State != GameState.Defeat;
+            var s = v.sentence;
+            var sb = new StringBuilder();
+            int pos = 0;
+            string gold = UIKit.Css(UIKit.GoldInk), faint = UIKit.Css(UIKit.InkA(0.5f));
+            for (int i = 0; i < s.Keywords.Count; i++)
+            {
+                var k = s.Keywords[i];
+                if (k.CharStart < pos) continue;
+                sb.Append(s.English.Substring(pos, k.CharStart - pos));
+                string word = UIKit.Tag(UIKit.LatinBoldItalic, s.English.Substring(k.CharStart, k.CharLength));
+                string num = "<sup>" + (i + 1) + "</sup>";
+                if (i < v.current)
+                    sb.Append("<color=").Append(gold).Append(">").Append(word).Append(num).Append(UIKit.Tag(UIKit.SongBold, "<size=72%> " + k.Gloss + "</size>")).Append("</color>");
+                else if (i < v.current + v.pending)
+                    sb.Append("<color=").Append(gold).Append(">").Append(word).Append(num).Append("</color>");
+                else if (i == v.current + v.pending && v.active)
+                    sb.Append("<u>").Append(word).Append("</u>").Append(num);
+                else
+                    sb.Append(word).Append("<color=").Append(faint).Append(">").Append(num).Append("</color>");
+                pos = k.CharStart + k.CharLength;
+            }
+            if (pos < s.English.Length) sb.Append(s.English.Substring(pos));
+            return sb.ToString();
+        }
+
+        void UpdateBossStrip(float dt)
+        {
+            bool show = gm.Deck != null && gm.Deck.Boss != null && (gm.Phase == GamePhase.BossIntro || gm.Phase == GamePhase.Boss || (gm.Phase == GamePhase.Ending && gm.Boss != null))
+                        && gm.State != GameState.Victory && gm.State != GameState.Defeat;
             bossGroup.alpha = UIKit.Smooth(bossGroup.alpha, show ? 1f : 0f, 8f, dt);
             if (!show) return;
             int current = gm.Boss != null ? gm.Boss.Current : 0;
             int pending = gm.Boss != null ? gm.Boss.Pending : 0;
+            bool defeated = gm.Boss != null && gm.Boss.Defeated;
             bossPop = Mathf.MoveTowards(bossPop, 0f, dt * 2f);
-            if (current * 16 + pending != bossShownCurrent)
+            int key = current * 16 + pending + (defeated ? 1000 : 0);
+            if (key != bossShownKey)
             {
-                bossShownCurrent = current * 16 + pending;
-                var view = new BossSentenceView { sentence = gm.Deck.Boss, current = current, pending = pending, active = true };
-                bossSentence.text = BossMarkup(view);
-                Vector2 pref = bossSentence.GetPreferredValues(bossSentence.text, 920f, 0f);
+                bossShownKey = key;
+                bossSentence.text = BossMarkup(new BossSentenceView { sentence = gm.Deck.Boss, current = current, pending = pending, active = !defeated });
+                bossSentence.ForceMeshUpdate();
+                Vector2 pref = new Vector2(bossSentence.preferredWidth, bossSentence.preferredHeight);
                 float h = Mathf.Max(40f, pref.y + 4f);
-                bossSentence.rectTransform.sizeDelta = new Vector2(920f, h);
-                bossPanel.sizeDelta = new Vector2(980f, h + 104f);
-                int n = gm.Deck.Boss.Keywords.Count;
-                bossProgress.text = "<font=\"" + FontName(UIKit.FontEn) + "\">" + Mathf.Min(current, n) + " / " + n + "</font>";
-                bool defeated = gm.Boss != null && gm.Boss.Defeated;
-                bossTranslationShown = defeated;
-                bossTranslation.text = defeated ? gm.Deck.Boss.Chinese : "<color=#7F89AA>击破 Boss 后揭晓整句译文</color>";
+                bossSentence.rectTransform.sizeDelta = new Vector2(1040f, h);
+                bossTranslation.text = defeated ? gm.Deck.Boss.Chinese : "";
+                float w = Mathf.Clamp(pref.x + 80f, 520f, 1100f);
+                bossStrip.sizeDelta = new Vector2(w, h + 44f + (defeated ? 44f : 0f));
             }
-            bossPanel.localScale = Vector3.one * (1f + bossPop * 0.04f);
-            int nn = gm.Deck.Boss.Keywords.Count;
-            string prog = "敌速 <font=\"" + FontName(UIKit.FontEn) + "\">×" + gm.SpeedMultiplier.ToString("0.00") + "   " + Mathf.Min(current, nn) + " / " + nn + "</font>";
-            if (bossProgress.text != prog) bossProgress.text = prog;
-            bossCrown.color = Color.Lerp(UIKit.Coral, Color.white, bossPop);
+            bossStrip.localScale = Vector3.one * (1f + bossPop * 0.03f);
         }
     }
 }

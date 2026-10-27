@@ -32,72 +32,77 @@ Begin MonoManager ReloadAssembly
 [Physics::Module] Threading Mode: Multi-Threaded
 <RI> Initializing input.
 Using Windows.Gaming.Input
-UnloadTime: 0.290900 ms
+UnloadTime: 0.315600 ms
 Failed to get first mouse position!
 [AUTOPILOT] [000.3s] AutoPilot Victory | Unity 6000.4.2f1 | player | 1600x900
-[WD] vocabulary.db loaded from C:\Users\blender\Documents\vocabulary.db: 95297 rows, medium band 0.4–0.6 -> 1113 words and 42 boss sentences (777 ms)
+[WD] vocabulary.db loaded from C:\Users\blender\Documents\vocabulary.db: 95297 rows, medium band 0.4–0.6 -> 1113 words and 42 boss sentences (757 ms)
 [AUTOPILOT] [000.8s] PASS  title screen reached and vocabulary.db loaded
-[AUTOPILOT] [000.8s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 777 ms
+[AUTOPILOT] [000.8s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 757 ms
 [AUTOPILOT] [000.8s] PASS  word pool and boss sentences built from the local database
 [AUTOPILOT] [000.8s] PASS  every pool word has medium difficulty (0.4-0.6)
-[AUTOPILOT] [001.9s] PASS  clicked 开始守城 on the title screen
-[AUTOPILOT] [001.9s] PASS  game started: wave 1, castle at full health
-[AUTOPILOT] [001.9s] boss sentence: Census data show that the number of unwed couples living together rose sharply last year. | keywords census=统计, data=数据, show=显示, year=年
-[AUTOPILOT] [004.2s] letting 'alien' reach the castle on purpose
-[AUTOPILOT] [017.2s] PASS  wrong match: shell bounces off, combo resets (2 -> 0), cannon jams, the shell stays, the enemy shows its meaning '统计'
-[AUTOPILOT] [030.8s] event: 记忆深刻 phone
-[AUTOPILOT] [040.1s] PASS  an enemy reaching the castle damages it (100 -> 90)
-[AUTOPILOT] [040.5s] wave 2 | speed x1.24 | score 835 | hp 90
-[AUTOPILOT] [043.5s] PASS  Esc pauses the game (time stops)
-[AUTOPILOT] [044.2s] PASS  clicked 继续 in the pause menu
-[AUTOPILOT] [044.2s] PASS  继续 resumes the game
-[AUTOPILOT] [044.4s] PASS  3 correct in a row charge 寒霜齐射; Space slows every enemy (2.31 -> 0.81 m/s)
-[AUTOPILOT] [067.4s] wave 3 | speed x1.33 | score 2375 | hp 90
-[AUTOPILOT] [097.5s] wave 4 | speed x1.53 | score 5210 | hp 90
-[AUTOPILOT] [108.7s] event: 记忆深刻 tempo
-[AUTOPILOT] [110.1s] event: 记忆深刻 ozone
-[AUTOPILOT] [111.8s] event: 记忆深刻 egoism
-[AUTOPILOT] [113.7s] event: 记忆深刻 bell
-[AUTOPILOT] [116.8s] event: 记忆深刻 tundra
-[AUTOPILOT] [118.7s] event: 记忆深刻 alien
-[AUTOPILOT] [120.3s] event: 记忆深刻 yearn
-[AUTOPILOT] [122.9s] wave 5 | speed x1.72 | score 8710 | hp 90
-[AUTOPILOT] [128.0s] PASS  boss: a later keyword's meaning out of order is rejected (顺序不对), progress kept
-[AUTOPILOT] [129.6s] PASS  boss keyword 1 broken in order (1/4)
-[AUTOPILOT] [130.3s] event: 记忆深刻 data
-[AUTOPILOT] [130.3s] PASS  boss keyword 2 broken in order (2/4)
-[AUTOPILOT] [131.0s] event: 记忆深刻 show
-[AUTOPILOT] [131.0s] PASS  boss keyword 3 broken in order (3/4)
-[AUTOPILOT] [131.8s] event: 记忆深刻 year
-[AUTOPILOT] [131.8s] PASS  boss keyword 4 broken in order (4/4)
-[AUTOPILOT] [135.4s] PASS  boss sentence broken -> victory screen
-[AUTOPILOT] [135.4s] PASS  castle damage tested
-[AUTOPILOT] [135.4s] PASS  wrong-answer feedback tested
-[AUTOPILOT] [135.4s] PASS  slow-all skill tested
-[AUTOPILOT] [135.4s] PASS  boss order rule tested
-[AUTOPILOT] [135.4s] PASS  a word became 记忆深刻 after fast correct answers
-[AUTOPILOT] [135.4s] PASS  enemy speed rises with progress (x1.00 at wave 1 -> x1.53 at wave 4 -> x1.86 at the boss)
-[AUTOPILOT] [135.4s] PASS  a shell always matched an enemy on the field (350292 frames, 0 violations)
-[AUTOPILOT] [135.4s] PASS  3-4 shells in the tray (0 of 674396 frames below 3 during refills)
-[AUTOPILOT] [135.4s] PASS  all 20 enemy words and 20 shell meanings come from vocabulary.db
-[AUTOPILOT] [135.4s] result: score 10210, accuracy 95%, best combo 30, hits 39, wrong 2, leaks 1, homing hits 0, time 132 s
-[AUTOPILOT] [137.0s] Frame benchmark (victory screen): 0.72 ms per frame at 1600x900 (about 1390 fps, vsync off)
-[AUTOPILOT] [137.0s] PASS  clicked 再来一局 on the victory screen
+[AUTOPILOT] [001.9s] PASS  clicked 玩法 on the title screen
+[AUTOPILOT] [002.5s] PASS  the 玩法 sheet is open
+[AUTOPILOT] [002.6s] PASS  clicked 关闭 on the 玩法 sheet
+[AUTOPILOT] [003.1s] PASS  the 玩法 sheet is closed
+[AUTOPILOT] [003.1s] PASS  clicked 开始游戏 on the title screen
+[AUTOPILOT] [003.2s] PASS  game started: wave 1, castle at full health
+[AUTOPILOT] [003.2s] boss sentence: Some people are very picky about who they choose to share their lives with. | keywords picky=挑剔的, choose=选择, share=共享
+[AUTOPILOT] [005.7s] letting 'basket' reach the castle on purpose
+[AUTOPILOT] [018.4s] PASS  wrong match: shell bounces off, combo resets (2 -> 0), cannon jams, the shell stays, the enemy shows its meaning '挑剔的'
+[AUTOPILOT] [022.6s] event: 记忆深刻 pupil
+[AUTOPILOT] [033.3s] PASS  an enemy reaching the castle damages it (100 -> 92)
+[AUTOPILOT] [033.8s] wave 2 | speed x1.21 | score 835 | hp 92
+[AUTOPILOT] [036.7s] PASS  Esc pauses the game (time stops)
+[AUTOPILOT] [037.5s] PASS  clicked 继续 in the pause menu
+[AUTOPILOT] [037.5s] PASS  继续 resumes the game
+[AUTOPILOT] [037.8s] PASS  3 correct in a row charge 寒霜齐射; Space slows every enemy (1.71 -> 0.60 m/s)
+[AUTOPILOT] [061.2s] wave 3 | speed x1.30 | score 2375 | hp 92
+[AUTOPILOT] [077.2s] Frame benchmark (wave 3, 3 enemies on the field): 0.96 ms per frame at 1600x900 (about 1046 fps, vsync off)
+[AUTOPILOT] [084.2s] event: 记忆深刻 donkey
+[AUTOPILOT] [086.1s] wave 4 | speed x1.49 | score 5260 | hp 92
+[AUTOPILOT] [093.7s] event: 记忆深刻 diner
+[AUTOPILOT] [096.7s] event: 记忆深刻 photo
+[AUTOPILOT] [098.6s] event: 记忆深刻 brush
+[AUTOPILOT] [102.2s] event: 记忆深刻 vapor
+[AUTOPILOT] [105.7s] event: 记忆深刻 lorry
+[AUTOPILOT] [106.4s] event: 记忆深刻 basket
+[AUTOPILOT] [108.2s] event: 记忆深刻 uncle
+[AUTOPILOT] [109.2s] event: 记忆深刻 layout
+[AUTOPILOT] [109.8s] wave 5 | speed x1.67 | score 8810 | hp 92
+[AUTOPILOT] [114.9s] PASS  boss: a later keyword's meaning out of order is rejected (顺序不对), progress kept
+[AUTOPILOT] [116.5s] PASS  boss keyword 1 broken in order (1/3)
+[AUTOPILOT] [117.2s] event: 记忆深刻 choose
+[AUTOPILOT] [117.2s] PASS  boss keyword 2 broken in order (2/3)
+[AUTOPILOT] [118.0s] event: 记忆深刻 share
+[AUTOPILOT] [118.0s] PASS  boss keyword 3 broken in order (3/3)
+[AUTOPILOT] [121.6s] PASS  boss sentence broken -> victory screen
+[AUTOPILOT] [121.6s] PASS  castle damage tested
+[AUTOPILOT] [121.6s] PASS  wrong-answer feedback tested
+[AUTOPILOT] [121.6s] PASS  slow-all skill tested
+[AUTOPILOT] [121.6s] PASS  boss order rule tested
+[AUTOPILOT] [121.6s] PASS  a word became 记忆深刻 after fast correct answers
+[AUTOPILOT] [121.6s] PASS  enemy speed rises with progress (x1.00 at wave 1 -> x1.49 at wave 4 -> x1.81 at the boss)
+[AUTOPILOT] [121.6s] PASS  a shell always matched an enemy on the field (330607 frames, 0 violations)
+[AUTOPILOT] [121.6s] PASS  3-4 shells in the tray (0 of 797308 frames below 3 during refills)
+[AUTOPILOT] [121.6s] PASS  all 19 enemy words and 19 shell meanings come from vocabulary.db
+[AUTOPILOT] [121.6s] result: score 9900, accuracy 95%, best combo 30, hits 38, wrong 2, leaks 1, homing hits 0, time 117 s
+[AUTOPILOT] [123.2s] Frame benchmark (victory screen): 0.76 ms per frame at 1600x900 (about 1323 fps, vsync off)
+[AUTOPILOT] [123.2s] PASS  clicked 再来一局 on the victory screen
 Unloading 5 Unused Serialized files (Serialized files now loaded: 0)
-UnloadTime: 3.704000 ms
-Unloading 440 unused Assets to reduce memory usage. Loaded Objects now: 3156.
-Total: 3.378400 ms (FindLiveObjects: 0.100700 ms CreateObjectMapping: 0.031800 ms MarkObjects: 2.766200 ms  DeleteObjects: 0.479500 ms)
+UnloadTime: 3.309200 ms
+Unloading 402 unused Assets to reduce memory usage. Loaded Objects now: 3092.
+Total: 6.931100 ms (FindLiveObjects: 0.101100 ms CreateObjectMapping: 0.032000 ms MarkObjects: 5.988300 ms  DeleteObjects: 0.809200 ms)
 
-[AUTOPILOT] [137.0s] PASS  restart: fresh game (wave 1, score 0, full castle)
-[AUTOPILOT] [137.0s] PASS  memory carried over: 3 记忆深刻 word(s) in the new deck
-[AUTOPILOT] [140.5s] PASS  记忆深刻 shell 'egoism' fired itself and homed in (second game)
-[AUTOPILOT] [141.0s] PASS  记忆深刻 shells track their target automatically
-[AUTOPILOT] [141.0s] RESULT: PASS  (checks passed 31, failed 0)
+[AUTOPILOT] [123.2s] PASS  restart: fresh game (wave 1, score 0, full castle)
+[AUTOPILOT] [123.2s] PASS  memory carried over: 3 记忆深刻 word(s) in the new deck
+[AUTOPILOT] [136.9s] PASS  记忆深刻 shell 'brush' fired itself and homed in (second game)
+[AUTOPILOT] [137.3s] PASS  记忆深刻 shells track their target automatically
+[AUTOPILOT] [137.3s] PASS  no errors or exceptions logged during the run
+[AUTOPILOT] [137.3s] PASS  rich-text tags render as formatting, never as raw text (69 tagged texts watched)
+[AUTOPILOT] [137.3s] RESULT: PASS  (checks passed 36, failed 0)
 [Physics::Module] Cleanup current backend.
 [Physics::Module] Id: 0xf2b8ea05
 Input System module state changed to: ShutdownInProgress.
 Input Polling Thread exited.
 Input System module state changed to: Shutdown.
 CodeReloadManager destroyed
-
-

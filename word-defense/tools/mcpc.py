@@ -5,8 +5,10 @@ The three MCP services (exec on Windows, Unity, Blender) are reachable from the 
 push source files to the Windows machine and run Blender / Unity code from local files.
 
 Usage:
-  mcpc.py exec  "<powershell command>" [--stdin FILE] [--timeout MS]
-  mcpc.py push  LOCAL_DIR REMOTE_DIR [--all]     # sync changed files (hash cache in LOCAL_DIR/.sync-state.json)
+  mcpc.py bash  "<git bash command>" [--timeout MS]
+  mcpc.py ps    "<powershell code>" [--timeout MS]
+  mcpc.py push  LOCAL_DIR REMOTE_DIR [--all]     # sync changed text files (hash cache in LOCAL_DIR/.sync-state.json)
+  mcpc.py pull  REMOTE_FILE LOCAL_FILE           # copy one file back (any type)
   mcpc.py blender FILE.py [--prompt TEXT]        # run a Blender Python file
   mcpc.py unity FILE.cs                          # run C# method body with Unity execute_code
   mcpc.py tool SERVER NAME JSON_ARGS             # raw tool call
@@ -74,22 +76,44 @@ def call(server, name, args, timeout=600):
     return "\n".join(out)
 
 
+def _bash_json(res):
+    try:
+        j = json.loads(res)
+    except Exception:
+        return res
+    out = j.get("stdout", "") or ""
+    if j.get("stderr"):
+        out += ("\n" if out else "") + "STDERR: " + j["stderr"]
+    return out
+
+
+def run_bash(cmd, timeout_ms=110000):
+    """Runs a Git Bash command on the Windows machine (exec = Claude Code served over MCP)."""
+    res = call("exec", "Bash", {"command": cmd, "timeout": timeout_ms, "description": "wd tools"}, timeout=timeout_ms / 1000 + 60)
+    return _bash_json(res)
+
+
+def run_ps(code, timeout_ms=110000):
+    """Runs Windows PowerShell 5.1 code (passed inline with -Command; no script files)."""
+    import shlex
+    return run_bash("MSYS_NO_PATHCONV=1 powershell.exe -NoProfile -NonInteractive -Command " + shlex.quote(code), timeout_ms)
+
+
+# kept for older helper scripts: they passed PowerShell code
 def run_exec(cmd, stdin_text=None, timeout_ms=85000):
-    args = {"command_line": cmd, "timeout_ms": timeout_ms}
     if stdin_text is not None:
-        args["stdin_text"] = stdin_text
-    return call("exec", "run_process", args, timeout=timeout_ms / 1000 + 60)
+        raise SystemExit("stdin is not supported by the exec service any more")
+    return run_ps(cmd, timeout_ms)
 
 
-WRITER_JS = r"""
-const fs=require('fs'),path=require('path');
-let s='';process.stdin.setEncoding('utf8');process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{
- const j=JSON.parse(s);let n=0;
- for(const [rel,b64] of Object.entries(j.files)){const p=path.join(j.root,rel);fs.mkdirSync(path.dirname(p),{recursive:true});
-  fs.writeFileSync(p,Buffer.from(b64,'base64'));n++;}
- for(const rel of (j.remove||[])){const p=path.join(j.root,rel);try{fs.unlinkSync(p);try{fs.unlinkSync(p+'.meta')}catch(e){}}catch(e){}}
- console.log('wrote '+n+' files to '+j.root+((j.remove||[]).length?(', removed '+j.remove.length):''));});
-"""
+def win_path(remote_dir, rel):
+    return remote_dir.rstrip("\\/") + "\\" + rel.replace("/", "\\")
+
+
+def write_remote(path, text):
+    call("exec", "Read", {"file_path": path, "limit": 1})          # the Write tool requires a read of existing files
+    res = call("exec", "Write", {"file_path": path, "content": text})
+    return '"type":"create"' in res or '"type":"update"' in res, res[:300]
 
 
 def push(local_dir, remote_dir, all_files=False):
@@ -97,7 +121,7 @@ def push(local_dir, remote_dir, all_files=False):
     state = {}
     if os.path.exists(state_path) and not all_files:
         state = json.load(open(state_path))
-    files, new_state = {}, {}
+    changed, new_state = [], {}
     for root, dirs, names in os.walk(local_dir):
         dirs[:] = [d for d in dirs if not d.startswith(".") and d != "__pycache__"]
         for n in names:
@@ -107,23 +131,44 @@ def push(local_dir, remote_dir, all_files=False):
             rel = os.path.relpath(p, local_dir).replace(os.sep, "/")
             data = open(p, "rb").read()
             h = hashlib.sha1(data).hexdigest()
-            new_state[rel] = h
+            new_state[rel] = state.get(rel)
             if state.get(rel) != h:
-                files[rel] = base64.b64encode(data).decode()
+                changed.append((rel, data, h))
+            else:
+                new_state[rel] = h
     removed = [r for r in state if r not in new_state]
-    if not files and not removed:
+    if not changed and not removed:
         print("nothing to push")
         return
-    payload = json.dumps({"root": remote_dir, "files": files, "remove": removed})
-    js = WRITER_JS.replace("\n", " ")
-    out = run_exec("& 'D:\\Program Files\\node.EXE' -e \"" + js.replace('"', '\\"') + "\"", stdin_text=payload)
-    print(out)
-    if "wrote" in out:
-        json.dump(new_state, open(state_path, "w"), indent=0)
-        for r in sorted(files):
-            print("  +", r)
-        for r in removed:
-            print("  -", r)
+    for rel, data, h in changed:
+        ok, info = write_remote(win_path(remote_dir, rel), data.decode("utf-8"))
+        if ok:
+            new_state[rel] = h
+            print("  +", rel)
+        else:
+            print("  ! FAILED", rel, info)
+    for rel in removed:
+        wp = win_path(remote_dir, rel).replace("\\", "/")
+        print(run_bash('rm -f "%s" "%s.meta" && echo "  - %s"' % (wp, wp, rel)))
+        new_state.pop(rel, None)
+    json.dump({k: v for k, v in new_state.items() if v}, open(state_path, "w"), indent=0)
+    print("pushed %d, removed %d" % (len(changed), len(removed)))
+
+
+def pull(remote_path, local_path):
+    """Copies one remote file (any type) into the sandbox, 20 KB per call."""
+    rp = remote_path.replace("\\", "/")
+    size = int(run_bash('stat -c %%s "%s"' % rp).strip().split()[0])
+    chunks = []
+    for i in range(0, size, 20000):
+        out = run_bash('dd if="%s" bs=20000 skip=%d count=1 2>/dev/null | base64 -w0' % (rp, i // 20000))
+        chunks.append(base64.b64decode(out.strip()))
+    data = b"".join(chunks)
+    if len(data) != size:
+        raise SystemExit("pull size mismatch for %s: %d != %d" % (remote_path, len(data), size))
+    os.makedirs(os.path.dirname(os.path.abspath(local_path)), exist_ok=True)
+    open(local_path, "wb").write(data)
+    print(local_path, size)
 
 
 def main():
@@ -132,17 +177,16 @@ def main():
         print(__doc__)
         return
     cmd = a[0]
-    if cmd == "exec":
-        stdin = None
-        timeout = 85000
+    if cmd in ("bash", "exec", "ps"):
+        timeout = 110000
         rest = a[1:]
-        if "--stdin" in rest:
-            i = rest.index("--stdin"); stdin = open(rest[i + 1], encoding="utf-8").read(); del rest[i:i + 2]
         if "--timeout" in rest:
             i = rest.index("--timeout"); timeout = int(rest[i + 1]); del rest[i:i + 2]
-        print(run_exec(rest[0], stdin, timeout))
+        print(run_ps(rest[0], timeout) if cmd in ("exec", "ps") else run_bash(rest[0], timeout))
     elif cmd == "push":
         push(a[1], a[2], "--all" in a)
+    elif cmd == "pull":
+        pull(a[1], a[2])
     elif cmd == "blender":
         code = open(a[1], encoding="utf-8").read()
         prompt = "单词守城：在 Blender 中制作原创模型，再导入 Unity。建模和 HUD 都要现代、不过时、有设计感。"

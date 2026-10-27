@@ -13,7 +13,7 @@ foreach (var root in scene.GetRootGameObjects())
     foreach (var mb in t.GetComponents<MonoBehaviour>()) if (mb != null && mb.GetType().Namespace == "WordDefense") { comps++; names.Add(t.name + ":" + mb.GetType().Name); }
   }
 var gm = UnityEngine.Object.FindAnyObjectByType<WordDefense.GameManager>();
-sb.AppendLine("missing scripts=" + missing + " | WordDefense components=" + comps + " | GameManager refs: castle=" + (gm && gm.castle) + " cannon=" + (gm && gm.cannon) + " cam=" + (gm && gm.cam) + " fonts=" + (gm && gm.fontEn && gm.fontZh && gm.fontZhBold));
+sb.AppendLine("missing scripts=" + missing + " | WordDefense components=" + comps + " | GameManager refs: castle=" + (gm && gm.castle) + " cannon=" + (gm && gm.cannon) + " cam=" + (gm && gm.cam) + " fonts=" + (gm && gm.fontLatin && gm.fontLatinItalic && gm.fontLatinBoldItalic && gm.fontSong && gm.fontSongBold && gm.fontSongBlack) + " halos=" + (gm && gm.fontHalos != null ? gm.fontHalos.Length : 0));
 sb.AppendLine("components: " + string.Join(", ", names.ToArray()));
 sb.AppendLine("player: product=" + PlayerSettings.productName + " company=" + PlayerSettings.companyName + " " + PlayerSettings.defaultScreenWidth + "x" + PlayerSettings.defaultScreenHeight + " mode=" + PlayerSettings.fullScreenMode + " runInBackground=" + PlayerSettings.runInBackground + " splash=" + PlayerSettings.SplashScreen.show + " colorSpace=" + PlayerSettings.colorSpace);
 sb.AppendLine("build scenes: " + string.Join(", ", System.Array.ConvertAll(EditorBuildSettings.scenes, s => s.path + (s.enabled ? "" : " (off)"))));

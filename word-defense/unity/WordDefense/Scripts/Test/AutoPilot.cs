@@ -76,6 +76,41 @@ namespace WordDefense
 
         void OnDestroy() { AudioListener.volume = 1f; }
 
+        // any error or exception during the run fails it, even when every gameplay check passed
+        int loggedErrors;
+        string firstError;
+        void OnEnable() { Application.logMessageReceived += OnLog; }
+        void OnDisable() { Application.logMessageReceived -= OnLog; }
+        void OnLog(string message, string stack, LogType type)
+        {
+            if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert) return;
+            // the player logs this at start-up when there is no mouse position yet (locked screen, no foreground window)
+            if (message.StartsWith("Failed to get first mouse position")) return;
+            loggedErrors++;
+            if (firstError == null) firstError = message.Split('\n')[0];
+        }
+
+        // a rich-text tag TMP cannot resolve is printed as-is, e.g. <font="…" material="…">; scan what is on screen
+        static readonly System.Text.RegularExpressions.Regex RawTag = new System.Text.RegularExpressions.Regex(@"</?[A-Za-z][A-Za-z0-9-]*[=\s>]");
+        readonly HashSet<TMPro.TMP_Text> markupTexts = new HashSet<TMPro.TMP_Text>();
+        int markupLeaks;
+        string firstMarkupLeak;
+        float nextMarkupScan;
+        void ScanMarkup()
+        {
+            if (UIRoot.Instance == null || Time.realtimeSinceStartup < nextMarkupScan) return;
+            nextMarkupScan = Time.realtimeSinceStartup + 0.2f;
+            foreach (var t in UIRoot.Instance.GetComponentsInChildren<TMPro.TMP_Text>(false))
+            {
+                if (!t.isActiveAndEnabled || string.IsNullOrEmpty(t.text) || t.text.IndexOf('<') < 0) continue;
+                markupTexts.Add(t);
+                string shown = t.GetParsedText();
+                if (!RawTag.IsMatch(shown)) continue;
+                markupLeaks++;
+                if (firstMarkupLeak == null) firstMarkupLeak = t.name + ": " + shown;
+            }
+        }
+
         void Start() { StartCoroutine(Run()); }
 
         // ------------------------------------------------------------ logging
@@ -238,6 +273,9 @@ namespace WordDefense
         {
             if (finished) return;
             finished = true;
+            Check(loggedErrors == 0, "no errors or exceptions logged during the run" + (loggedErrors > 0 ? " (" + loggedErrors + ", first: " + firstError + ")" : ""));
+            Check(markupTexts.Count >= 5 && markupLeaks == 0, "rich-text tags render as formatting, never as raw text (" + markupTexts.Count + " tagged texts watched"
+                + (markupLeaks > 0 ? ", " + markupLeaks + " raw sightings, first: " + firstMarkupLeak : "") + ")");
             bool pass = failed == 0 && string.IsNullOrEmpty(reason);
             LastResult = pass ? "PASS" : "FAIL";
             Log("RESULT: " + (pass ? "PASS" : "FAIL " + reason) + "  (checks passed " + passed + ", failed " + failed + ")");
@@ -407,6 +445,7 @@ namespace WordDefense
             var gm = GM;
             if (gm == null || finished) return;
             Hook();
+            ScanMarkup();
             if (pauseStep > 0) StepPauseTest(gm);
             if (gm.State != GameState.Playing || gm.Phase == GamePhase.Ending) return;
             var targets = gm.Enemies.Where(e => e != null && e.Targetable).ToList();
@@ -438,7 +477,15 @@ namespace WordDefense
             Check(Vocabulary.Pool.All(w => w.Difficulty >= 0.39f && w.Difficulty <= 0.61f), "every pool word has medium difficulty (0.4-0.6)");
             yield return Settle(0.8f);
             Shot("01_title");
-            Check(ClickUI(UIRoot.Instance.StartButton), "clicked 开始守城 on the title screen");
+            // 玩法: the rules sheet opens from the title screen and closes again
+            Check(ClickUI(UIRoot.Instance.RulesButton), "clicked 玩法 on the title screen");
+            yield return Settle(0.6f);
+            Check(UIRoot.Instance.RulesOpen, "the 玩法 sheet is open");
+            Shot("01b_rules");
+            Check(ClickUI(UIRoot.Instance.RulesCloseButton), "clicked 关闭 on the 玩法 sheet");
+            yield return Settle(0.5f);
+            Check(!UIRoot.Instance.RulesOpen, "the 玩法 sheet is closed");
+            Check(ClickUI(UIRoot.Instance.StartButton), "clicked 开始游戏 on the title screen");
             yield return WaitFor(() => GM.State == GameState.Playing, 5f);
             Check(GM.State == GameState.Playing && GM.Wave == 1 && GM.castle.Hp == GM.castle.MaxHp, "game started: wave 1, castle at full health");
             Hook();

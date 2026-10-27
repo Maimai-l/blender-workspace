@@ -1,19 +1,23 @@
-[000.2s] AutoPilot Defeat | Unity 6000.4.2f1 | editor | 1920x1080
+[000.3s] AutoPilot Defeat | Unity 6000.4.2f1 | editor | 1920x1080
 [000.9s] PASS  title screen reached and vocabulary.db loaded
-[000.9s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 949 ms
+[000.9s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 925 ms
 [000.9s] PASS  word pool and boss sentences built from the local database
 [000.9s] PASS  every pool word has medium difficulty (0.4-0.6)
-[001.9s] PASS  clicked 开始守城 on the title screen
-[001.9s] PASS  game started: wave 1, castle at full health
-[125.6s] PASS  wrong matches give feedback (3 tried)
-[125.6s] PASS  enemies reaching the castle damage it (11 hits)
-[125.6s] PASS  castle destroyed -> defeat screen
-[125.6s] result: score 0, wrong 3, leaks 12, time 123 s
-[127.2s] PASS  clicked 再来一局 on the defeat screen
-[127.4s] PASS  restart after defeat: fresh game, castle repaired
-[127.9s] PASS  Esc pauses the game (time stops)
-[128.5s] PASS  pause menu -> 返回标题
-[128.7s] PASS  back on the title screen
-[128.7s] RESULT: PASS  (checks passed 13, failed 0)
-
-
+[001.9s] PASS  clicked 玩法 on the title screen
+[002.5s] PASS  the 玩法 sheet is open
+[002.7s] PASS  clicked 关闭 on the 玩法 sheet
+[003.2s] PASS  the 玩法 sheet is closed
+[003.2s] PASS  clicked 开始游戏 on the title screen
+[003.2s] PASS  game started: wave 1, castle at full health
+[133.1s] PASS  wrong matches give feedback (3 tried)
+[133.1s] PASS  enemies reaching the castle damage it (11 hits)
+[133.1s] PASS  castle destroyed -> defeat screen
+[133.1s] result: score 0, wrong 3, leaks 12, time 129 s
+[134.7s] PASS  clicked 再来一局 on the defeat screen
+[134.9s] PASS  restart after defeat: fresh game, castle repaired
+[135.4s] PASS  Esc pauses the game (time stops)
+[136.0s] PASS  pause menu -> 返回标题
+[136.2s] PASS  back on the title screen
+[136.2s] PASS  no errors or exceptions logged during the run
+[136.2s] PASS  rich-text tags render as formatting, never as raw text (20 tagged texts watched)
+[136.2s] RESULT: PASS  (checks passed 19, failed 0)

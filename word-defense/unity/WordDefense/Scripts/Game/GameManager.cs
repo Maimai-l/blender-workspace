@@ -62,7 +62,9 @@ namespace WordDefense
         [Header("Models")]
         public GameObject scoutModel, soldierModel, bruteModel, bossModel, shellModel;
         [Header("Look")]
-        public TMP_FontAsset fontEn, fontZh, fontZhBold, fontZhBlack;
+        // Source Serif 4 for English, 思源宋体 for Chinese; the halos are TMP material presets with a soft paper underlay
+        public TMP_FontAsset fontLatin, fontLatinItalic, fontLatinBoldItalic, fontSong, fontSongBold, fontSongBlack;
+        public Material[] fontHalos;
         public Material fxAdditive, fxAlpha;
         public Texture2D fxSoft, fxSpark, fxRing, fxFlake;
 

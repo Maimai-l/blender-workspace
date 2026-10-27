@@ -1,55 +1,60 @@
 [000.3s] AutoPilot Victory | Unity 6000.4.2f1 | player | 1600x900
 [000.8s] PASS  title screen reached and vocabulary.db loaded
-[000.8s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 777 ms
+[000.8s] vocabulary: C:\Users\blender\Documents\vocabulary.db | rows 95297, medium band 0.4–0.6 rows 3613, usable 2803, pool 1113, boss sentences 42, 757 ms
 [000.8s] PASS  word pool and boss sentences built from the local database
 [000.8s] PASS  every pool word has medium difficulty (0.4-0.6)
-[001.9s] PASS  clicked 开始守城 on the title screen
-[001.9s] PASS  game started: wave 1, castle at full health
-[001.9s] boss sentence: Census data show that the number of unwed couples living together rose sharply last year. | keywords census=统计, data=数据, show=显示, year=年
-[004.2s] letting 'alien' reach the castle on purpose
-[017.2s] PASS  wrong match: shell bounces off, combo resets (2 -> 0), cannon jams, the shell stays, the enemy shows its meaning '统计'
-[030.8s] event: 记忆深刻 phone
-[040.1s] PASS  an enemy reaching the castle damages it (100 -> 90)
-[040.5s] wave 2 | speed x1.24 | score 835 | hp 90
-[043.5s] PASS  Esc pauses the game (time stops)
-[044.2s] PASS  clicked 继续 in the pause menu
-[044.2s] PASS  继续 resumes the game
-[044.4s] PASS  3 correct in a row charge 寒霜齐射; Space slows every enemy (2.31 -> 0.81 m/s)
-[067.4s] wave 3 | speed x1.33 | score 2375 | hp 90
-[097.5s] wave 4 | speed x1.53 | score 5210 | hp 90
-[108.7s] event: 记忆深刻 tempo
-[110.1s] event: 记忆深刻 ozone
-[111.8s] event: 记忆深刻 egoism
-[113.7s] event: 记忆深刻 bell
-[116.8s] event: 记忆深刻 tundra
-[118.7s] event: 记忆深刻 alien
-[120.3s] event: 记忆深刻 yearn
-[122.9s] wave 5 | speed x1.72 | score 8710 | hp 90
-[128.0s] PASS  boss: a later keyword's meaning out of order is rejected (顺序不对), progress kept
-[129.6s] PASS  boss keyword 1 broken in order (1/4)
-[130.3s] event: 记忆深刻 data
-[130.3s] PASS  boss keyword 2 broken in order (2/4)
-[131.0s] event: 记忆深刻 show
-[131.0s] PASS  boss keyword 3 broken in order (3/4)
-[131.8s] event: 记忆深刻 year
-[131.8s] PASS  boss keyword 4 broken in order (4/4)
-[135.4s] PASS  boss sentence broken -> victory screen
-[135.4s] PASS  castle damage tested
-[135.4s] PASS  wrong-answer feedback tested
-[135.4s] PASS  slow-all skill tested
-[135.4s] PASS  boss order rule tested
-[135.4s] PASS  a word became 记忆深刻 after fast correct answers
-[135.4s] PASS  enemy speed rises with progress (x1.00 at wave 1 -> x1.53 at wave 4 -> x1.86 at the boss)
-[135.4s] PASS  a shell always matched an enemy on the field (350292 frames, 0 violations)
-[135.4s] PASS  3-4 shells in the tray (0 of 674396 frames below 3 during refills)
-[135.4s] PASS  all 20 enemy words and 20 shell meanings come from vocabulary.db
-[135.4s] result: score 10210, accuracy 95%, best combo 30, hits 39, wrong 2, leaks 1, homing hits 0, time 132 s
-[137.0s] Frame benchmark (victory screen): 0.72 ms per frame at 1600x900 (about 1390 fps, vsync off)
-[137.0s] PASS  clicked 再来一局 on the victory screen
-[137.0s] PASS  restart: fresh game (wave 1, score 0, full castle)
-[137.0s] PASS  memory carried over: 3 记忆深刻 word(s) in the new deck
-[140.5s] PASS  记忆深刻 shell 'egoism' fired itself and homed in (second game)
-[141.0s] PASS  记忆深刻 shells track their target automatically
-[141.0s] RESULT: PASS  (checks passed 31, failed 0)
-
-
+[001.9s] PASS  clicked 玩法 on the title screen
+[002.5s] PASS  the 玩法 sheet is open
+[002.6s] PASS  clicked 关闭 on the 玩法 sheet
+[003.1s] PASS  the 玩法 sheet is closed
+[003.1s] PASS  clicked 开始游戏 on the title screen
+[003.2s] PASS  game started: wave 1, castle at full health
+[003.2s] boss sentence: Some people are very picky about who they choose to share their lives with. | keywords picky=挑剔的, choose=选择, share=共享
+[005.7s] letting 'basket' reach the castle on purpose
+[018.4s] PASS  wrong match: shell bounces off, combo resets (2 -> 0), cannon jams, the shell stays, the enemy shows its meaning '挑剔的'
+[022.6s] event: 记忆深刻 pupil
+[033.3s] PASS  an enemy reaching the castle damages it (100 -> 92)
+[033.8s] wave 2 | speed x1.21 | score 835 | hp 92
+[036.7s] PASS  Esc pauses the game (time stops)
+[037.5s] PASS  clicked 继续 in the pause menu
+[037.5s] PASS  继续 resumes the game
+[037.8s] PASS  3 correct in a row charge 寒霜齐射; Space slows every enemy (1.71 -> 0.60 m/s)
+[061.2s] wave 3 | speed x1.30 | score 2375 | hp 92
+[077.2s] Frame benchmark (wave 3, 3 enemies on the field): 0.96 ms per frame at 1600x900 (about 1046 fps, vsync off)
+[084.2s] event: 记忆深刻 donkey
+[086.1s] wave 4 | speed x1.49 | score 5260 | hp 92
+[093.7s] event: 记忆深刻 diner
+[096.7s] event: 记忆深刻 photo
+[098.6s] event: 记忆深刻 brush
+[102.2s] event: 记忆深刻 vapor
+[105.7s] event: 记忆深刻 lorry
+[106.4s] event: 记忆深刻 basket
+[108.2s] event: 记忆深刻 uncle
+[109.2s] event: 记忆深刻 layout
+[109.8s] wave 5 | speed x1.67 | score 8810 | hp 92
+[114.9s] PASS  boss: a later keyword's meaning out of order is rejected (顺序不对), progress kept
+[116.5s] PASS  boss keyword 1 broken in order (1/3)
+[117.2s] event: 记忆深刻 choose
+[117.2s] PASS  boss keyword 2 broken in order (2/3)
+[118.0s] event: 记忆深刻 share
+[118.0s] PASS  boss keyword 3 broken in order (3/3)
+[121.6s] PASS  boss sentence broken -> victory screen
+[121.6s] PASS  castle damage tested
+[121.6s] PASS  wrong-answer feedback tested
+[121.6s] PASS  slow-all skill tested
+[121.6s] PASS  boss order rule tested
+[121.6s] PASS  a word became 记忆深刻 after fast correct answers
+[121.6s] PASS  enemy speed rises with progress (x1.00 at wave 1 -> x1.49 at wave 4 -> x1.81 at the boss)
+[121.6s] PASS  a shell always matched an enemy on the field (330607 frames, 0 violations)
+[121.6s] PASS  3-4 shells in the tray (0 of 797308 frames below 3 during refills)
+[121.6s] PASS  all 19 enemy words and 19 shell meanings come from vocabulary.db
+[121.6s] result: score 9900, accuracy 95%, best combo 30, hits 38, wrong 2, leaks 1, homing hits 0, time 117 s
+[123.2s] Frame benchmark (victory screen): 0.76 ms per frame at 1600x900 (about 1323 fps, vsync off)
+[123.2s] PASS  clicked 再来一局 on the victory screen
+[123.2s] PASS  restart: fresh game (wave 1, score 0, full castle)
+[123.2s] PASS  memory carried over: 3 记忆深刻 word(s) in the new deck
+[136.9s] PASS  记忆深刻 shell 'brush' fired itself and homed in (second game)
+[137.3s] PASS  记忆深刻 shells track their target automatically
+[137.3s] PASS  no errors or exceptions logged during the run
+[137.3s] PASS  rich-text tags render as formatting, never as raw text (69 tagged texts watched)
+[137.3s] RESULT: PASS  (checks passed 36, failed 0)

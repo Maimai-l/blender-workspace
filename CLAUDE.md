@@ -29,3 +29,5 @@
 - 用 `Step()` 推帧时，`Time.timeScale` 为 0 的帧里 `unscaledDeltaTime` 也是 0，协程可能停在 `yield return null` 不再恢复，所以暂停期间要执行的逻辑放在 `Update` 里。这时 Unity 打印的 “JobTempAlloc” 内部提示可以忽略。
 - 域重载（进出 Play Mode、重新编译、重开项目）后，mcp-for-unity 的端口可能在 6400 和 6401 之间切换，之后的调用报 “upstream request failed”，但 `mcpforunity://instances` 里实例仍显示在运行。用 `set_active_instance` 传当前端口号（如 `"6400"`）重新指定即可恢复。
 - 电脑锁屏时（Windows 没有前台窗口），构建出的游戏窗口不往屏幕输出画面：`ScreenCapture` 截到的是旧画面（启动画面的底色 RGB 35,31,32），帧率计数会到上千，没有意义。截图要把摄像机渲染到 RenderTexture 再读回；测性能要让摄像机在正常游戏循环里渲染到 RenderTexture，几十帧后用 `ReadPixels` 等显卡做完再计时。不要循环调用 `Camera.Render()` 来测，在 URP 下每次约 100 毫秒，反映不了真实帧耗时。
+- TextMeshPro 富文本 `<font="字体名" material="材质名">` 里的材质，按名字不区分大小写的哈希（`TMP_TextUtilities.GetHashCode`）查找。自己注册材质要用 `MaterialReferenceManager.AddFontMaterial(TMP_TextUtilities.GetHashCode(mat.name), mat)`；用 `GetSimpleHashCode` 会查不到，整段标签被原样显示成文字。同一个哈希重复添加会抛异常，先用 `TryGetMaterial` 判断。截图不一定拍到每种带标签的文字，自动测试里可以扫描 `GetParsedText()`，查有没有残留的 `<标签>`。
+- TextMeshPro 在未激活的层级里量不出文字尺寸。要按文字高度排版的界面，先 `SetActive(true)`，再 `ForceMeshUpdate()`，然后读 `preferredHeight`。

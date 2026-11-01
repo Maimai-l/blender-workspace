@@ -2,12 +2,13 @@
 # rvs "name1 name2 ..." [samples] [scale] -> render views, fetch, make side-by-sides
 TOOLS=$(cd "$(dirname "$0")" && pwd)
 T=$(python3 -I "$TOOLS/xyp.py")   # work folder (see xyp.py)
+PCR=$(python3 -I "$TOOLS/xyp.py" --pc-root)   # project folder on the PC
 NAMES="$1"; SAMPLES=${2:-64}; SCALE=${3:-0.7}
 python3 -I $TOOLS/push.py > /dev/null
 PYN=$(python3 -c "import sys; print(repr(sys.argv[1].split()))" "$NAMES")
 python3 -I $TOOLS/bmcp.py run $TOOLS/../scripts/render_views.py "NAMES = $PYN; SAMPLES = $SAMPLES; SCALE = $SCALE" | tail -12
 for n in $NAMES; do
-  python3 -I $TOOLS/fetch.py "C:\\Users\\blender\\Documents\\xingyuan\\renders\\cmp_$n.jpg" $T/renders/cmp_$n.jpg > /dev/null
+  python3 -I $TOOLS/fetch.py "$PCR\\renders\\cmp_$n.jpg" $T/renders/cmp_$n.jpg > /dev/null
   python3 -I -c "
 from PIL import Image
 T='$T'

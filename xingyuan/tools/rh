@@ -2,11 +2,12 @@
 # rh "hero_a hero_b" [samples] [scale] -> render hero views (lib/heroes.py), fetch JPGs, grid them
 TOOLS=$(cd "$(dirname "$0")" && pwd)
 T=$(python3 -I "$TOOLS/xyp.py")   # work folder (see xyp.py)
+PCR=$(python3 -I "$TOOLS/xyp.py" --pc-root)   # project folder on the PC
 NAMES="$1"; SAMPLES=${2:-32}; SCALE=${3:-0.5}
 python3 -I $TOOLS/push.py > /dev/null
 PYN=$(python3 -c "import sys; print(repr(sys.argv[1].split()))" "$NAMES")
 python3 -I $TOOLS/bmcp.py run $TOOLS/../scripts/render_views.py "VIEWFILE = 'heroes.py'; NAMES = $PYN; SAMPLES = $SAMPLES; SCALE = $SCALE; LOOK = 'AgX - Medium High Contrast'" | tail -8
-for n in $NAMES; do python3 -I $TOOLS/fetch.py "C:\\Users\\blender\\Documents\\xingyuan\\renders\\$n.jpg" $T/renders/$n.jpg > /dev/null; done
+for n in $NAMES; do python3 -I $TOOLS/fetch.py "$PCR\\renders\\$n.jpg" $T/renders/$n.jpg > /dev/null; done
 python3 -I -c "
 from PIL import Image
 names = '$NAMES'.split()

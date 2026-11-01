@@ -5,10 +5,12 @@ These scripts run in the cloud session (Linux, Python 3 with numpy, Pillow, SciP
 ## Setup
 
 - Environment: `BLENDER_MCP_URL` and `EXEC_MCP_URL`, from the environment the repo's `.mcp.json` uses. In the cloud session the proxy adds the credentials, and its CA bundle (`/root/.ccr/ca-bundle.crt`) is used when present. Override it with `XY_CA_BUNDLE`.
-- Work folder: `XY_WORK`, default `~/.cache/xingyuan`. `xyp.py` creates it on first use:
+- Project folder on the PC: `XY_PC_ROOT`, default `C:\Users\blender\Documents\<project folder name>`.
+- Work folder: `XY_WORK`, default `~/.cache/<project folder name>`. `xyp.py` creates it on first use:
   - output folders `crops/`, `renders/`, `deliver/`;
   - links to the reference images in `../refs/` and the camera fits in `cal/`.
 - Run the Python tools with `python3 -I`; each adds its own folder to the import path.
+- To reuse the tools in another project, copy this folder to `<project>/tools`, next to `<project>/scripts/lib` and `<project>/refs`.
 
 ## Talking to Blender and the PC
 
@@ -17,7 +19,7 @@ These scripts run in the cloud session (Linux, Python 3 with numpy, Pillow, SciP
 | `bmcp.py` | Blender MCP client. `bmcp.py run file.py "X = 1"` runs a local file in Blender, with the given code prepended; `bmcp.py code "..."` runs inline code. |
 | `push.py` | Copies every `../scripts/lib/*.py` to `C:\Users\blender\Documents\xingyuan\lib\` in one call. |
 | `xy` | `xy push`, `xy run file.py` (push, then run), `xy runonly file.py`, `xy code "..."`. |
-| `fetch.py` / `upload.py` | Download or upload one file between the PC and the session (base64 through Blender). |
+| `fetch.py` / `upload.py` | Download or upload one file between the PC and the session, as base64 through Blender's Python. `fetch.py remote local [chunk_MB]` sends 8 MB pieces by default, so files of any size work; `upload.py` sends 300 kB pieces. |
 | `execc.py` | exec server client: `execc.py bash "<command>"` runs in Git Bash on the PC as the `blender` account. Only the 7 tools that `.claude/settings.json` allows can be called. |
 
 **Before running anything that changes the scene, check which file Blender has open.** For example: `xy code "import bpy; print(bpy.data.filepath, len(bpy.data.objects))"`. Blender may have been restarted or switched to another project.

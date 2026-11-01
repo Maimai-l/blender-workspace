@@ -31,3 +31,33 @@
 - 电脑锁屏时（Windows 没有前台窗口），构建出的游戏窗口不往屏幕输出画面：`ScreenCapture` 截到的是旧画面（启动画面的底色 RGB 35,31,32），帧率计数会到上千，没有意义。截图要把摄像机渲染到 RenderTexture 再读回；测性能要让摄像机在正常游戏循环里渲染到 RenderTexture，几十帧后用 `ReadPixels` 等显卡做完再计时。不要循环调用 `Camera.Render()` 来测，在 URP 下每次约 100 毫秒，反映不了真实帧耗时。
 - TextMeshPro 富文本 `<font="字体名" material="材质名">` 里的材质，按名字不区分大小写的哈希（`TMP_TextUtilities.GetHashCode`）查找。自己注册材质要用 `MaterialReferenceManager.AddFontMaterial(TMP_TextUtilities.GetHashCode(mat.name), mat)`；用 `GetSimpleHashCode` 会查不到，整段标签被原样显示成文字。同一个哈希重复添加会抛异常，先用 `TryGetMaterial` 判断。截图不一定拍到每种带标签的文字，自动测试里可以扫描 `GetParsedText()`，查有没有残留的 `<标签>`。
 - TextMeshPro 在未激活的层级里量不出文字尺寸。要按文字高度排版的界面，先 `SetActive(true)`，再 `ForceMeshUpdate()`，然后读 `preferredHeight`。
+
+## Reference-replication projects (lessons from Xingyuan, 2026-10)
+- Before a project that rebuilds something from photos, drawings or plans, read `xingyuan/docs/lessons.md`. It complements the `blender-reference-replication` skill, which assumes clean front, side, back and top views:
+  - For photos, aerials and site plans, calibrate the camera from known points first (`xingyuan/tools/calib.py`, `aer3d.py`).
+  - Treat the photos as colour-graded and possibly stretched by the page layout.
+- Reuse the Xingyuan code by copying it into the new project folder, rather than rewriting it.
+  - `xingyuan/tools/`:
+    - MCP clients for Blender (`bmcp.py`) and exec (`execc.py`);
+    - push / run / render / fetch loops (`xy`, `rl`, `rh`, `rvs`, `fetch.py`);
+    - reference/render side-by-sides and camera fitting.
+    They derive the PC folder from the project folder name (`C:\Users\blender\Documents\<project>`); see `xingyuan/tools/README.md`.
+  - `xingyuan/scripts/lib/` (Chinese timber architecture):
+    - roofs: curved roofs with instanced tiles, ridges, bargeboards and finials (`xy_roof.py`);
+    - parts: brackets, columns, bases, balusters and lanterns as instanced parts (`xy_parts.py`);
+    - frames: framing, railings, wall bays, corridor and pavilion roofs (`xy_frame.py`, `xy_struct.py`);
+    - halls with doors and windows (`xy_hall.py`); platforms and paving (`xy_site.py`); plaques, couplets and steles (`xy_props.py`);
+    - materials (`xy_mats.py`); sky, sun and render settings (`xy_light.py`); viewport proxies (`xy_proxy.py`); trees and plants (`xy_plants.py`).
+    Geometry checks are `xingyuan/scripts/check_*.py`. When copying, change `ROOT` in `xy_core.py` and `LIB` at the top of the run scripts to the new project.
+- Before running anything that changes the Blender scene, print `bpy.data.filepath` and the object count. Blender may have been restarted or switched to another project. Give every project its own .blend under `C:\Users\blender\Documents\<project>\`.
+- Derive random seeds with `zlib.crc32(name.encode())`; Python's `hash()` changes between Blender sessions.
+- MCP servers listed in `.mcp.json` that a session did not load as tools can still be called directly over HTTP, with the same handshake as `xingyuan/tools/bmcp.py`.
+  - Send a `User-Agent` header, or the proxy answers 403.
+  - For exec, use only the 7 tools allowed in `.claude/settings.json`; `xingyuan/tools/execc.py` enforces that.
+- Files on the PC:
+  - In the exec Bash, Windows' `tar.exe` (`/c/Windows/System32/tar.exe`) lists and extracts .rar and .zip. Git Bash's own `tar` cannot read RAR.
+  - Bring files into the sandbox with `xingyuan/tools/fetch.py`: Blender's Python reads them and sends them in 8 MB pieces, so videos and archives work too.
+- Sandbox tooling:
+  - installed: numpy, OpenCV, SciPy, Pillow, `ffmpeg` and `pdftoppm`;
+  - `ezdxf` installs with pip, but reads DXF only;
+  - nothing here reads DWG, so ask for DXF or PDF exports of CAD drawings.

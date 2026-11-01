@@ -1,22 +1,37 @@
 #!/usr/bin/env python3
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-"""fetch.py <remote_path> <local_path> : copy a file from the Blender machine via base64 over MCP."""
-import sys, os, base64, json
-sys.path.insert(0, os.path.dirname(__file__))
+"""fetch.py <remote_path> <local_path> [chunk_MB] : copy a file from the Blender PC to this session.
+The file is read by Blender's Python and sent back as base64 in pieces of chunk_MB (default 8), so large files
+(videos, archives, .blend files) work too."""
+import os, sys, base64
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bmcp
+
 remote, local = sys.argv[1], sys.argv[2]
-code = r'''
+chunk = int(float(sys.argv[3]) * 1024 * 1024) if len(sys.argv) > 3 else 8 * 1024 * 1024
+CODE = r'''
 import base64, os
 p = %r
-data = open(p, 'rb').read()
-print('B64BEGIN' + base64.b64encode(data).decode('ascii') + 'B64END', len(data))
-''' % remote
-m = bmcp.call('execute_blender_code', {'code': code, 'user_prompt': 'fetch render'})
-txt = bmcp.text_of(m)
-i = txt.find('B64BEGIN'); j = txt.find('B64END')
-if i < 0 or j < 0:
-    print('FAILED:', txt[:500]); sys.exit(1)
-data = base64.b64decode(txt[i + 8:j])
+size = os.path.getsize(p)
+with open(p, 'rb') as f:
+    f.seek(%d)
+    data = f.read(%d)
+print('SIZE', size, 'B64BEGIN' + base64.b64encode(data).decode('ascii') + 'B64END')
+'''
 os.makedirs(os.path.dirname(os.path.abspath(local)), exist_ok=True)
-open(local, 'wb').write(data)
-print('fetched', len(data), 'bytes ->', local)
+off, total = 0, None
+with open(local, 'wb') as out:
+    while total is None or off < total:
+        m = bmcp.call('execute_blender_code', {'code': CODE % (remote, off, chunk), 'user_prompt': 'fetch file'})
+        txt = bmcp.text_of(m)
+        i = txt.find('B64BEGIN'); j = txt.find('B64END'); k = txt.find('SIZE ')
+        if i < 0 or j < 0 or k < 0:
+            print('FAILED:', txt[:500]); sys.exit(1)
+        total = int(txt[k + 5:i].split()[0])
+        data = base64.b64decode(txt[i + 8:j])
+        if not data and off < total:
+            print('FAILED: empty piece at', off); sys.exit(1)
+        out.write(data)
+        off += len(data)
+        if total > chunk:
+            print('  %d / %d bytes' % (off, total), file=sys.stderr)
+print('fetched', off, 'bytes ->', local)

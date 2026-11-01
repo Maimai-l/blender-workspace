@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """fetch.py <remote_path> <local_path> [chunk_MB] : copy a file from the Blender PC to this session.
-The file is read by Blender's Python and sent back as base64 in pieces of chunk_MB (default 8), so large files
-(videos, archives, .blend files) work too."""
+The file is read by Blender's Python and sent back as base64 in pieces of chunk_MB (default 2), so large files
+(videos, archives, .blend files) work too. Do not raise the piece size: on 2026-11-01 one 8 MB piece (an 11 MB
+reply) made the Blender MCP server exit until it was restarted from the console."""
 import os, sys, base64
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bmcp
 
 remote, local = sys.argv[1], sys.argv[2]
-chunk = int(float(sys.argv[3]) * 1024 * 1024) if len(sys.argv) > 3 else 8 * 1024 * 1024
+chunk = int(float(sys.argv[3]) * 1024 * 1024) if len(sys.argv) > 3 else 2 * 1024 * 1024
 CODE = r'''
 import base64, os
 p = %r

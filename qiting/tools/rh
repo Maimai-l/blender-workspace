@@ -1,0 +1,22 @@
+#!/bin/bash
+# rh "hero_a hero_b" [samples] [scale] -> render hero views (lib/heroes.py), fetch JPGs, grid them
+TOOLS=$(cd "$(dirname "$0")" && pwd)
+T=$(python3 -I "$TOOLS/xyp.py")
+PCR=$(python3 -I "$TOOLS/xyp.py" --pc-root)
+NAMES="$1"; SAMPLES=${2:-32}; SCALE=${3:-0.5}
+python3 -I $TOOLS/push.py > /dev/null
+PYN=$(python3 -c "import sys; print(repr(sys.argv[1].split()))" "$NAMES")
+python3 -I $TOOLS/bmcp.py run $TOOLS/../scripts/render_heroes.py "NAMES = $PYN; SAMPLES = $SAMPLES; SCALE = $SCALE" | tail -8
+for n in $NAMES; do python3 -I $TOOLS/fetch.py "$PCR\\renders\\$n.jpg" $T/renders/$n.jpg > /dev/null; done
+python3 -I -c "
+from PIL import Image
+names = '$NAMES'.split()
+ims = [Image.open('$T/renders/%s.jpg' % n) for n in names]
+W = max(i.size[0] for i in ims); H = max(i.size[1] for i in ims)
+cols = 2 if len(ims) > 1 else 1
+rows = (len(ims) + cols - 1) // cols
+out = Image.new('RGB', (cols * W + (cols - 1) * 8, rows * H + (rows - 1) * 8), (255, 255, 255))
+for k, im in enumerate(ims):
+    out.paste(im, ((k % cols) * (W + 8), (k // cols) * (H + 8)))
+out.save('$T/renders/grid_%s.jpg' % names[0], quality=88); print('grid', out.size)
+"

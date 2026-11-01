@@ -56,7 +56,14 @@
   - For exec, use only the 7 tools allowed in `.claude/settings.json`; `xingyuan/tools/execc.py` enforces that.
 - Files on the PC:
   - In the exec Bash, Windows' `tar.exe` (`/c/Windows/System32/tar.exe`) lists and extracts .rar and .zip. Git Bash's own `tar` cannot read RAR.
-  - Bring files into the sandbox with `xingyuan/tools/fetch.py`: Blender's Python reads them and sends them in 8 MB pieces, so videos and archives work too.
+  - Bring files into the sandbox with `xingyuan/tools/fetch.py`: Blender's Python reads them and sends them in 2 MB pieces, so videos and archives work too.
+  - Keep every Blender MCP reply small. On 2026-11-01 one 11 MB reply (an 8 MB piece) made the Blender MCP server exit; the cloud endpoint then answered 502 until the service was restarted from the console.
+  - When the Blender endpoint is down, `qiting/tools/pcx.py` reaches Blender through exec alone:
+    - `pc/brelay.py` sends code to the add-on socket `127.0.0.1:9876`;
+    - `pc/pack.py` wraps files into PNG pieces of at most 500 kB, which exec's Read returns unchanged. Bash output stops at 30,000 characters and text Read at 25,000 tokens.
+- Calibrating photo cameras (Qiting, 2026-11):
+  - Silhouette tips of circles fix a round building's distance and height, but not its azimuth. Add points that break the symmetry, such as columns or a stair.
+  - Check the solved focal length against the EXIF value: in Qiting, W02 agreed to 1 %.
 - Sandbox tooling:
   - installed: numpy, OpenCV, SciPy, Pillow, `ffmpeg` and `pdftoppm`;
   - `ezdxf` installs with pip, but reads DXF only;

@@ -12,6 +12,8 @@
 
 仓库 `xingyuan/deliverables/` 里有并排对比图和效果图的 JPG 副本。
 
+Lessons learned from both rounds (English): [`docs/lessons.md`](docs/lessons.md).
+
 重建方法：
 1. 把 `xingyuan/scripts/lib/` 复制到 `C:\Users\blender\Documents\xingyuan\lib\`。
 2. 在 Blender 里运行 `scripts/build_all.py`，再运行 `scripts/build_env.py`，最后运行 `scripts/organize.py`。

@@ -1,0 +1,10 @@
+#!/bin/bash
+# xy push [files] | xy run script.py [--out f]
+T=$(cd "$(dirname "$0")" && pwd)
+cmd=$1; shift
+case $cmd in
+  push) python3 -I $T/push.py "$@" ;;
+  run) python3 -I $T/push.py > /dev/null && python3 -I $T/bmcp.py run "$@" ;;
+  runonly) python3 -I $T/bmcp.py run "$@" ;;
+  code) python3 -I $T/bmcp.py code "$@" ;;
+esac

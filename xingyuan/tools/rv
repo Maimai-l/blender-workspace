@@ -1,0 +1,8 @@
+#!/bin/bash
+# rv '<python dict literal for VIEW>'  -> renders and fetches renders/<name>.jpg
+TOOLS=$(cd "$(dirname "$0")" && pwd)
+T=$(python3 -I "$TOOLS/xyp.py")   # work folder (see xyp.py)
+NAME=$(python3 -c "import ast,sys; print(ast.literal_eval(sys.argv[1])['name'])" "$1")
+python3 -I $TOOLS/push.py > /dev/null
+python3 -I $TOOLS/bmcp.py run $TOOLS/../scripts/render_view.py "VIEW = $1" | tail -2
+python3 -I $TOOLS/fetch.py "C:\\Users\\blender\\Documents\\xingyuan\\renders\\$NAME.jpg" $T/renders/$NAME.jpg | tail -1

@@ -1,0 +1,23 @@
+#!/bin/bash
+# rvs "name1 name2 ..." [samples] [scale] -> render views, fetch, make side-by-sides
+TOOLS=$(cd "$(dirname "$0")" && pwd)
+T=$(python3 -I "$TOOLS/xyp.py")   # work folder (see xyp.py)
+NAMES="$1"; SAMPLES=${2:-64}; SCALE=${3:-0.7}
+python3 -I $TOOLS/push.py > /dev/null
+PYN=$(python3 -c "import sys; print(repr(sys.argv[1].split()))" "$NAMES")
+python3 -I $TOOLS/bmcp.py run $TOOLS/../scripts/render_views.py "NAMES = $PYN; SAMPLES = $SAMPLES; SCALE = $SCALE" | tail -12
+for n in $NAMES; do
+  python3 -I $TOOLS/fetch.py "C:\\Users\\blender\\Documents\\xingyuan\\renders\\cmp_$n.jpg" $T/renders/cmp_$n.jpg > /dev/null
+  python3 -I -c "
+from PIL import Image
+T='$T'
+a = Image.open(T+'/refc/$n.jpg').convert('RGB'); b = Image.open(T+'/renders/cmp_$n.jpg').convert('RGB')
+h = 700
+a = a.resize((int(a.size[0]*h/a.size[1]), h)); b = b.resize((int(b.size[0]*h/b.size[1]), h))
+out = Image.new('RGB', (a.size[0]+b.size[0]+16, h), (255,255,255)); out.paste(a, (0,0)); out.paste(b, (a.size[0]+16, 0))
+if out.size[0] > 2000:
+    out = out.resize((2000, int(out.size[1]*2000/out.size[0])))
+out.save(T+'/renders/sbs_$n.jpg', quality=88)
+print('$n', out.size)
+"
+done

@@ -1,0 +1,22 @@
+#!/bin/bash
+# rvc <calib name> [extra dict items]  -> renders camera from cal/<name>_sol.json at the photo aspect, fetches, makes side-by-side
+TOOLS=$(cd "$(dirname "$0")" && pwd)
+T=$(python3 -I "$TOOLS/xyp.py")   # work folder (see xyp.py)
+N=$1; EXTRA=${2:-}
+V=$(python3 -c "
+import json,sys
+s=json.load(open('$T/cal/$N'+'_sol.json')); c=json.load(open('$T/cal/$N.json'))
+W=c['W']; H=c['H']
+print(\"{'name': 'cmp_$N', 'loc': %s, 'target': %s, 'lens': %.3f, 'roll': %.5f, 'res': (%d, %d), 'samples': 96 $EXTRA}\" % (tuple(round(v,3) for v in s['loc']), tuple(round(v,3) for v in s['target']), s['lens'], s['roll'], W, H))
+")
+echo "$V"
+$TOOLS/rv "$V"
+python3 -I -c "
+from PIL import Image
+T='$T'
+a = Image.open(T+'/refc/$N.jpg').convert('RGB'); b = Image.open(T+'/renders/cmp_$N.jpg').convert('RGB')
+b = b.resize(a.size, Image.LANCZOS)
+W = a.size[0]*2 + 20; H = a.size[1]
+out = Image.new('RGB', (W, H), (255,255,255)); out.paste(a, (0,0)); out.paste(b, (a.size[0]+20, 0))
+out.save(T+'/renders/sbs_$N.jpg', quality=90); print('sbs', out.size)
+"

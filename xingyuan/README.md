@@ -13,6 +13,7 @@
 仓库 `xingyuan/deliverables/` 里有并排对比图和效果图的 JPG 副本。
 
 Lessons learned from both rounds (English): [`docs/lessons.md`](docs/lessons.md).
+Helper tools (talking to Blender and the PC, rendering, measuring the references): [`tools/`](tools/README.md). Reference images and photo crops: `refs/`.
 
 重建方法：
 1. 把 `xingyuan/scripts/lib/` 复制到 `C:\Users\blender\Documents\xingyuan\lib\`。

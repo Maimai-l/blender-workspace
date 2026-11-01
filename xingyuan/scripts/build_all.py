@@ -1,5 +1,5 @@
 # Full rebuild of the Xingyuan scene (runs inside Blender).
-import sys, importlib, bpy, time
+import sys, importlib, bpy, time, zlib
 LIB = r'C:\Users\blender\Documents\xingyuan\lib'
 if LIB not in sys.path: sys.path.insert(0, LIB)
 import xy_core, xy_mats, xy_roof, xy_parts, xy_site, xy_layout, xy_build_site, xy_hall, xy_frame, xy_struct, xy_props, xy_proxy
@@ -21,7 +21,7 @@ if want('site'):
 if want('halls'):
     for k, s in xy_layout.HALLS.items():
         xy_hall.build_hall(k, s['ox'], s['oy'], s['rot'], s['D'], s['L'], s['nb'], s['doors'], s['back'], s['open_bay'],
-                           seed=hash(k) % 97)
+                           seed=zlib.crc32(k.encode('utf-8')) % 97)   # stable across Python sessions (hash() is randomised)
     print('halls %.1f' % (time.time() - T))
 if want('corr'):
     xy_struct.build_corridors(); print('corridors %.1f' % (time.time() - T))

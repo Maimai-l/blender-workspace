@@ -1,5 +1,5 @@
 # Xingyuan - build the ground: raised floors (union of all platforms), courtyards, apron, plaza, pool, stairs.
-import bpy, math, random
+import bpy, math, random, zlib
 import numpy as np
 from mathutils import Vector
 import xy_core as C, xy_site as S, xy_layout as LY
@@ -112,7 +112,7 @@ def build_site(env=True):
             cm = cm & ~beds
         else:
             used |= cm
-        pv = S.Paver(seed=hash(key) % 1000)
+        pv = S.Paver(seed=zlib.crc32(key.encode('utf-8')) % 1000)   # stable across sessions
         rects = S.rects_from_mask(cm)
         orig = (LY.XC, 0.0) if key == 'B1' else ((LY.POOL_C[0], LY.POOL_C[1]) if key == 'B3' else (50.0, 30.0))
         S.pave_rects(pv, R, rects, LY.ZC, cd['mat'], cd['sw'], cd['sl'], along=cd['along'], origin=orig, stagger=0.5)

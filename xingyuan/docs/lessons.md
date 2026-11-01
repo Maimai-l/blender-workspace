@@ -30,7 +30,7 @@ Pitfalls:
 
 - **A step must delete its own old output first.** Otherwise Blender silently adds `.001` duplicates. This happened with the courtyard paving; `xy_build_site.build_site` now deletes every object whose name starts with `SITE_PREFIXES` before building.
 - **Deleting and recreating an object breaks everything that instances it.** The `XY_Instancer` nodes point at the old object, which no longer exists. The tree test row went empty this way. After rebuilding a source object, rebuild the objects that instance it.
-- **Python's `hash()` on strings is randomised per process (general).** Seeds derived from it change every time Blender restarts. Use `zlib.crc32(name.encode())` instead; `xy_plants` does. This is still open in two places (see section 7).
+- **Python's `hash()` on strings is randomised per process (general).** Seeds derived from it change every time Blender restarts. Use `zlib.crc32(name.encode())` instead. All seeds in this project now do; the halls and courtyard paving were switched last (see section 7).
 - **Do not patch Python files line by line with `sed`.** It broke `lib/views.py` twice with syntax errors. Replace an exact unique string, or rewrite a small file whole.
 - **Collection helper:** `xy_core.coll()` returns an existing collection and leaves it where it is when no parent is given. An earlier version re-linked collections and moved `B1 院门` to the top level.
 
@@ -75,7 +75,7 @@ Blender and the sandbox share no files (see CLAUDE.md). So:
 - renders come back as base64;
 - files go up in base64 chunks of about 300 kB.
 
-The helper tools lived only in the session scratchpad and are **not in the repo**. Each was a few dozen lines:
+The helper tools are in [`../tools/`](../tools/README.md). They were written in the session scratchpad during the two rounds and moved into the repo afterwards, with their paths made relative. Each is a few dozen lines:
 
 | Tool | What it did |
 | --- | --- |
@@ -96,6 +96,11 @@ Render speed on the PC (RTX 5070 Ti, OptiX), with the garden in the scene:
 - 960×540 at 32 samples: about 7 s.
 - 1920×1080 at 192 samples, with adaptive sampling and denoising: about 12 s.
 
+The same client reaches the other servers in `.mcp.json` **(general)**. Servers added to `.mcp.json` after a session started are not loaded as tools in that session, but a direct HTTP call works with the same handshake:
+
+- `exec` (Claude Code 2.1.311 on the PC, 20 tools): `tools/execc.py` runs Git Bash commands as the `blender` account. Only the 7 tools that `.claude/settings.json` allows may be used; the deny list binds the harness, not a direct client, so `execc.py` enforces it itself.
+- `unity` (mcp-for-unity, 48 tools): reachable the same way; not used in this project.
+
 Shell commands time out after 120 s by default. One call that rendered and fetched all 9 comparison views took longer, so give batches an explicit timeout or run them in the background.
 
 ### Files on the PC and deliverables
@@ -110,6 +115,7 @@ Shell commands time out after 120 s by default. One call that rendered and fetch
 Rules that worked:
 
 - **Start a new .blend for a new project.** The open file at the start was `donut.blend`, a connectivity test.
+- **Check which file Blender has open before running anything that changes the scene (general).** A week after round 2, Blender had been restarted onto an empty default scene. A test render from the tools changed that scene: it added a camera, a sun lamp and a collection, and switched the render settings and world. It had to be reverted by hand. Print `bpy.data.filepath` and the object count first; open the project file explicitly when it is not the one open.
 - **Keep inspection renders apart from deliverables.**
 - **Re-render every deliverable after the last change to the model.** In round 2, moving trees after the roof check meant re-rendering all 20 images, so that they match the saved file.
 - **Keep the delivery names fixed.** The comparison files use Chinese view names: `aerial → 航拍`, `B1court → B1院`, `B1pav → B1亭`, `B3north → B3北亭`, `B3south → B3南亭`, `A3porch → A3檐廊`.
@@ -119,9 +125,9 @@ Rules that worked:
 
 ### Calibrate first, then measure
 
-The aerial camera was solved from 9 points: gable points at 8.6 m and eave corners at 4.9 m, taken from the sections. The fit gives an RMS error of 3.7 px with `calib.py`; the inputs and results are in the scratchpad's `cal/aerial*.json`.
+The aerial camera was solved from 9 points: gable points at 8.6 m and eave corners at 4.9 m, taken from the sections. The fit gives an RMS error of 3.7 px with `calib.py`; the inputs and results are in `tools/cal/aerial*.json`.
 
-The comparison sheet uses a crop of the original aerial, `杏园介绍-01_10.jpg` (4369×2457). Coordinates map between the two by `sheet = full × 0.32044`, with `sheet_y = full_y × 0.32044 − 71.556`.
+The comparison sheet uses a crop of the original aerial, `refs/pages/杏园介绍-01_10.jpg` (4369×2457); the crops are in `refs/crops/`. Coordinates map between the two by `sheet = full × 0.32044`, with `sheet_y = full_y × 0.32044 − 71.556`.
 
 With the camera known, the aerial was rectified onto horizontal planes at chosen heights, with a metre grid drawn on top:
 
@@ -338,8 +344,7 @@ Trees had to keep clear of the building eaves. Nominal crown radius × 0.85 let 
 
 ## 7. Open issues
 
-- **Random seeds from `hash()`:** `scripts/build_all.py` (halls: `seed=hash(k) % 97`) and `lib/xy_build_site.py` (courtyard paving: `seed=hash(key) % 1000`). Rebuilding in a new Blender session changes small details. Switch both to `zlib.crc32`.
-- **The helper tools of section 1 are not in the repo.** Commit them, with paths made relative, if later sessions should reuse them.
+- **Seeds (fixed 2026-11-01).** The courtyard paving in `lib/xy_build_site.py` used a `hash()` seed and now uses `zlib.crc32`. The saved .blend was built with the old random seed, so the next rebuild changes the slab height jitter and per-slab tone of the courtyard paving once; every rebuild after that is identical. The hall seed in `scripts/build_all.py` was switched too, although `xy_hall` passes its random generator on without using it.
 - **The real viewport frame rate on the PC is unmeasured.** Only triangle and instance counts were taken: about 7.9 M triangles and 204,000 instances.
 - **Scene exposure** is about 1 EV above photographic mid-grey (section 4).
 - **Unresolved reference conflicts** (also in the README): the B1 tree positions from the aerial against the stretched A2 photo; blank couplets; the B1 stele relief without the figure.
@@ -357,3 +362,5 @@ Trees had to keep clear of the building eaves. Nominal crown radius × 0.85 let 
 8. Measure optimisations and use measured sizes rather than nominal ones.
 9. When geometry keeps failing to look right (foam, haze, wet edges), move the effect into the shader.
 10. Use stable seeds (`zlib.crc32`), never Python's `hash()`.
+11. Check which file Blender has open before running anything that changes the scene.
+12. MCP servers missing from a session's tools can still be reached directly over HTTP. Honour the repo's tool deny list yourself when doing so.

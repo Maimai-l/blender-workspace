@@ -17,7 +17,7 @@ These scripts run in the cloud session (Linux, Python 3 with numpy, Pillow, SciP
 | Tool | Use |
 | --- | --- |
 | `bmcp.py` | Blender MCP client. `bmcp.py run file.py "X = 1"` runs a local file in Blender, with the given code prepended; `bmcp.py code "..."` runs inline code. |
-| `push.py` | Copies every `../scripts/lib/*.py` to `C:\Users\blender\Documents\xingyuan\lib\` in one call. |
+| `push.py` | Copies every `../scripts/lib/*.py` to `lib\` in the project folder on the PC (for this project `C:\Users\blender\Documents\xingyuan\lib\`), in one call. |
 | `xy` | `xy push`, `xy run file.py` (push, then run), `xy runonly file.py`, `xy code "..."`. |
 | `fetch.py` / `upload.py` | Download or upload one file between the PC and the session, as base64 through Blender's Python. `fetch.py remote local [chunk_MB]` sends 8 MB pieces by default, so files of any size work; `upload.py` sends 300 kB pieces. |
 | `execc.py` | exec server client: `execc.py bash "<command>"` runs in Git Bash on the PC as the `blender` account. Only the 7 tools that `.claude/settings.json` allows can be called. |

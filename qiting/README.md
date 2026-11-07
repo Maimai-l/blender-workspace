@@ -183,4 +183,9 @@ All the work in this session went through the exec server instead:
 - `tools/pcx.py` sends code to Blender's add-on socket on the PC with `tools/pc/brelay.py`.
 - It copies files with `tools/pc/pack.py`.
 
-The Blender MCP service has to be restarted from the MCP console before the cloud endpoint works again.
+On 2026-11-07, with the user's consent, Blender was started on the PC and the Blender MCP service was started again. Both went through the exec server:
+
+- Blender was launched the way the PC's agent launches it, and the add-on's socket started by itself.
+- The service was started by a request to the agent on the PC, `POST /mcp/blender/start`, authenticated with its local token.
+
+The cloud endpoint answers again. `tools/bmcp.py` now uses the endpoint first and falls back to the exec route when the endpoint is down.

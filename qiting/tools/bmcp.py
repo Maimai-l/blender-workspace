@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 """Minimal MCP (streamable HTTP) client for the Blender MCP server.
-With XY_VIA_EXEC=1 (the default here) execute_blender_code goes through the exec server and the add-on socket
-instead (pcx.py), because the cloud endpoint for Blender was down.
+If the Blender MCP endpoint is down, execute_blender_code falls back to the exec server and the add-on socket
+(pcx.py); XY_VIA_EXEC=1 forces that route, XY_VIA_EXEC=0 forbids it.
 usage:
   bmcp.py run <script.py> [--out FILE]      run a local python file inside Blender (execute_blender_code)
   bmcp.py code "<python>" [--out FILE]      run inline code
   bmcp.py tools                             list tools
 Output text is printed (or written to --out)."""
-import json, os, sys, urllib.request, ssl, time
+import json, os, sys, urllib.request, urllib.error, ssl, time
 
 URL = os.environ['BLENDER_MCP_URL']
 import xyp
@@ -51,14 +51,26 @@ def session(force=False):
     open(SESS_FILE, 'w').write(sid or '')
     return sid
 
-VIA_EXEC = os.environ.get('XY_VIA_EXEC', '1') == '1'   # Blender MCP endpoint down since 2026-11-01: go through exec
+# XY_VIA_EXEC: '1' = always go through exec (pcx.py), '0' = always the Blender MCP endpoint,
+# unset = try the endpoint and fall back to exec when it is down (502 / unreachable).
+VIA_EXEC = os.environ.get('XY_VIA_EXEC', 'auto')
+
+def _via_exec(args):
+    import pcx
+    txt = pcx.blender(args['code'])
+    return {'result': {'content': [{'type': 'text', 'text': txt}]}}
 
 def call(name, args, timeout=600):
-    if VIA_EXEC and name == 'execute_blender_code':
-        import pcx
-        txt = pcx.blender(args['code'])
-        return {'result': {'content': [{'type': 'text', 'text': txt}]}}
-    return _call_http(name, args, timeout)
+    if name == 'execute_blender_code' and VIA_EXEC == '1':
+        return _via_exec(args)
+    try:
+        return _call_http(name, args, timeout)
+    except (urllib.error.HTTPError, urllib.error.URLError, ConnectionError) as e:
+        code = getattr(e, 'code', None)
+        if name == 'execute_blender_code' and VIA_EXEC != '0' and (code is None or code >= 500):
+            print('[bmcp] Blender MCP endpoint unavailable (%s); going through exec' % (code or e), file=sys.stderr)
+            return _via_exec(args)
+        raise
 
 def _call_http(name, args, timeout=600):
     for attempt in range(2):

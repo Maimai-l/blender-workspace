@@ -18,7 +18,11 @@ Run the Python tools with `python3 -I`.
 
 On 2026-11-01 the cloud endpoint for Blender went down: a fetch of an 11 MB response made the Blender MCP server exit, and its proxy was not restarted.
 
-Since then the tools reach Blender through the **exec** server only. With `XY_VIA_EXEC=1`, the default, `bmcp.py` routes `execute_blender_code` this way. Set `XY_VIA_EXEC=0` to go back to the direct MCP client once the service is restarted.
+For the rest of that round the tools reached Blender through the **exec** server only. On 2026-11-07 the service was started again through the PC's agent, and the endpoint works.
+
+`bmcp.py` now tries the Blender MCP endpoint first. If the endpoint is down (a 5xx answer or no answer), `execute_blender_code` falls back to the exec route below. `XY_VIA_EXEC=1` forces the exec route; `XY_VIA_EXEC=0` forbids it.
+
+Files always travel through exec (`fetch.py`, `upload.py`), so the Blender MCP server never has to send a large reply.
 
 | Tool | Use |
 | --- | --- |

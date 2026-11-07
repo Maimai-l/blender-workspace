@@ -221,7 +221,7 @@ class MB:
     def transform(self, M):
         bmesh.ops.transform(self.bm, matrix=M, verts=self.bm.verts)
 
-    def finish(self, name, collection, uv_scale=1.0, merge=0.0, recalc=True, smooth_angle=None, origin=None):
+    def finish(self, name, collection, uv_scale=1.0, merge=0.0, recalc=True, smooth_angle=None, origin=None, keep_uv=False):
         bm = self.bm
         if recalc:
             # weld coincident vertices so face-by-face built solids become closed shells, then orient outward
@@ -233,7 +233,8 @@ class MB:
             orient_closed_shells(bm)
         elif merge > 0:
             bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=merge)
-        box_uv(bm, self.uv, uv_scale)
+        if not keep_uv:
+            box_uv(bm, self.uv, uv_scale)
         me = bpy.data.meshes.new(name)
         bm.to_mesh(me)
         bm.free()

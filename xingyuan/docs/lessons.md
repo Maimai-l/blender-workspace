@@ -364,3 +364,18 @@ Trees had to keep clear of the building eaves. Nominal crown radius × 0.85 let 
 10. Use stable seeds (`zlib.crc32`), never Python's `hash()`.
 11. Check which file Blender has open before running anything that changes the scene.
 12. MCP servers missing from a session's tools can still be reached directly over HTTP. Honour the repo's tool deny list yourself when doing so.
+
+## 9. From Qiting round 2 (2026-11): aerials, far scenes and long renders
+
+1. **Check the camera export against the solver.** After solving a camera, project a few test points with Blender's own `world_to_camera_view` and compare them with the solver's projection. Two bugs went unnoticed for a whole round because only the overlays were looked at:
+   - `xy_light.camera` applied the roll with the wrong sign, so every calibrated render was turned by twice the solved roll. That was 6° for one Qiting photo. It is fixed in both `xy_light.py` copies.
+   - A photo stretched vertically by `ky` needs `pixel_aspect_x = ky` in Blender, not `pixel_aspect_y`.
+
+   With both fixed, the two projections agree to 0.06 px.
+2. **Near points do not fix the focal length.** A longer lens farther back fits a nearby building almost as well, and that choice moves everything far away. In Qiting, an aerial calibrated on the pavilion alone put a building across the lake twice as far as the plan does. For far work, add far points from a plan.
+   - Then check the horizon: tall buildings must poke above the camera's eye level, and their bases must sit below it.
+   - The leans of vertical edges in the skyline pin the roll. Do not filter edges by angle when measuring them: dropping the steep ones biases the result.
+3. **Look at the photo's date.** Trees grow. Web photos seven years older than the aerials showed a stair that today's deodars hide. Keep the model at the latest state, and leave out the planting between camera and building only in the comparison render for the older photo (`cmpview.py --thin`).
+4. **Do not instance instancers by the ten thousand.** Tree templates that scatter their leaves as instances, instanced again 28,000 times, made OptiX run out of GPU memory building the acceleration structure. 9,500 still worked. For mass far planting, realize the leaves into single-mesh copies of the templates (fewer, larger leaves are fine at distance), and show low-poly proxies in the viewport.
+5. **The Blender endpoint's tunnel cuts replies at about 100 s,** whatever the client's timeout. Run long renders and checks from `bpy.app.timers`, write a marker or output file, and poll for it through exec (`qiting/tools/rdefer.py`, `cmpview.py`, `heroes_run.py`).
+6. **Match the photo's grade before judging foliage.** Drone photos lift shadows strongly. Rendered with the default contrast, the same trees looked much darker than in the aerial. Raising the sky fill and using a lower-contrast look made the planting comparable. Sample regions in both images (median and percentiles) rather than judging by eye.

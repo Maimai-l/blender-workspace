@@ -275,27 +275,38 @@ def _gate_h(dx, z, fz, w, hh):
 _FIGS = None
 
 
-def _relief_height(a, z, feats, rng_noise):
-    """outward displacement (m) of the carved band at angle a, height z (0 = relief ground R_DRUM)."""
+def _fig_layer(a, z, feats):
+    """the carved scene before softening: figures, cloud scrolls, the gate building (outward height, m)."""
     global _FIGS
     if _FIGS is None:
         _FIGS = _figures()
-    fz0, fz1 = REL_Z0 + 0.14, REL_Z1 - 0.14
-    if z < fz0 - 0.015 or z > fz1 + 0.015:
-        return 0.05                       # plain raised border above and below the carved field
-    if z < fz0 or z > fz1:
-        return 0.05 * (1.0 - min(z - (fz0 - 0.015), (fz1 + 0.015) - z) / 0.015)
     R = D.R_DRUM
-    h = 0.006 + 0.0025 * math.sin(a * R * 23.0 + z * 31.0) * math.sin(a * R * 7.0 - z * 13.0)    # chiselled ground
+    h = 0.0
     for f in _FIGS:
         da = (a - f[0] + math.pi) % (2 * math.pi) - math.pi
         dx = da * R
         if abs(dx) < 1.3:
             h = max(h, _fig_h(dx, z, f))
-    # cloud scrolls drifting along the upper part of the field
     cl = math.sin(a * R * 2.2) * math.sin(z * 9.0 + a * R * 1.1)
-    if z > fz1 - 0.45 and cl > 0.25:
+    if z > REL_Z1 - 0.14 - 0.45 and cl > 0.25:
         h = max(h, 0.04 * min(1.0, (cl - 0.25) / 0.12))
+    for (kind, fa, fz, w, hh) in feats:
+        if kind == 'gate':
+            da = (a - fa + math.pi) % (2 * math.pi) - math.pi
+            g = _gate_h(da * R, z, fz, w, hh)
+            if g is not None:
+                h = max(h, g)
+    return h
+
+
+def _crisp_layer(a, z, feats, h):
+    """architectural parts that stay crisp: border bands, panel and window frames, medallion and cartouche rims."""
+    fz0, fz1 = REL_Z0 + 0.14, REL_Z1 - 0.14
+    if z < fz0 - 0.015 or z > fz1 + 0.015:
+        return 0.05
+    if z < fz0 or z > fz1:
+        return max(h, 0.05 * (1.0 - min(z - (fz0 - 0.015), (fz1 + 0.015) - z) / 0.015))
+    R = D.R_DRUM
     for (kind, fa, fz, w, hh) in feats:
         da = (a - fa + math.pi) % (2 * math.pi) - math.pi
         dx = da * R
@@ -305,21 +316,73 @@ def _relief_height(a, z, feats, rng_noise):
         elif kind == 'cartouche':
             q = (dx / (w / 2)) ** 2 + (dz / (hh / 2)) ** 2
             if q < 1.0:
-                h = 0.055 if q > 0.78 else 0.025          # characters not legible in any photo: left plain
+                h = 0.05 if q > 0.80 else 0.022          # characters not legible in any photo: left plain
         elif kind == 'medallion':
             q = (dx ** 2 + dz ** 2) ** 0.5 / (w / 2)
             if q < 1.0:
-                h = 0.06 if q > 0.80 else 0.03
-        elif kind == 'gate':
-            g = _gate_h(dx, z, fz, w, hh)
-            if g is not None:
-                h = g
-    return max(0.0, h)
+                h = 0.055 if q > 0.80 else 0.028
+    return h
+
+
+def _gauss_wrap(A, sigma, axis):
+    """Gaussian blur of a 2D array along one axis; wraps round when axis == 1 (the circumference)."""
+    import numpy as np
+    n = A.shape[axis]
+    if axis == 1:
+        x = np.arange(n)
+        x = np.minimum(x, n - x).astype(float)
+        k = np.exp(-0.5 * (x / sigma) ** 2)
+        k /= k.sum()
+        return np.fft.irfft(np.fft.rfft(A, axis=1) * np.fft.rfft(k)[None, :], n, axis=1)
+    pad = int(4 * sigma) + 1
+    P = np.concatenate([np.repeat(A[:1], pad, 0), A, np.repeat(A[-1:], pad, 0)], 0)
+    x = np.arange(-pad, pad + 1)
+    k = np.exp(-0.5 * (x / sigma) ** 2)
+    k /= k.sum()
+    out = np.zeros_like(A)
+    for i, w in enumerate(k):
+        out += w * P[i:i + A.shape[0]]
+    return out
+
+
+def relief_grid(na, zs, feats, blur_cm=6.0, gain=1.0, cap=0.045):
+    """height grid (len(zs) x na) of the band. The photos cannot show the figures clearly, so the scene is softened:
+    the figure masses are blurred (Gaussian) and capped, then covered with a fine carved texture (vertical
+    drapery-like folds, denser where the masses are) so the band reads as worn carving, not as drawn figures.
+    The architectural parts (borders, frames, medallions, cartouches) stay crisp."""
+    import numpy as np
+    import mathutils.noise as MN
+    R = D.R_DRUM
+    A = np.zeros((len(zs), na))
+    fz0, fz1 = REL_Z0 + 0.14, REL_Z1 - 0.14
+    for j, z in enumerate(zs):
+        if z < fz0 - 0.02 or z > fz1 + 0.02:
+            continue
+        for i in range(na):
+            A[j, i] = _fig_layer(2 * math.pi * i / na, z, feats)
+    da_m = 2 * math.pi * R / na
+    dz_m = (zs[-1] - zs[0]) / (len(zs) - 1)
+    B = _gauss_wrap(A, blur_cm / 100.0 / da_m, 1)
+    B = _gauss_wrap(B, blur_cm / 100.0 * 0.85 / dz_m, 0)
+    B = cap * np.tanh(gain * B / cap)
+    H = np.zeros_like(B)
+    for j, z in enumerate(zs):
+        for i in range(na):
+            a = 2 * math.pi * i / na
+            x, y = math.cos(a) * R, math.sin(a) * R
+            p = Vector((x, y, z))
+            chisel = 0.0018 * MN.noise(p * 9.0) + 0.0010 * MN.noise(p * 23.0)
+            w = min(1.0, B[j, i] / 0.02) * 0.85 + 0.15
+            q = Vector((x * 11.0, y * 11.0, z * 4.0))                      # folds run mostly vertically
+            ridge = (1.0 - abs(MN.noise(q))) ** 3 + 0.5 * (1.0 - abs(MN.noise(q * 2.3 + Vector((7.1, 3.3, 1.9))))) ** 3
+            h = 0.007 + chisel + B[j, i] + 0.009 * w * ridge
+            H[j, i] = _crisp_layer(a, z, feats, max(0.0, h))
+    return H
 
 
 def drum(c):
-    """carved drum: a displaced cylinder mesh (real relief, ~3 cm grid), plain borders, openings cut as
-    recesses (dark), the south panel recessed dark stone."""
+    """carved drum: a displaced cylinder mesh (real relief on a 2 cm grid) with a softened figure scene, plain
+    borders, openings cut as recesses (dark), the south panel recessed dark stone."""
     feats = _relief_features()
     R = D.R_DRUM
     da = 0.021 / R
@@ -333,13 +396,12 @@ def drum(c):
     me = bpy.data.meshes.new('QT_relief')
     bm = bmesh.new()
     rows = []
-    rngn = random.Random(3)
-    for z in zs:
+    Hgrid = relief_grid(na, zs, feats)
+    for j, z in enumerate(zs):
         row = []
         for i in range(na):
             a = 2 * math.pi * i / na
-            h = _relief_height(a, z, feats, rngn)
-            r = R + h
+            r = R + float(Hgrid[j, i])
             row.append(bm.verts.new((r * math.cos(a), r * math.sin(a), z)))
         rows.append(row)
     for j in range(len(rows) - 1):
@@ -387,71 +449,86 @@ def drum(c):
 
 
 # ------------------------------------------------------------------ terraces
-def _notched_outline(R, n_notch=8, w=None, d=None, step=0.20):
-    """circle of radius R with n_notch rectangular notches (width w, depth d) at the column azimuths."""
-    w = D.TIER_NOTCH_W if w is None else w
-    d = D.TIER_NOTCH_D if d is None else d
-    pts = []
-    half = (w / 2) / R
-    centers = [D.col_az(k) for k in range(n_notch)]
-    n = int(2 * math.pi * R / step)
-    angs = [2 * math.pi * i / n for i in range(n)]
-    for c in centers:
-        angs += [c - half, c + half]
-    angs = sorted(a % (2 * math.pi) for a in angs)
-    for a in angs:
-        inside = any(abs(((a - c + math.pi) % (2 * math.pi)) - math.pi) < half - 1e-6 for c in centers)
-        if inside:
-            continue
-        on_edge = [c for c in centers if abs(abs(((a - c + math.pi) % (2 * math.pi)) - math.pi) - half) < 1e-6]
-        if on_edge:
-            cc = on_edge[0]
-            dlt = ((a - cc + math.pi) % (2 * math.pi)) - math.pi
-            # outer corner, then the notch corner (rectangular, radial walls)
-            p_out = (R * math.cos(a), R * math.sin(a))
-            ux, uy = math.cos(cc), math.sin(cc)
-            px, py = -uy, ux
-            off = (w / 2) * (1 if dlt > 0 else -1)
-            rin = R * math.cos(half) - d
-            p_in = (ux * rin + px * off, uy * rin + py * off)
-            if dlt < 0:
-                pts += [p_out, p_in]
-            else:
-                pts += [p_in, p_out]
-        else:
-            pts.append((R * math.cos(a), R * math.sin(a)))
-    return pts
+LOBE_P = 1.6           # lobe profile exponent: rounded lobes with fairly broad dips (fits the DWG radius spread)
+LOBE_DEPTH = 1.0       # crest - cusp radius
+RIM_W, RIM_H = 0.30, 0.05
+NOTCH_W, NOTCH_D = 0.30, 0.25
 
 
-def _prism_uv(name, coll, outline, z0, z1, m, R_uv):
-    """closed prism of a 2D outline; UVs: u = arc length (angle * R_uv), v = z (for the ashlar joints)."""
+def lobe_r(R, az):
+    """outline radius of a terrace level of median radius R at azimuth az (radians). Eight lobes between cusps at
+    the column azimuths (A1/A2 aerials; the DWG gives the radius spread: cusp R-0.67, crest R+0.33), each cusp with
+    a small radial notch."""
+    rq = R - 0.67
+    rel = ((az - math.radians(D.COL_AZ0)) % (math.pi / 4)) / (math.pi / 8) - 1.0     # -1 .. 1 across one lobe
+    r = rq + LOBE_DEPTH * (1.0 - abs(rel) ** LOBE_P)
+    half = (NOTCH_W / 2) / rq / (math.pi / 8)
+    if abs(rel) > 1.0 - half:
+        r = rq - NOTCH_D
+    return r
+
+
+def _lobe_angles(R, step_deg=0.5):
+    """sample azimuths: a regular step plus the exact notch edges."""
+    angs = [math.radians(step_deg) * i for i in range(int(360 / step_deg))]
+    rq = R - 0.67
+    half = (NOTCH_W / 2) / rq
+    for k in range(8):
+        c = D.col_az(k)
+        for e in (-half, half):
+            angs += [c + e - 1e-5, c + e + 1e-5]
+    return sorted(a % (2 * math.pi) for a in angs)
+
+
+def _ring_mesh(name, coll, angs, r_out_fn, r_in_fn, z_out, z_in, m, uv='xy', R_uv=1.0):
+    """closed band between two star-shaped outlines sampled at the same azimuths (top surface if z_out == z_in)."""
     bm = bmesh.new()
     uvl = bm.loops.layers.uv.new('UVMap')
-    B = [bm.verts.new((x, y, z0)) for x, y in outline]
-    T = [bm.verts.new((x, y, z1)) for x, y in outline]
-    n = len(outline)
-    fb = bm.faces.new(list(reversed(B)))
-    ft = bm.faces.new(T)
-    side = []
+    O = [bm.verts.new((r_out_fn(a) * math.cos(a), r_out_fn(a) * math.sin(a), z_out)) for a in angs]
+    I = [bm.verts.new((r_in_fn(a) * math.cos(a), r_in_fn(a) * math.sin(a), z_in)) for a in angs]
+    n = len(angs)
     for i in range(n):
         j = (i + 1) % n
-        side.append(bm.faces.new((B[i], B[j], T[j], T[i])))
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.faces.new((I[i], O[i], O[j], I[j]))
+    bm.normal_update()
     for f in bm.faces:
+        if f.normal.z < 0:
+            f.normal_flip()
         for l in f.loops:
             co = l.vert.co
-            if f in side:
-                a = math.atan2(co.y, co.x)
-                l[uvl].uv = (a * R_uv, co.z)
-            else:
-                l[uvl].uv = (co.x, co.y)
-    # fix the wrap seam on side faces (u jumps by 2 pi R)
-    for f in side:
-        us = [l[uvl].uv[0] for l in f.loops]
-        if max(us) - min(us) > math.pi * R_uv:
-            for l in f.loops:
-                if l[uvl].uv[0] < 0:
-                    l[uvl].uv = (l[uvl].uv[0] + 2 * math.pi * R_uv, l[uvl].uv[1])
+            l[uvl].uv = (co.x, co.y)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(C.mat(m))
+    o = bpy.data.objects.new(name, me)
+    C.link(o, coll)
+    return o
+
+
+def _wall_mesh_lobed(name, coll, angs, r_fn, z0, z1, m, R_uv):
+    """vertical face along a star-shaped outline from z0 to z1 (outward), UV u = arc length, v = z."""
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.new('UVMap')
+    B = [bm.verts.new((r_fn(a) * math.cos(a), r_fn(a) * math.sin(a), z0)) for a in angs]
+    T = [bm.verts.new((r_fn(a) * math.cos(a), r_fn(a) * math.sin(a), z1)) for a in angs]
+    n = len(angs)
+    s_acc = [0.0]
+    for i in range(1, n + 1):
+        p, q = B[i - 1].co, B[i % n].co
+        s_acc.append(s_acc[-1] + (q - p).length)
+    for i in range(n):
+        j = (i + 1) % n
+        f = bm.faces.new((B[i], B[j], T[j], T[i]))
+        for l, (u, v) in zip(f.loops, ((s_acc[i], z0), (s_acc[i + 1], z0), (s_acc[i + 1], z1), (s_acc[i], z1))):
+            l[uvl].uv = (u, v)
+    # make it face outward
+    bm.faces.ensure_lookup_table()
+    bm.normal_update()
+    c = bm.faces[0].calc_center_median()
+    if bm.faces[0].normal.dot(Vector((c.x, c.y, 0))) < 0:
+        for f in bm.faces:
+            f.normal_flip()
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
@@ -462,43 +539,57 @@ def _prism_uv(name, coll, outline, z0, z1, m, R_uv):
 
 
 def terraces(c):
-    """three terraces (W03, 340d, 419; plan from the DWG): solid notched prisms of ashlar (joints from the
-    material), paved tops of granite slabs."""
+    """three terrace levels, each an eight-lobed flower in plan (A1/A2): light ashlar faces, a light stone rim along
+    the edge standing 5 cm proud, and a dark granite top between the rim and the next level."""
     out = []
     for k in range(3):
         R = D.TIER_R[k]
         zt = D.Z_TIER_TOP - k * D.TIER_H
-        zb = zt - D.TIER_H
-        ol = _notched_outline(R)
-        out.append(_prism_uv('QT_terrace_%d' % (k + 1), c, ol, zb, zt - 0.06, 'M_Ashlar', R))
-    mb = SMB(_seed('tiertops'))
-    for k in range(3):
-        R = D.TIER_R[k]
-        r_in = (D.R_DRUM + 0.12) if k == 0 else D.TIER_R[k - 1]
-        zt = D.Z_TIER_TOP - k * D.TIER_H
-        r = r_in
-        kk = 0
-        while r < R - 0.01:
-            r1 = min(R + 0.03, r + 0.60)
-            n = max(8, int(round(2 * math.pi * r1 / 0.95)))
-            ring_slabs(mb, r, r1, zt - 0.065, zt - 0.003, 'M_GraniteFloor', n, a_off=kk * 0.21,
-                       skip=lambda a, r0, r1_, R=R: _notch_hit(a, r0, r1_, R))
-            r = r1
-            kk += 1
-    out.append(mb.finish_slabs('QT_terrace_tops', c))
+        zb = zt - D.TIER_H - 0.06
+        angs = _lobe_angles(R)
+        fo = (lambda a, R=R: lobe_r(R, a))
+        fi = (lambda a, R=R: lobe_r(R, a) - RIM_W)
+        out.append(_wall_mesh_lobed('QT_terrace_%d_face' % (k + 1), c, angs, fo, zb, zt + RIM_H, 'M_Ashlar', R))
+        out.append(_ring_mesh('QT_terrace_%d_rim' % (k + 1), c, angs, fo, fi, zt + RIM_H, zt + RIM_H, 'M_Marble'))
+        out.append(_wall_mesh_lobed('QT_terrace_%d_rimin' % (k + 1), c, angs, fi, zt, zt + RIM_H, 'M_Marble', R))
+        if k == 0:
+            r_in = (lambda a: D.R_DRUM + 0.10)
+        else:
+            Rp = D.TIER_R[k - 1]
+            r_in = (lambda a, Rp=Rp: lobe_r(Rp, a) - 0.02)
+        top = _ring_mesh('QT_terrace_%d_top' % (k + 1), c, angs, (lambda a, f=fi: f(a) + 0.005), r_in, zt, zt, 'M_TerraceTop')
+        # the rim's inner face faces inward: flip it
+        rim_in = bpy.data.objects['QT_terrace_%d_rimin' % (k + 1)]
+        rim_in.data.flip_normals()
+        out.append(top)
+    # hidden core under the levels (closes the volume for the stair walls and the checks)
+    mb = C.MB()
+    mb.lathe([(0.0, D.Z_PLAZA - 0.06), (D.TIER_R[2] - 1.0, D.Z_PLAZA - 0.06), (D.TIER_R[2] - 1.0, D.Z_TIER_TOP - 2 * D.TIER_H - 0.02),
+              (0.0, D.Z_TIER_TOP - 2 * D.TIER_H - 0.02)], 96, 'M_GraniteLight', cap_top=False, cap_bot=False)
+    out.append(mb.finish('QT_terraces_core', c, recalc=True))
     return out
 
 
-def _notch_hit(a, r0, r1, R):
-    """skip top slabs that would roof over a notch."""
-    if r1 < R - D.TIER_NOTCH_D - 0.02:
-        return False
-    for j in range(8):
-        cc = D.col_az(j)
-        da = abs(((a - cc + math.pi) % (2 * math.pi)) - math.pi)
-        if da * R < D.TIER_NOTCH_W / 2 + 0.45:
-            return True
-    return False
+def floodlights(c):
+    """black floodlight boxes on the top terrace, aimed at the drum (W01, W02)."""
+    mb = C.MB()
+    zt = D.Z_TIER_TOP
+    for k in range(8):
+        az = D.col_az(k) + math.pi / 8           # lobe centres
+        if abs(((az - math.pi / 2 + math.pi) % (2 * math.pi)) - math.pi) < 0.3:
+            continue                             # the stair lobe
+        r = D.R_DRUM + 0.95
+        cx, cy = r * math.cos(az), r * math.sin(az)
+        u = Vector((-math.sin(az), math.cos(az), 0)); v = Vector((math.cos(az), math.sin(az), 0))
+        mb.obox(Vector((cx, cy, zt + 0.06)), (u, v, Vector((0, 0, 1))), (0.10, 0.10, 0.06), 'M_DoorMetal')   # base
+        # lamp head tilted up toward the drum
+        tilt = math.radians(35)
+        w = (Vector((0, 0, 1)) * math.cos(tilt) - v * math.sin(tilt)).normalized()
+        vv = w.cross(u).normalized()
+        mb.obox(Vector((cx, cy, zt + 0.30)), (u, vv, w), (0.20, 0.13, 0.16), 'M_BlackLacquer')
+        mb.obox(Vector((cx, cy, zt + 0.30)) + w * 0.165, (u, vv, w), (0.17, 0.10, 0.008), 'M_LampGlass')
+        mb.box((cx - 0.03, cy - 0.03, zt + 0.10), (cx + 0.03, cy + 0.03, zt + 0.22), 'M_DoorMetal')
+    return mb.finish('QT_floodlights', c, recalc=True)
 
 
 # ------------------------------------------------------------------ balustrades
@@ -618,7 +709,7 @@ def podium_balustrade(c):
 def stair_profile():
     """[(r_start, r_end, z, kind)] treads and landings from the top (podium floor) down to the plaza; the riser
     height; the radius of the last riser (stair foot)."""
-    rise = -D.Z_PLAZA / D.STAIR_RISERS
+    rise = -D.Z_STAIR_FOOT / D.STAIR_RISERS
     out = []
     r = D.STAIR_R0
     z = 0.0
@@ -640,18 +731,18 @@ def nose_z(r):
     if r <= D.STAIR_R0:
         return 0.0
     if r >= r_foot:
-        return D.Z_PLAZA
+        return D.Z_STAIR_FOOT
     for (r0, r1, z, kind) in prof:
         if r0 <= r < r1:
             if kind == 'tread':
                 return z + rise * (1 - (r - r0) / (r1 - r0))
             return z
-    return D.Z_PLAZA
+    return D.Z_STAIR_FOOT
 
 
 def rail_base(r):
     """parapet / balustrade base line: nosing line smoothed over a tread, 0.10 above, easing to the floor."""
-    T = D.STAIR_TREAD
+    T = 0.363                       # smoothing window ~ one tread (the value round 1 was built with)
     z = 0.5 * (nose_z(r - T / 2) + nose_z(r + T / 2))
     k = max(0.0, min(1.0, (r - D.STAIR_R0) / 0.4))
     return z + 0.10 * k
@@ -663,7 +754,7 @@ def _wall_mesh(name, coll, x0, x1, r0, r1, m='M_Ashlar'):
     uvl = bm.loops.layers.uv.new('UVMap')
     n = 160
     top = [(r0 + (r1 - r0) * i / n, rail_base(r0 + (r1 - r0) * i / n) - 0.12) for i in range(n + 1)]
-    poly = [(r0, D.Z_PLAZA - 0.05), (r1, D.Z_PLAZA - 0.05)] + list(reversed(top))
+    poly = [(r0, D.Z_STAIR_FOOT - 0.10), (r1, D.Z_STAIR_FOOT - 0.10)] + list(reversed(top))
     A = [bm.verts.new((x0, y, z)) for (y, z) in poly]
     B = [bm.verts.new((x1, y, z)) for (y, z) in poly]
     k = len(poly)
@@ -718,7 +809,7 @@ def stair(c_st, c_bal):
     n = 120
     ra, rb = D.R_DRUM - 0.1, r_foot
     top = [(ra + (rb - ra) * i / n, nose_z(ra + (rb - ra) * i / n) - rise - 0.10) for i in range(n + 1)]
-    _extrude_yz(mb, [(ra, D.Z_PLAZA - 0.05), (rb, D.Z_PLAZA - 0.05)] + list(reversed(top)), -hw - 0.005, hw + 0.005, 'M_GraniteLight')
+    _extrude_yz(mb, [(ra, D.Z_STAIR_FOOT - 0.10), (rb, D.Z_STAIR_FOOT - 0.10)] + list(reversed(top)), -hw - 0.005, hw + 0.005, 'M_GraniteLight')
     out.append(mb.finish('QT_stair_core', c_st, recalc=True))
     for side in (-1, 1):
         x0, x1 = (hw, hw + pw) if side > 0 else (-hw - pw, -hw)
@@ -733,6 +824,19 @@ def stair(c_st, c_bal):
                                  (rcd - wd / 2 - 0.10, rcd + wd / 2 + 0.10, z1, z1 + 0.10)):
             mb.box((x - 0.03, ya, za), (x + 0.03, yb, zb), 'M_Marble')
     out.append(mb.finish('QT_stair_doors', c_st, recalc=True))
+    # steps beyond the parapet ends, down to the north path (A1/A2): full stair width, granite blocks
+    n, tr, rs = D.STAIR_EXTRA
+    mb = SMB(_seed('extra'))
+    xw = hw + pw
+    z_base = D.Z_STAIR_FOOT - n * rs - 0.35
+    for i in range(n):
+        r0 = r_foot + 0.30 + i * tr
+        z = D.Z_STAIR_FOOT - (i + 1) * rs
+        mb.begin()
+        # full-height blocks meeting edge to edge (overlapping slabs had their side faces in one plane)
+        slab(mb, [(-xw, r0), (xw, r0), (xw, r0 + tr), (-xw, r0 + tr)], z_base, z, 'M_GraniteStep', bevel=0.008)
+        mb.end()
+    out.append(mb.finish_slabs('QT_stair_extra', c_st))
     out += stair_balustrades(c_bal, r_foot)
     return out
 
@@ -770,8 +874,9 @@ def stair_balustrades(c, r_foot):
             fl.append((start, r0 + 0.12))
             stations += [r0 + 0.12, r1 - 0.12]
             start = r1 - 0.12
-    fl.append((start, r_foot - 0.15))
-    stations += [D.STAIR_R0 + 0.12, r_foot - 0.15]
+    END_L = 0.80                    # drum-stone end block (抱鼓石) after the last post (W02: last post r 20.1, end 20.9)
+    fl.append((start, r_foot - END_L))
+    stations += [D.STAIR_R0 + 0.12, r_foot - END_L]
     for (a, b) in fl:
         n = max(1, int(round((b - a) / 1.25)))
         for i in range(1, n):
@@ -823,6 +928,18 @@ def stair_balustrades(c, r_foot):
                 z = za + (zb - za) * f
                 mb.lathe([(0.0, z + 0.61), (0.04, z + 0.61), (0.045, z + 0.64), (0.03, z + 0.68), (0.05, z + 0.74), (0.036, z + 0.80), (0.0, z + 0.80)],
                          10, m, center=(x, y, 0.0), cap_bot=False, cap_top=False)
+    # end blocks: a low plinth with a stone drum on it, leaning against the last post (W02, A1/A2)
+    for side in (-1, 1):
+        x = side * xc
+        r0, r1 = r_foot - END_L + POST_W / 2, r_foot + 0.02
+        zb = rail_base(r1) - 0.02
+        mb.box((x - 0.12, r0, zb - 0.10), (x + 0.12, r1, zb + 0.30), m)
+        rd = 0.27
+        cy, cz = r0 + 0.34, zb + 0.30 + rd * 0.92
+        mb.cyl((x - 0.10, cy, cz), (x + 0.10, cy, cz), rd, 20, m)
+        mb.cyl((x - 0.115, cy, cz), (x + 0.115, cy, cz), rd * 0.55, 16, m)
+        # scroll joining the drum to the post
+        mb.box((x - 0.09, r0, zb + 0.30), (x + 0.09, cy, zb + 0.30 + rd * 1.55), m)
     out.append(mb.finish('QT_stair_balustrade', c, recalc=True))
     out.append(C.instancer('QT_stair_posts', post, xf_p, c))
     return out

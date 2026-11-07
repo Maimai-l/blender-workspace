@@ -2,7 +2,12 @@
 # lanterns, B1 tree planters with procedural trees, B2 bamboo beds, pool stones, gate lanterns.
 import bpy, bmesh, math, random
 from mathutils import Vector, Matrix, Euler
-import xy_core as C, xy_parts as PT, xy_layout as LY
+import xy_core as C, xy_parts as PT
+try:
+    import xy_layout as LY
+except ImportError:            # Qiting does not carry the Xingyuan site layout (only used by Xingyuan's planters)
+    class LY:
+        ZC = 0.0
 
 FONT = r'C:\Windows\Fonts\simkai.ttf'
 

@@ -7,6 +7,11 @@ for oi in dg.object_instances:
     ob = oi.object
     if ob.type != 'MESH':
         continue
+    # hidden sources (tree templates in _LIB etc.) are evaluated but not drawn
+    host = oi.parent if (oi.is_instance and oi.parent) else ob
+    host = bpy.data.objects.get(host.name)
+    if host is None or not host.visible_get():
+        continue
     me = ob.data
     n = sum(len(p.vertices) - 2 for p in me.polygons)
     tri += n

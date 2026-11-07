@@ -120,7 +120,10 @@ def camera(name, loc, target=None, rot=None, lens=35.0, shift=(0.0, 0.0), sensor
     if target is not None:
         from mathutils import Quaternion
         d = Vector(target) - Vector(loc)
-        q = d.to_track_quat('-Z', 'Y') @ Quaternion((0.0, 0.0, 1.0), -roll)
+        # roll as in tools/calib.py: positive roll turns the camera's right vector towards its up vector, i.e. a
+        # positive rotation about the camera's local +Z (found in Qiting round 2: -roll here turned every
+        # calibrated render by twice the solved roll)
+        q = d.to_track_quat('-Z', 'Y') @ Quaternion((0.0, 0.0, 1.0), roll)
         cam.rotation_euler = q.to_euler()
     elif rot is not None:
         cam.rotation_euler = Euler([math.radians(a) for a in rot])

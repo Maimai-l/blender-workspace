@@ -80,7 +80,7 @@ def plaster(name='M_Plaster', base=(0.58, 0.55, 0.47)):
     return m
 
 
-def marble(name='M_Marble', base=(0.60, 0.585, 0.54), rough=0.55):
+def marble(name='M_Marble', base=(0.60, 0.585, 0.54), rough=0.55, veins=0.94):
     """汉白玉-type white stone of the balustrades, coping and relief: warm white, faint grey veins, weathering
     grime collecting in crevices and on the underside of mouldings."""
     m, nt, bs, out = _new(name)
@@ -94,7 +94,7 @@ def marble(name='M_Marble', base=(0.60, 0.585, 0.54), rough=0.55):
     dirt = _noise(nt, pos, 0.5, 4, 0.6, (-900, -500))
     lo = tuple(c * 0.86 for c in base)
     c = _ramp(nt, n1.outputs['Fac'], [(0.3, lo), (0.7, base)], (-550, 150))
-    v = _ramp(nt, w.outputs['Fac'], [(0.0, (0.94, 0.94, 0.93)), (0.08, (1.0, 1.0, 1.0)), (1.0, (1.0, 1.0, 1.0))], (-550, -200))
+    v = _ramp(nt, w.outputs['Fac'], [(0.0, (veins, veins, veins - 0.01)), (0.08, (1.0, 1.0, 1.0)), (1.0, (1.0, 1.0, 1.0))], (-550, -200))
     var = _ramp(nt, rnd, [(0.0, (0.94, 0.94, 0.93)), (1.0, (1.03, 1.03, 1.02))], (-550, 400))
     d = _ramp(nt, dirt.outputs['Fac'], [(0.4, (1.0, 1.0, 1.0)), (0.75, (0.86, 0.85, 0.82))], (-550, -450))
     c2 = _mix(nt, 1.0, c, v, (-300, 0), blend='MULTIPLY')
@@ -262,12 +262,14 @@ def build_all():
     plaster('M_PlasterIn', (0.62, 0.60, 0.55))
     XM.simple('M_WindowPanel', (0.66, 0.64, 0.58), rough=0.85)     # white window panels of the upper drum
     marble('M_Marble', (0.54, 0.485, 0.37))           # warm cream white (340d sun, W01 overcast)
-    marble('M_MarbleRelief', (0.52, 0.465, 0.355), rough=0.62)
+    marble('M_MarbleRelief', (0.52, 0.465, 0.355), rough=0.62, veins=0.975)
     ashlar('M_Ashlar')
+    ashlar('M_TerraceTop', base=(0.085, 0.085, 0.082), course=0.6, block=0.6, z0=0.0)   # dark granite slabs (A1/A2)
+    XM.simple('M_LampGlass', (0.78, 0.77, 0.72), rough=0.2)
     granite('M_GraniteLight', base=(0.30, 0.295, 0.28), dark=(0.15, 0.15, 0.145), light=(0.42, 0.415, 0.40))
     granite('M_GraniteStep', base=(0.20, 0.20, 0.195), dark=(0.10, 0.10, 0.10), light=(0.30, 0.30, 0.29), rough=0.78)
     granite('M_GraniteFloor', base=(0.24, 0.24, 0.232), dark=(0.12, 0.12, 0.118), light=(0.33, 0.33, 0.32), rough=0.75)
-    setts('M_Setts', (0.075, 0.077, 0.080))         # dark grey granite setts (419)
+    setts('M_Setts', (0.235, 0.215, 0.190), var=0.08)   # light beige-grey setts (A1/A2 daylight; 419 was dark at dusk)
     setts('M_SettsLight', (0.17, 0.168, 0.16), var=0.08)
     gold('M_Gold')
     gold('M_GoldPaint', base=(0.66, 0.44, 0.12), rough=0.42)
@@ -278,4 +280,113 @@ def build_all():
     ceiling_lotus()
     painted_band()
     XM.simple('M_Ground', (0.075, 0.072, 0.060), rough=0.95)      # neutral staging ground (not part of the replica)
+    return sorted(m.name for m in bpy.data.materials)
+
+
+# ------------------------------------------------------------------ round 2: the surroundings
+def pavers(name, base, block=(0.30, 0.15), var=0.10, joint=(0.30, 0.30, 0.28), rough=0.82, speck=0.6):
+    """small pavers in running bond (UV u along the path, v across), per-block tone, stains."""
+    m, nt, bs, out = _new(name)
+    L = nt.links
+    uv = _coords(nt, 'UV', (-1700, 0))
+    br = _n(nt, 'ShaderNodeTexBrick', (-1200, 0))
+    br.offset = 0.5; br.offset_frequency = 2; br.squash = 1.0; br.squash_frequency = 2
+    L.new(uv, br.inputs['Vector'])
+    br.inputs['Scale'].default_value = 1.0
+    br.inputs['Mortar Size'].default_value = 0.006
+    br.inputs['Mortar Smooth'].default_value = 0.25
+    br.inputs['Brick Width'].default_value = block[0]
+    br.inputs['Row Height'].default_value = block[1]
+    lo = tuple(c * (1 - var) for c in base); hi = tuple(min(1, c * (1 + var)) for c in base)
+    br.inputs['Color1'].default_value = lo + (1,)
+    br.inputs['Color2'].default_value = hi + (1,)
+    br.inputs['Mortar'].default_value = joint + (1,)
+    pos = _world_pos(nt)
+    n1 = _noise(nt, pos, 0.45, 4, 0.55, (-900, -300))
+    n2 = _noise(nt, pos, 90.0, 2, 0.5, (-900, -600))
+    st = _ramp(nt, n1.outputs['Fac'], [(0.3, (0.86, 0.86, 0.86)), (0.7, (1.06, 1.06, 1.05))], (-600, -300))
+    sp = _ramp(nt, n2.outputs['Fac'], [(0.35, (1 - 0.12 * speck,) * 3), (0.65, (1 + 0.08 * speck,) * 3)], (-600, -600))
+    c = _mix(nt, 1.0, br.outputs['Color'], st, (-300, 0), blend='MULTIPLY')
+    c = _mix(nt, 1.0, c, sp, (-150, -100), blend='MULTIPLY')
+    L.new(_grime(nt, c, ao_strength=0.3), bs.inputs['Base Color'])
+    bs.inputs['Roughness'].default_value = rough
+    h = _math(nt, 'ADD', _math(nt, 'MULTIPLY', br.outputs['Fac'], -1.0, (-300, -800)), 1.0, (-200, -800))
+    L.new(_bump(nt, h, 0.5, 0.004), bs.inputs['Normal'])
+    return m
+
+
+def lake_water(name='M_Lake', deep=(0.032, 0.050, 0.043), rough=0.12):
+    """large lake (A1/A2: grey-green, calm): opaque dark water body colour with Fresnel reflections and soft
+    wind ripples; no transmission (the bed is far below)."""
+    m, nt, bs, out = _new(name)
+    L = nt.links
+    pos = _world_pos(nt)
+    mp = _n(nt, 'ShaderNodeMapping', (-1000, -300)); mp.inputs['Scale'].default_value = (1.0, 2.5, 1.0)
+    L.new(pos, mp.inputs['Vector'])
+    n = _noise(nt, mp.outputs[0], 0.35, 4, 0.55, (-700, -200))
+    n2 = _noise(nt, pos, 2.8, 3, 0.5, (-700, -500))
+    n3 = _noise(nt, pos, 0.02, 2, 0.5, (-700, 200))
+    h = _math(nt, 'ADD', n.outputs['Fac'], _math(nt, 'MULTIPLY', n2.outputs['Fac'], 0.25, (-500, -500)), (-400, -300))
+    col = _ramp(nt, n3.outputs['Fac'], [(0.3, deep), (0.7, tuple(c * 1.25 for c in deep))], (-400, 200))
+    L.new(col, bs.inputs['Base Color'])
+    bs.inputs['Roughness'].default_value = rough
+    bs.inputs['IOR'].default_value = 1.333
+    bs.inputs['Specular IOR Level'].default_value = 0.5
+    L.new(_bump(nt, h, 0.10, 0.04), bs.inputs['Normal'])
+    return m
+
+
+def hedge(name='M_Hedge'):
+    """clipped evergreen hedge (A1/A2): small-leaved, dense; leaf clusters from Voronoi cells, deep bump, darker in
+    the crevices, sun-lit tips lighter."""
+    m, nt, bs, out = _new(name)
+    L = nt.links
+    pos = _world_pos(nt)
+    v = _n(nt, 'ShaderNodeTexVoronoi', (-1000, 0)); v.inputs['Scale'].default_value = 22.0
+    L.new(pos, v.inputs['Vector'])
+    v2 = _n(nt, 'ShaderNodeTexVoronoi', (-1000, -300)); v2.inputs['Scale'].default_value = 70.0
+    L.new(pos, v2.inputs['Vector'])
+    n = _noise(nt, pos, 1.2, 4, 0.6, (-1000, 300))
+    c = _ramp(nt, v.outputs['Distance'], [(0.0, (0.050, 0.095, 0.022)), (0.45, (0.030, 0.062, 0.015)), (0.8, (0.012, 0.026, 0.007))], (-600, 0))
+    c = _mix(nt, 1.0, c, _ramp(nt, n.outputs['Fac'], [(0.3, (0.85, 0.85, 0.85)), (0.7, (1.12, 1.15, 1.05))], (-600, 300)), (-300, 100), blend='MULTIPLY')
+    L.new(_grime(nt, c, ao_strength=0.5), bs.inputs['Base Color'])
+    bs.inputs['Roughness'].default_value = 0.6
+    hgt = _math(nt, 'ADD', _math(nt, 'MULTIPLY', v.outputs['Distance'], -1.0, (-600, -400)), _math(nt, 'MULTIPLY', v2.outputs['Distance'], -0.4, (-600, -550)), (-400, -450))
+    L.new(_bump(nt, hgt, 0.9, 0.05), bs.inputs['Normal'])
+    bs.inputs['Subsurface Weight'].default_value = 0.05
+    return m
+
+
+def terrain_lawn():
+    """ground cover: like xy_mats.terrain, with the lawn tuned to the aerials (fresh mown green, mowing stripes
+    faint), forest floor of needles and soil under the cedars, bank of low planting."""
+    import xy_mats as XM
+    m = XM.terrain()
+    nt = m.node_tree
+    ramps = [n for n in nt.nodes if n.type == 'VALTORGB']
+    lawn = ramps[0].color_ramp
+    for e, c in zip(lawn.elements, ((0.092, 0.180, 0.026), (0.122, 0.222, 0.032), (0.152, 0.240, 0.042))):
+        e.color = c + (1,)
+    return m
+
+
+def build_env():
+    terrain_lawn()
+    pavers('M_PathPavers', (0.20, 0.195, 0.18), block=(0.30, 0.15))
+    pavers('M_PinkPavers', (0.30, 0.165, 0.135), block=(0.24, 0.12), var=0.12, joint=(0.22, 0.17, 0.15))
+    pavers('M_WalkSlabs', (0.27, 0.235, 0.215), block=(0.60, 0.60), var=0.08)
+    granite('M_Kerb', base=(0.36, 0.35, 0.33), dark=(0.18, 0.18, 0.17), light=(0.48, 0.47, 0.45), rough=0.7)
+    granite('M_Revetment', base=(0.15, 0.15, 0.14), dark=(0.07, 0.07, 0.065), light=(0.22, 0.22, 0.21), rough=0.8)
+    granite('M_DarkGranite', base=(0.075, 0.075, 0.072), dark=(0.04, 0.04, 0.039), light=(0.12, 0.12, 0.115), rough=0.55)
+    granite('M_StoneTable', base=(0.30, 0.29, 0.27), dark=(0.16, 0.16, 0.15), light=(0.42, 0.41, 0.39), rough=0.65)
+    granite('M_EggStone', base=(0.42, 0.40, 0.36), dark=(0.22, 0.21, 0.19), light=(0.55, 0.53, 0.49), rough=0.5, scale=0.5)
+    lake_water()
+    hedge()
+    XM.simple('M_Iron', (0.016, 0.016, 0.016), rough=0.45, spec=0.5, coat=0.3)
+    XM.simple('M_LampPost', (0.030, 0.032, 0.034), rough=0.45, metal=0.5)
+    XM.simple('M_PostWhite', (0.62, 0.61, 0.58), rough=0.45)
+    XM.simple('M_LanternRed', (0.42, 0.03, 0.02), rough=0.6, spec=0.3)
+    XM.simple('M_LampGlow', (0.80, 0.78, 0.72), rough=0.35, emit=(1.0, 0.85, 0.62), emit_strength=0.0)
+    XM.simple('M_Bronze', (0.10, 0.07, 0.04), rough=0.4, metal=0.85)
+    XM.simple('M_SignBoard', (0.05, 0.035, 0.022), rough=0.6)
     return sorted(m.name for m in bpy.data.materials)

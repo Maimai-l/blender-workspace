@@ -64,6 +64,9 @@
 - Calibrating photo cameras (Qiting, 2026-11):
   - Silhouette tips of circles fix a round building's distance and height, but not its azimuth. Add points that break the symmetry, such as columns or a stair.
   - Check the solved focal length against the EXIF value: in Qiting, W02 agreed to 1 %.
+  - After solving, compare Blender's projection of a few points (`world_to_camera_view`) with the solver's. Qiting round 2 found two bugs this way: the roll sign in `xy_light.camera` (now fixed in both copies), and the vertical stretch `ky`, which needs `pixel_aspect_x = ky`.
+  - Near points leave the focal length loose, and that moves everything far away. For far scenes, add plan points and check that the horizon falls between the skyline's tops and bases (`xingyuan/docs/lessons.md`, section 9).
+- Blender jobs longer than about 100 s (full-scene renders, geometry checks) lose their MCP reply in the tunnel. Run them from `bpy.app.timers` and poll a result file through exec (`qiting/tools/rdefer.py`, `cmpview.py`, `heroes_run.py`).
 - Sandbox tooling:
   - installed: numpy, OpenCV, SciPy, Pillow, `ffmpeg` and `pdftoppm`;
   - `ezdxf` installs with pip, but reads DXF only;

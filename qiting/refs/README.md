@@ -29,15 +29,19 @@ Downscaled to 1600 px, except the plans.
 | `photos/W08.jpg` | web `08_亭内藻井彩画.jpg` | Interior caisson painting |
 | `photos/340d.jpg` | `340d186f….jpg`, 5712×4284 | West side in sun. Camera `P340d` |
 | `photos/af3b.jpg` | `af3b264c….jpg`, phone, 4096×1848 | Plaque 旗亭, couplets, eaves, brackets, stair top. Camera `Paf3b` (weak fit) |
-| `photos/419.jpg` | `微信图片_20260819201153_419_174.jpg`, dusk | Terraces, plaza setts and pale band, people for scale. Camera `P419` |
+| `photos/419.jpg` | `微信图片_20260819201153_419_174.jpg`, dusk, 2026-08-19 (file name) | Terraces, plaza setts and pale band, people for scale. Camera `P419` |
+| `photos/A1.jpg`, `photos/A2.jpg` | Two drone aerials sent with the round-2 request, 2000×1124, no EXIF; from about 70 m north of the pavilion, 29 m and 40 m above the podium floor, looking south over the lake | Round 2: the whole site (terraces, plaza, paths, lawns, planting, lamps, sculptures, lakeside walk, dock) and the far scene (lake, island, 紫云楼, halls, housing, city). Cameras `A1`, `A2` |
 | `plans/dwg_screenshot.jpg` | `2390cc8d….jpg` | Plan: rings, terraces, stair, plaza outline. 0.245 m/px |
-| `plans/masterplan_p1_1200dpi_crop.png` | `总平.pdf` page 1 at 1200 dpi, cropped round the hill | Scale bar 4.34 px/m. Registration of the DWG |
+| `plans/masterplan_p1_1200dpi_crop.png` | `总平.pdf` page 1 at 1200 dpi, cropped round the hill | Scale bar 4.34 px/m. Registration of the DWG. Round 2: the lake outline, the island and 紫云楼's position (page 1 at 300 dpi) |
+
+**Dates.** W01 and W02 were taken on 2019-09-09 (EXIF), seven years before the aerials, when the deodars round the plaza were much smaller. The model follows the aerials; the comparisons with W01, W02 and 340d (undated) leave out the planting between the camera and the building (`cmpview.py --thin`).
 
 ## Not used, or used only to check
 
 - **Distant lawn photos** (`0fe4…`, `1b06…`, `2d9a…`, `e197…`, `f030…`, `f45a…`, `5c54…`, `94b7…`, `9cf0…`, `cb1e…`, and the WeChat photos `415`, `416`, `420` and `421`): checked for silhouette and colour.
-- **`4f82…`:** the south garden stair leading up to the plaza; round 2.
+- **`4f82…`:** the south garden stair leading up to the plaza; used for the garden stairs in round 2.
 - **The video:** a pan across the lawn. The pavilion is small in it; frames 21–30 show a person on the stairs.
 - **PDF pages 2–9:** enlargements of other parts of the park.
+- **The DWG's spot heights** (round 2) give the terrain round the hill.
 
 The text, labels, dimension lines, legends and grids on the PDF and the DWG were not modelled.

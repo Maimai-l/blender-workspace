@@ -4,7 +4,7 @@
 HEROES = {
     'hero_stair':  {'loc': (1.6, 31.0, -3.15), 'target': (0.0, 4.0, 3.2), 'lens': 30, 'res': (1920, 1080),
                     'azim': 296, 'elev': 24, 'sky': 0.09, 'exposure': 0.25},
-    'hero_sw':     {'loc': (-27.0, -21.0, -2.6), 'target': (0.0, 0.0, 2.6), 'lens': 34, 'res': (1920, 1080),
+    'hero_sw':     {'loc': (-30.1, -10.9, 0.0), 'eye': 1.6, 'target': (0.0, 0.0, 2.8), 'lens': 30, 'res': (1920, 1080),
                     'azim': 235, 'elev': 38, 'sky': 0.08, 'exposure': 0.15},
     'hero_eave':   {'loc': (2.2, 7.4, 1.65), 'target': (-0.6, 2.0, 5.6), 'lens': 20, 'res': (1920, 1080),
                     'azim': 300, 'elev': 28, 'sky': 0.10, 'exposure': 0.45},
@@ -14,4 +14,14 @@ HEROES = {
                     'azim': 225, 'elev': 45, 'sky': 0.08, 'exposure': 0.05},
     'hero_dusk':   {'loc': (-20.0, 13.5, -3.25), 'target': (0.0, 0.0, 3.0), 'lens': 26, 'res': (1920, 1080),
                     'azim': 292, 'elev': 4.0, 'sky': 0.10, 'sun': 4.0, 'sun_color': (1.0, 0.60, 0.33), 'exposure': 0.55},
+    # round 2: the surroundings. 'eye' = camera height above the terrain (the z of 'loc' is then ignored)
+    'hero_lake':   {'loc': (-70.0, 85.0, 52.0), 'target': (8.0, -120.0, -14.0), 'lens': 24, 'res': (1920, 1080),
+                    'azim': 250, 'elev': 36, 'sky': 0.08, 'exposure': 0.10},
+    # eye-level cameras placed where the tree list leaves a clear line to the pavilion
+    'hero_shore':  {'loc': (1.0, -57.0, 0.0), 'eye': 1.6, 'target': (0.0, 0.0, 5.0), 'lens': 32, 'res': (1920, 1080),
+                    'azim': 205, 'elev': 42, 'sky': 0.08, 'exposure': 0.15},
+    'hero_garden': {'loc': (57.7, 6.1, 0.0), 'eye': 1.6, 'target': (0.0, 1.0, 3.5), 'lens': 32, 'res': (1920, 1080),
+                    'azim': 125, 'elev': 32, 'sky': 0.09, 'exposure': 0.20},
+    'hero_vista':  {'loc': (3.0, -9.5, 1.3), 'target': (-6.0, -270.0, -2.0), 'lens': 32, 'res': (1920, 1080),
+                    'azim': 260, 'elev': 34, 'sky': 0.08, 'exposure': 0.10},
 }

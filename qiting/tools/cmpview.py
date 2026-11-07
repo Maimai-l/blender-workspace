@@ -19,6 +19,8 @@ ap.add_argument('--samples', type=int, default=48)
 ap.add_argument('--extra', default='')
 ap.add_argument('--norender', action='store_true')
 ap.add_argument('--label', default='')
+ap.add_argument('--thin', action='store_true', help='leave out planting and lamps between the camera and the building '
+                '(photos older than the 2026 aerials, taken before the trees grew)')
 a = ap.parse_args()
 
 sol = json.load(open(os.path.join(xyp.TOOLS, 'cal', a.name + '_sol.json')))
@@ -26,18 +28,39 @@ W, H = sol['W'], sol['H']
 rw, rh = int(round(W * a.scale)), int(round(H * a.scale))
 rname = 'cmp_' + a.name
 view = {'name': rname, 'loc': tuple(sol['loc']), 'target': tuple(sol['target']), 'lens': sol['lens'],
-        'roll': sol['roll'], 'res': (rw, rh), 'samples': a.samples, 'shift': tuple(sol.get('shift', (0.0, 0.0)))}
-if sol['loc'][2] < -4.9:            # photographer below the plaza (on the hillside, not modelled this round)
-    view['hide'] = ('QT_stage_ground', 'QT_plaza')   # the hillside below the plaza is not modelled this round
+        'roll': sol['roll'], 'res': (rw, rh), 'samples': a.samples, 'shift': tuple(sol.get('shift', (0.0, 0.0))), 'ky': sol.get('ky', 1.0),
+        'defer': True}
 extra = ''
 if a.extra:
     extra = a.extra
+if a.thin:
+    # convex hull of the camera's surroundings (10 m) and the building's footprint (podium r 12 m, north stair to y 23 m)
+    import math as _m
+    cx_, cy_ = sol['loc'][:2]
+    pts = ([(cx_ + 10 * _m.cos(t), cy_ + 10 * _m.sin(t)) for t in [k * _m.pi / 8 for k in range(16)]] +
+           [(12.5 * _m.cos(t), 12.5 * _m.sin(t)) for t in [k * _m.pi / 12 for k in range(24)]] + [(-2.5, 23.5), (2.5, 23.5)])
+    pts = sorted(set(pts))
+    def _cross(o, a_, b_):
+        return (a_[0] - o[0]) * (b_[1] - o[1]) - (a_[1] - o[1]) * (b_[0] - o[0])
+    lo, hi = [], []
+    for p_ in pts:
+        while len(lo) >= 2 and _cross(lo[-2], lo[-1], p_) <= 0: lo.pop()
+        lo.append(p_)
+    for p_ in reversed(pts):
+        while len(hi) >= 2 and _cross(hi[-2], hi[-1], p_) <= 0: hi.pop()
+        hi.append(p_)
+    view['thin'] = [(round(x, 2), round(y, 2)) for x, y in lo[:-1] + hi[:-1]]
 code_pre = 'VIEW = %r\n%s\nVIEW.update(globals().get("VX", {}))' % (view, extra)
 remote = xyp.PC_ROOT + '\\renders\\' + rname + '.jpg'
 local = os.path.join(xyp.S, 'renders', rname + '.jpg')
 if not a.norender:
     out = bmcp.text_of(bmcp.call('execute_blender_code', {'code': code_pre + '\n' + open(os.path.join(xyp.PROJ, 'scripts', 'render_view.py'), encoding='utf-8').read()}))
     print(out.strip().splitlines()[-2:] if out.strip() else out)
+    if 'deferred' in out:            # the render runs from a timer in Blender; wait for its marker through exec
+        msg = pcx.wait_file(remote + '.done')
+        print(msg)
+        if msg.startswith('FAILED'):
+            sys.exit(1)
     pcx.fetch(remote, local)
 ref = Image.open(a.ref).convert('RGB')
 ren = Image.open(local).convert('RGB').resize((W, H), Image.LANCZOS)

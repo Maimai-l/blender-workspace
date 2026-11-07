@@ -30,8 +30,13 @@ def poke(p):
 report = {}
 pts = []
 BOX0 = (-7.0, -7.0, 7.0, 7.0)
+def in_lib(o):
+    # hidden instance sources (tree templates etc., in _LIB and its sub-collections) sit at the origin and never render
+    return o is not None and (not o.visible_get() or any(c.name == '_LIB' for c in o.users_collection))
 for o in bpy.data.objects:
     if o.type != 'MESH' or any(k in o.name for k in ROOF_KEYS) or o.name.startswith(SKIP) or any(s in o.name for s in SKIP):
+        continue
+    if in_lib(o):
         continue
     if any(m.type == 'NODES' for m in o.modifiers):
         continue
@@ -44,6 +49,8 @@ for inst in dg.object_instances:
         continue
     par = inst.parent.name if inst.parent else ''
     if any(k in par for k in ROOF_KEYS) or any(s in par for s in SKIP):
+        continue
+    if in_lib(bpy.data.objects.get(par)):
         continue
     ob = inst.object
     M = inst.matrix_world.copy()

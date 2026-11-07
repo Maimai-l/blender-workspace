@@ -11,7 +11,7 @@
 import math
 
 # ------------------------------------------------------------------ podium (台基)
-Z_PLAZA = -4.80          # plaza below the podium floor: W02 terraces base -4.6, stair foot -5.0 (posts); flat compromise
+Z_PLAZA = -4.80          # plaza round the terraces (W02 terrace base -4.6); it falls to -5.0 at the stair foot (north)
 R_COPING = 5.42          # podium coping edge (DWG circle 22.1 px; W02 410 px)
 R_DRUM = 5.27            # relief ground; its raised border is 5 cm proud = 5.32 (W02 402 px)
 COPING_T = 0.26          # coping slab thickness (W02 y 1500-1520)
@@ -29,15 +29,21 @@ BAL_POST_W = 0.20        # W02 15 px
 BAL_POST_H = 1.48        # W02 y 1388
 BAL_RAIL_H = 0.93        # top of the hand rail (寻杖), W02 y 1430
 
-# podium stair (north): three flights and two landings, measured on the calibrated W02 view (posts on the east
-# parapet at r 7.82 / 9.82, 13.76 / 14.87 and the foot post at 19.40; landing post tops 1.45 and 3.15 m below the
-# podium posts). Riser count per flight follows from the heights at a ~0.145 m riser.
-STAIR_W_CLEAR = 2.40     # between the parapets (DWG 2.45 m, master plan 2.3 m between the stair lines)
-STAIR_PARAPET = 0.36
-STAIR_FLIGHTS = [(10, 0.272), (11, 0.355), (12, 0.390)]    # (risers, tread) per flight, top flight first
-STAIR_LANDINGS = [2.20, 1.30]
+# podium stair (north): three flights and two landings, measured on the calibrated W02 view (east parapet posts at
+# r 8.47 / 10.50 and 14.47 / 15.58 with tops 1.45 and 3.10 m under the podium posts; the parapet ends at r 20.9, 5.0 m
+# below the podium floor). Re-measured in round 2 with the corrected W02 camera (azimuth 14.8 deg); round 1 had used
+# the first, unrotated W02 solution. 34 equal risers of 0.147 m; the aerials A1/A2 show three flights and two
+# landings, and three more steps beyond the parapet ends down to the north path.
+STAIR_W_CLEAR = 1.60     # between the parapets. The DWG (2.45 m) and master-plan (2.3 m) stair lines are the OUTER
+                         # faces; the aerials A1/A2 show the stair 0.6x as wide as round 1 had it, and af3b fits a
+                         # 1.6 m clear width best (round 1 took 2.4 m as the clear width)
+STAIR_PARAPET = 0.30     # outer width 2.20 m
+STAIR_FLIGHTS = [(10, 0.337), (11, 0.395), (13, 0.443)]    # (risers, tread) per flight, top flight first
+STAIR_LANDINGS = [2.05, 1.13]
 STAIR_R0 = 5.42          # top riser at the coping edge on the axis
-STAIR_RISERS = sum(n for n, t in STAIR_FLIGHTS)            # 33
+STAIR_RISERS = sum(n for n, t in STAIR_FLIGHTS)            # 34
+Z_STAIR_FOOT = -5.00     # plaza level at the stair foot (W02); the plaza falls 0.2 m from the terraces to here
+STAIR_EXTRA = (3, 0.36, 0.15)   # steps beyond the parapet ends down to the north path: count, tread, riser (A1/A2)
 STAIR_DOOR = (5.55, 0.50, -2.00, -1.30)   # small doors in both side walls by the drum (W02 east, 340d west): r, w, z0, z1
 
 # ------------------------------------------------------------------ pavilion, lower storey
@@ -122,3 +128,12 @@ def roof2_z(r):
 
 def plaza_r(theta_deg):
     return interp(PLAZA_R, theta_deg % 360.0)
+
+
+def plaza_z(x, y):
+    """plaza surface: -4.80 round the terraces, falling 0.20 m toward the stair foot on the north (W02 stair foot -5.0)."""
+    if y <= 12.0:
+        return Z_PLAZA
+    t = min(1.0, (y - 12.0) / 9.0)
+    w = max(0.0, 1.0 - abs(x) / 14.0)              # only the north lobe falls
+    return Z_PLAZA - 0.20 * t * w

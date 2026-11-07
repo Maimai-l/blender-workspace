@@ -7,7 +7,10 @@ view.json: {"W": .., "H": .., "f_px": null | number (fixed focal length in px), 
             "obs": [ {"k": "pt", "X": [x, y, z], "uv": [u, v], "name": ".."},
                      {"k": "tipL" | "tipR", "z": .., "R": .., "uv": [u, v], "name": ".."},     # silhouette tip
                      {"k": "top" | "bot", "z": .., "R": .., "uv": [u, v]},                     # highest/lowest point
-                     {"k": "u", "X": [x, y, z], "u": ..}  ]}                                  # only the column
+                     {"k": "u", "X": [x, y, z], "u": ..},                                    # only the column
+                     {"k": "v", "X": [x, y, z], "v": ..},                                    # only the row
+                     {"k": "curve", "P": [[x, y, z], ..], "uv": [u, v]},                     # point on a 3D polyline
+                     {"k": "lean", "uv": [u, v], "a": deg}  ]}                               # lean of a vertical edge
 Uses the camera convention of calib.py (yaw about z from +y, pitch up, roll); lens is in mm on a 36 mm sensor width.
 """
 import json, math, os, sys
@@ -22,13 +25,27 @@ CIRC = np.linspace(0, 2 * math.pi, 721)[:-1]
 def proj(p, P, W, H):
     cx, cy, cz, yaw, pitch, roll, lens = p[:7]
     su, sv = (p[7], p[8]) if len(p) > 7 else (0.0, 0.0)      # principal point offset in px (cropped photos)
+    ky = p[9] if len(p) > 9 else 1.0                         # vertical pixel scale (stretched photos)
     fwd, right, up = rot(yaw, pitch, roll)
     d = np.atleast_2d(P) - np.array([cx, cy, cz])
     z = d @ fwd
     x = d @ right
     y = d @ up
     f = lens / 36.0 * W
-    return np.stack([W / 2 + su + f * x / z, H / 2 + sv - f * y / z], 1), z
+    return np.stack([W / 2 + su + f * x / z, H / 2 + sv - f * ky * y / z], 1), z
+
+
+def lean(p, uv, W, H):
+    """image lean (deg) of a vertical world line through image point uv"""
+    cx, cy, cz, yaw, pitch, roll, lens = p[:7]
+    su, sv = (p[7], p[8]) if len(p) > 7 else (0.0, 0.0)
+    ky = p[9] if len(p) > 9 else 1.0
+    fwd, right, up = rot(yaw, pitch, roll)
+    f = lens / 36.0 * W
+    d = fwd + (uv[0] - W / 2 - su) / f * right - (uv[1] - H / 2 - sv) / (f * ky) * up
+    X = np.array([cx, cy, cz]) + 1000.0 * d / np.linalg.norm(d)
+    q, _ = proj(p, [X, X + np.array([0.0, 0.0, 10.0])], W, H)
+    return math.degrees(math.atan2(q[0, 0] - q[1, 0], q[0, 1] - q[1, 1]))
 
 
 def circle_pts(z, R):
@@ -47,6 +64,22 @@ def residuals(p, J):
         elif k == 'u':
             uv, _ = proj(p, o['X'], W, H)
             r += [w * (uv[0, 0] - o['u'])]
+        elif k == 'v':
+            # only the row: far points whose plan x is uncertain but whose distance matters (horizon, depth)
+            uv, _ = proj(p, o['X'], W, H)
+            r += [w * (uv[0, 1] - o['v'])]
+        elif k == 'lean':
+            # lean (deg, bottom minus top, + = bottom to the right) of a vertical edge through image point uv,
+            # e.g. a tower in the skyline: fixes the roll. 1 deg counts as 3 px.
+            r += [w * 3.0 * (o['a'] - lean(p, o['uv'], W, H))]
+        elif k == 'curve':
+            # image point lies on the projection of a 3D polyline (e.g. a stair axis): distance to the curve
+            P = np.array(o['P'], float)
+            Pd = np.concatenate([P[:-1] + (P[1:] - P[:-1]) * t for t in np.linspace(0, 1, 12)[:, None, None]], 0)
+            uv, zc = proj(p, Pd, W, H)
+            uv = uv[zc > 0.1]
+            dd = np.hypot(uv[:, 0] - o['uv'][0], uv[:, 1] - o['uv'][1])
+            r += [w * float(dd.min()) if len(dd) else 1e4]
         else:
             uv, zc = proj(p, circle_pts(o['z'], o['R']), W, H)
             ok = zc > 0.1
@@ -79,7 +112,8 @@ def solve(J):
     if fixed:
         lens = fixed / W * 36.0
 
-    shift = J.get('shift', False)
+    shift = J.get('shift', False) or J.get('aspect', False)
+    aspect = J.get('aspect', False)
     nf = 0 if fixed else 1
 
     fz = J.get('fix_z')
@@ -89,15 +123,15 @@ def solve(J):
         if fz is not None:
             p[2] = fz
         if shift:
-            p += [q[6 + nf], q[7 + nf]]
+            p += [q[6 + nf], q[7 + nf]] if not aspect else [0.0, 0.0, q[6 + nf]]
         return residuals(p, J)
-    q0 = [cx, cy, cz, yaw, pitch, 0.0] + ([] if fixed else [lens]) + ([0.0, 0.0] if shift else [])
+    q0 = [cx, cy, cz, yaw, pitch, 0.0] + ([] if fixed else [lens]) + (([0.0, 0.0] if not aspect else [1.0]) if shift else [])
     sol = least_squares(res, q0, loss='soft_l1', f_scale=6.0, max_nfev=20000)
     p = list(sol.x[:6]) + [lens if fixed else sol.x[6]]
     if fz is not None:
         p[2] = fz
     if shift:
-        p += [sol.x[6 + nf], sol.x[7 + nf]]
+        p += [sol.x[6 + nf], sol.x[7 + nf]] if not aspect else [0.0, 0.0, sol.x[6 + nf]]
     return p, res(sol.x)
 
 
@@ -114,16 +148,22 @@ if __name__ == '__main__':
         # Blender lens shift is in units of the larger sensor side: shift_x = -su / W, shift_y = sv / W
         out['shift'] = [round(-p[7] / J['W'], 5), round(p[8] / J['W'], 5)]
         out['pp_px'] = [round(p[7], 1), round(p[8], 1)]
+    if len(p) > 9:
+        out['ky'] = round(p[9], 5)
     json.dump(out, open(path.replace('.json', '_sol.json'), 'w'), indent=1)
     print(json.dumps(out))
     # per-observation residual norms
     i = 0
     rows = []
     for o in J['obs']:
-        n = 1 if o['k'] in ('u', 'top', 'bot') else 2
+        n = 1 if o['k'] in ('u', 'v', 'top', 'bot', 'curve', 'lean') else 2
         e = r[i:i + n] / o.get('w', 1.0)
         i += n
         rows.append((o.get('name', o['k']), float(np.hypot(*e)) if n == 2 else float(abs(e[0]))))
+    leans = [b / 3.0 for (a, b), o in zip(rows, J['obs']) if o['k'] == 'lean']
+    rows = [ab for ab, o in zip(rows, J['obs']) if o['k'] != 'lean']
     print('residuals px:', ', '.join('%s %.1f' % (a, b) for a, b in rows))
+    if leans:
+        print('vertical edges: %d, median |lean error| %.2f deg' % (len(leans), float(np.median(leans))))
     print('rms %.2f px  (image %dx%d, f %.0f px, lens %.2f mm, cam height %.2f, dist %.1f m)' % (
         float(np.sqrt((r ** 2).mean())), J['W'], J['H'], out['f_px'], p[6], loc[2], math.hypot(loc[0], loc[1])))

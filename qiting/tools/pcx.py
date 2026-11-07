@@ -59,6 +59,18 @@ def bash(cmd, timeout_ms=85000):
             time.sleep(3)
 
 
+def wait_file(remote, timeout_s=1800, round_s=75):
+    """Wait until a file exists on the PC (e.g. the .done marker of a deferred render); returns its text."""
+    t0 = time.time()
+    u = _unix(remote)
+    while time.time() - t0 < timeout_s:
+        out = bash('for i in $(seq 1 %d); do if [ -f "%s" ]; then echo FOUND; cat "%s"; exit 0; fi; sleep 1; done; echo WAIT'
+                   % (round_s, u, u), timeout_ms=(round_s + 10) * 1000)
+        if 'FOUND' in out:
+            return out.split('FOUND', 1)[1].strip()
+    raise TimeoutError('no %s after %d s' % (remote, timeout_s))
+
+
 def write_text(remote, text):
     """Write a NEW file on the PC (exec's Write refuses to overwrite files it has not read)."""
     r = execc.call('Write', {'file_path': remote, 'content': text})

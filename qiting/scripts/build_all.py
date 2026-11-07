@@ -17,19 +17,18 @@ if bpy.data.filepath.lower() != TARGET.lower():
 
 STEPS = globals().get('STEPS') or ['all']
 if 'all' in STEPS:
-    STEPS = ['mats', 'roof', 'frame', 'podium', 'ground', 'boards']
+    STEPS = ['mats', 'roof', 'frame', 'podium', 'boards']      # the plaza ('ground') is built by build_env.py since round 2
 
 # collections by part (names as asked: 屋面 檐下 柱与墙身 台基 台阶与栏杆 匾联 地面)
 COLL = {k: C.coll(v) for k, v in (('roof', '屋面'), ('eave', '檐下'), ('cols', '柱与墙身'), ('podium', '台基'),
                                   ('stair', '台阶与栏杆'), ('boards', '匾联'), ('ground', '地面'))}
-COLL['stage'] = C.coll('临时背景（非复刻内容）')
 C.lib_coll()
 
 OWN = {
     'roof': (('QT_R1_', 'QT_R2_', 'QT_finial', 'QT_collar'), ('SRC_cover', 'SRC_pan', 'SRC_cover_eave', 'SRC_pan_eave', 'SRC_fly', 'SRC_eaverafter')),
     'frame': (('QT_columns', 'QT_column_bases', 'QT_beams', 'QT_band', 'QT_brackets', 'QT_posts', 'QT_upper_windows', 'QT_ceiling',
                'QT_inner_wall', 'QT_caisson'), ('SRC_qt_col', 'SRC_qt_colin', 'SRC_qt_base', 'SRC_qt_brk1', 'SRC_qt_brk2', 'SRC_qt_post2')),
-    'podium': (('QT_floor', 'QT_coping', 'QT_relief', 'QT_plinth', 'QT_terrace', 'QT_balustrade', 'QT_stair'), ('SRC_qt_post', 'SRC_qt_bay')),
+    'podium': (('QT_floor', 'QT_coping', 'QT_relief', 'QT_plinth', 'QT_terrace', 'QT_balustrade', 'QT_stair', 'QT_floodlights'), ('SRC_qt_post', 'SRC_qt_bay')),
     'ground': (('QT_plaza', 'QT_stage'), ('SRC_qt_sett', 'SRC_qt_sett_light', 'SRC_qt_sett_px', 'SRC_qt_sett_light_px')),
     'boards': (('QT_plaque', 'QT_couplet'), ()),
 }
@@ -74,12 +73,13 @@ for st in STEPS:
         objs.append(qt_podium.coping(COLL['podium']))
         objs += qt_podium.drum(COLL['podium'])
         objs += qt_podium.terraces(COLL['podium'])
+        objs.append(qt_podium.floodlights(COLL['podium']))
         objs += qt_podium.podium_balustrade(COLL['stair'])
         objs += qt_podium.stair(COLL['stair'], COLL['stair'])
         log.append('podium: %d objects' % len(objs))
     elif st == 'ground':
         objs, n = qt_ground.plaza(COLL['ground'])
-        qt_ground.stage_ground(COLL['stage'])
+        qt_ground.stage_ground(C.coll('临时背景（非复刻内容）'))     # round-1 stand-in ground; round 2 has the terrain
         log.append('ground: %d setts' % n)
     elif st == 'boards':
         objs = qt_frame.boards(COLL['boards'])

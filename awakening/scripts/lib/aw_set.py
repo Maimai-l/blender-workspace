@@ -358,20 +358,24 @@ def canopy_overhangs(scene):
     a, b = A.shot_range('s10_sky')
     scene.frame_set(a)
     gap_center = Vector((2.5, 3.5, 0))
-    for j, ang in enumerate((25, 115, 205, 295)):
-        im = imgs[j % 2]
-        w = 320; h = w * im.size[1] / im.size[0]
-        d = Vector((math.cos(math.radians(ang)), math.sin(math.radians(ang)), 0))
-        # pitch 90: image-up (+Z) becomes -Y, then yawed to point along d. The leafy edge lies 27 % below the image
-        # top, i.e. 0.23 h from the centre toward image-up; put that edge at the gap radius R
-        R = 13.0
-        center = gap_center + d * (R - h * 0.23) + Vector((0, 0, 40 + 2 * (j % 2)))
-        ob = card('CanopyGap_%d' % j, im, w, h, center, mat=mats[j % 2], bottom=False, pitch=90)
-        ob.rotation_euler = (math.radians(90), 0, math.atan2(d.y, d.x) + math.pi / 2)
-        for sec_f, hide in ((1, True), (a, False)):
-            ob.hide_render = hide; ob.keyframe_insert('hide_render', frame=sec_f)
-            ob.hide_viewport = hide; ob.keyframe_insert('hide_viewport', frame=sec_f)
-        out.append(ob)
+    # inner ring: leafy edges at R = 13 m; outer ring (offset by 45 degrees, lower) continues the canopy to 100+ m
+    rings = [(13.0, 40.0, (25, 115, 205, 295)), (52.0, 36.0, (70, 160, 250, 340))]
+    j = 0
+    for R, z, angs in rings:
+        for ang in angs:
+            im = imgs[j % 2]
+            w = 320; h = w * im.size[1] / im.size[0]
+            d = Vector((math.cos(math.radians(ang)), math.sin(math.radians(ang)), 0))
+            # pitch 90: image-up (+Z) becomes -Y, then yawed to point along d. The leafy edge lies 27 % below the
+            # image top, i.e. 0.23 h from the centre toward image-up; put that edge at the ring radius R
+            center = gap_center + d * (R - h * 0.23) + Vector((0, 0, z + 2 * (j % 2)))
+            ob = card('CanopyGap_%d' % j, im, w, h, center, mat=mats[j % 2], bottom=False, pitch=90)
+            ob.rotation_euler = (math.radians(90), 0, math.atan2(d.y, d.x) + math.pi / 2)
+            for sec_f, hide in ((1, True), (a, False)):
+                ob.hide_render = hide; ob.keyframe_insert('hide_render', frame=sec_f)
+                ob.hide_viewport = hide; ob.keyframe_insert('hide_viewport', frame=sec_f)
+            out.append(ob)
+            j += 1
     return out
 
 def sky_image_world(scene, ambient=(0.55, 0.58, 0.72), amb_strength=0.25):

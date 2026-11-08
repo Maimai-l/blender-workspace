@@ -60,8 +60,8 @@ FX.flock(treetops)
 torso = bpy.data.objects['RB_torso']
 flames = FX.engine_flames(torso)
 FX.animate_flames(flames)
-ring = FX.wind_ring('FX_ring1'); FX.animate_ring(ring, 44.6, 47.2, r0=3, r1=80, z=0.7, alpha=0.8)
-ring2 = FX.wind_ring('FX_ring2'); FX.animate_ring(ring2, 47.4, 49.6, r0=4, r1=140, z=1.2, alpha=0.9)
+ring = FX.wind_ring('FX_ring1'); FX.animate_ring(ring, 44.6, 47.2, r0=3, r1=80, z=1.2, alpha=0.9)
+ring2 = FX.wind_ring('FX_ring2'); FX.animate_ring(ring2, 47.4, 49.6, r0=4, r1=140, z=1.6, alpha=0.95)
 TRAIL_PTS = [(0, 0.6, 5.0), (0.8, 1.6, 13.0), (4.5, 5.5, 41.0), (16.0, 17.0, 115.0), (62.0, 52.0, 425.0)]
 TRAIL_KEYS = [(47.4, 0.01), (47.45, 0.02), (48.0, 0.12), (49.0, 0.32), (50.5, 0.62), (56.0, 1.0)]
 trail = FX.trail(TRAIL_PTS, 'FX_trail', depth=1.1, color=(1.0, 0.9, 0.6), strength=3.0)
@@ -87,7 +87,7 @@ for ob in bpy.data.objects:
 # leaves blown by the ignition wind: a ground disc emitter
 bpy.ops.mesh.primitive_circle_add(vertices=48, radius=45, fill_type='NGON', location=(0, 0.6, 0.6))
 disc = bpy.context.active_object; disc.name = 'FX_leafdisc'; C.link(disc, C.coll('FX'))
-disc.show_instancer_for_render = False; disc.show_instancer_for_viewport = False
+FX.hide_emitter(disc)
 ps_wind = FX.particles(disc, 'windleaves', src, 44.6, 46.8, 500, life=3.0, vel_normal=0.2, vel_rand=0.3, size=0.6, size_rand=0.4, gravity=0.35, drag=0.15, seed=9)
 scope(ps_wind, fields_wind)
 wind = FX.force_field('FX_wind', 'FORCE', (0, 0.6, 2), 0.0, falloff_type='SPHERE', falloff_power=1.0)
@@ -99,7 +99,7 @@ wind.field.strength = 260; wind.keyframe_insert('field.strength', frame=A.F(47.6
 wind.field.strength = 0; wind.keyframe_insert('field.strength', frame=A.F(49.0))
 # leaves spiralling down through the sunbeams in the last shot
 bpy.ops.mesh.primitive_circle_add(vertices=32, radius=26, fill_type='NGON', location=(-4, -6, 34))
-top = bpy.context.active_object; top.name = 'FX_leaftop'; C.link(top, C.coll('FX')); top.show_instancer_for_render = False; top.show_instancer_for_viewport = False
+top = bpy.context.active_object; top.name = 'FX_leaftop'; C.link(top, C.coll('FX')); FX.hide_emitter(top)
 ps_fall = FX.particles(top, 'fallleaves', src, 47.8, 54.5, 150, life=9.0, vel_normal=0.0, vel_rand=0.8, size=0.7, size_rand=0.4, gravity=0.06, drag=0.25, seed=5, lifetime_rand=0.1)
 scope(ps_fall, fields_sky)
 vortex = FX.force_field('FX_vortex', 'VORTEX', (0, 0.6, 15), 1.6, falloff_type='SPHERE', falloff_power=0.5)

@@ -192,32 +192,45 @@ def animate_flames(flames):
         C.stepped(ob, 2)
 
 # ---------------------------------------------------------------- wind ring
-def wind_ring(name='FX_ring', r_in=0.75, r_out=1.0, segs=96):
+def wind_ring(name='FX_ring', segs=96, rsegs=12, seed=None):
+    """Dust skirt of the shockwave: a flattened, lumpy torus with a cel dust material. Scaled (r, r, 1) when it
+    expands, so it gets wider but not taller."""
     coll = fx_coll()
     bm = M.new_bm()
-    rnd = C.rng(name)
-    outer = []; inner = []
+    rnd = C.rng(seed or name)
+    verts = []
     for i in range(segs):
         a = 2 * math.pi * i / segs
-        wob = 1 + 0.08 * math.sin(a * 9 + 1.3) + 0.05 * math.sin(a * 17)
-        outer.append(bm.verts.new((math.cos(a) * r_out * wob, math.sin(a) * r_out * wob, 0.0)))
-        inner.append(bm.verts.new((math.cos(a) * r_in, math.sin(a) * r_in, 0.0)))
+        lump = 1 + 0.10 * math.sin(a * 7 + 0.4) + 0.06 * math.sin(a * 13 + 2.0) + 0.04 * (rnd.random() - 0.5)
+        for j in range(rsegs):
+            b = 2 * math.pi * j / rsegs
+            rr = 1.0 + 0.11 * lump * math.cos(b)          # horizontal tube radius 0.11 of the ring radius
+            z = 1.6 * math.sin(b) * (0.75 + 0.25 * math.sin(a * 5 + 1.0))   # vertical half-thickness ~1.6 m
+            verts.append(bm.verts.new((math.cos(a) * rr, math.sin(a) * rr, z)))
     for i in range(segs):
-        f = bm.faces.new((inner[i], outer[i], outer[(i + 1) % segs], inner[(i + 1) % segs]))
-        f.smooth = True
-    mat = emissive(name + '_mat', (0.98, 0.95, 0.88), 1.2, alpha=0.8)
+        for j in range(rsegs):
+            a0 = verts[i * rsegs + j]; a1 = verts[i * rsegs + (j + 1) % rsegs]
+            b0 = verts[((i + 1) % segs) * rsegs + j]; b1 = verts[((i + 1) % segs) * rsegs + (j + 1) % rsegs]
+            f = bm.faces.new((a0, b0, b1, a1)); f.smooth = True
+    mat = S.cel_material(name + '_mat', (0.96, 0.92, 0.84), line=(0.3, 0.25, 0.2, 1))
+    g = S.group_node(mat)
+    g.inputs['Shadow Mul'].default_value = (0.80, 0.78, 0.84, 1)
+    g.inputs['Deep Mul'].default_value = (0.70, 0.68, 0.78, 1)
+    g.inputs['Alpha'].default_value = 0.9
+    mat.surface_render_method = 'BLENDED'
     ob = M.finish(bm, name, [mat], coll)
     ob.visible_shadow = False
     return ob
 
-def animate_ring(ob, t0, t1, r0=3.0, r1=95.0, z=0.6, alpha=0.85):
+def animate_ring(ob, t0, t1, r0=3.0, r1=95.0, z=0.6, alpha=0.9):
     mat = ob.data.materials[0]
+    g = S.group_node(mat)
     ob.animation_data_clear(); mat.node_tree.animation_data_clear()
     ob.location = (0, 0.6, z)
     def k(sec, r, a):
         ob.scale = (r, r, 1); ob.keyframe_insert('scale', frame=F(sec))
-        key_fade(mat, F(sec), a)
-    k(t0 - 0.01, 0.01, 0.0); k(t0, r0, alpha); k(t0 + (t1 - t0) * 0.35, r0 + (r1 - r0) * 0.55, alpha * 0.8); k(t1, r1, 0.0)
+        g.inputs['Alpha'].default_value = a; g.inputs['Alpha'].keyframe_insert('default_value', frame=F(sec))
+    k(t0 - 0.01, 0.01, 0.0); k(t0, r0, alpha); k(t0 + (t1 - t0) * 0.35, r0 + (r1 - r0) * 0.55, alpha * 0.85); k(t1, r1, 0.0)
     for fc in C.fcurves(ob):
         for kp in fc.keyframe_points:
             kp.interpolation = 'BEZIER'; kp.easing = 'EASE_OUT'
@@ -420,7 +433,7 @@ def ring_emitter(name, r0, r1, z=0.4, segs=48):
     for i in range(segs):
         bm.faces.new((inner[i], outer[i], outer[(i + 1) % segs], inner[(i + 1) % segs]))
     ob = M.finish(bm, name, [], fx_coll(), loc=(0, 0.6, z))
-    ob.show_instancer_for_render = False; ob.show_instancer_for_viewport = False
+    hide_emitter(ob)
     return ob
 
 def dust_particles(emitter, name, t0, t1, count, size, life=2.2, vel=1.2, gravity=-0.05, seed=3):
@@ -476,3 +489,31 @@ def trail_follow(trail, root, z_offset=-6.0, t0=47.4, t1=56.0, samples=60):
     for fc in C.fcurves(cu):
         for kp in fc.keyframe_points:
             kp.interpolation = 'LINEAR'
+
+
+def hide_emitter(ob):
+    """Particle emitters must stay renderable for their particles, but their own surface must not show:
+    camera ray visibility off, no shadow, and a fully transparent material as a second guard."""
+    ob.show_instancer_for_render = False
+    ob.show_instancer_for_viewport = False
+    for attr in ('visible_camera', 'visible_shadow', 'visible_diffuse', 'visible_glossy', 'visible_transmission', 'visible_volume_scatter'):
+        try:
+            setattr(ob, attr, False)
+        except Exception:
+            pass
+    mat = bpy.data.materials.get('FX_Invisible')
+    if mat is None:
+        mat = bpy.data.materials.new('FX_Invisible')
+        mat.use_nodes = True
+        nt = mat.node_tree; nt.nodes.clear()
+        tr = nt.nodes.new('ShaderNodeBsdfTransparent')
+        out = nt.nodes.new('ShaderNodeOutputMaterial')
+        nt.links.new(tr.outputs[0], out.inputs[0])
+        mat.surface_render_method = 'BLENDED'
+        try:
+            mat.use_transparent_shadow = True
+        except Exception:
+            pass
+    ob.data.materials.clear()
+    ob.data.materials.append(mat)
+    return ob

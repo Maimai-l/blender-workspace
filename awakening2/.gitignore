@@ -6,3 +6,4 @@ fx_tests/*_f[0-9][0-9][0-9].png
 bird_tests/*_f[0-9][0-9][0-9].png
 __pycache__/
 *.pyc
+board/animatic_frames/

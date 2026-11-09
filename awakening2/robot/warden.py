@@ -22,7 +22,7 @@ from rig import Rig, Part
 PAINT, METAL, LENS, GLOW, MOSS, WOOD, CABLE, DARK, LIDS, SOIL = R.PAINT, R.METAL, R.LENS, R.GLOW, R.MOSS, R.WOOD, R.CABLE, R.DARK, R.LIDS, R.SOIL
 ROOF, BRASS = 11, 12
 
-VERSION = '10'
+VERSION = '11'
 
 
 def _len2(x, y):
@@ -153,8 +153,11 @@ def sdf_head(p):
     # snout with furnace-grille vents
     snout = sd_box(p, (0, 1.95, 0.36), (0.9, 0.48, 0.5), r=0.4)
     d = SU(d, snout, 0.3)
-    vents = U(*[sd_box(p, (x, 2.42, 0.3), (0.075, 0.3, 0.2), r=0.04) for x in (-0.3, 0.0, 0.3)])
-    d = SUB(d, vents)
+    # a framed furnace grille on the snout: a recess with four upright slats
+    rec = sd_box(p, (0, 2.42, 0.34), (0.56, 0.2, 0.26), r=0.12)
+    d = SUB(d, rec)
+    slats = U(*[sd_box(p, (x, 2.3, 0.34), (0.045, 0.12, 0.25), r=0.02) for x in (-0.33, -0.11, 0.11, 0.33)])
+    d = U(d, slats)
     # lamp-housing ears
     ears = U(sd_cyl(p, (1.62, 0.45, 1.2), (2.12, 0.45, 1.2), 0.66, 0.12),
              sd_cyl(p, (-1.62, 0.45, 1.2), (-2.12, 0.45, 1.2), 0.66, 0.12))
@@ -324,10 +327,10 @@ def mat_head(o, m):
     for sx in (1, -1):
         d = np.sqrt((o[:, 0] - sx * ex) ** 2 + (o[:, 1] - (ey + 0.16)) ** 2 + (o[:, 2] - ez) ** 2)
         out[(d < 0.62) & (o[:, 1] < ey + 0.12)] = DARK
-    # the vent slots' interiors
-    inv = (o[:, 1] > 2.0) & (o[:, 1] < 2.36) & (np.abs(o[:, 2] - 0.3) < 0.2)
-    slot = np.abs(np.abs(o[:, 0]) - np.where(np.abs(o[:, 0]) > 0.15, 0.3, 0.0)) < 0.075
-    out[inv & slot] = DARK
+    # the grille recess (not the slats) is dark
+    inrec = (np.abs(o[:, 0]) < 0.55) & (np.abs(o[:, 2] - 0.34) < 0.25) & (o[:, 1] > 2.1) & (o[:, 1] < 2.405)
+    slat = np.min(np.abs(o[:, 0:1] - np.array([[-0.33, -0.11, 0.11, 0.33]])), axis=1) < 0.05
+    out[inrec & ~slat] = DARK
     return out
 
 
@@ -414,9 +417,12 @@ def eye_colour(o, glow, lit):
     # reflected sky crescent (upper-left) on dormant glass
     refl = (dz > 0.12) & (dx < -0.02) & (r < 0.8) & (r > 0.45)
     out[refl] = hexc('8d9cb0')
-    if glow > 0:
+    if glow > 0.04:
+        # a lamp warming up: ember red -> orange -> white-gold, never a blend with the dark glass
         g = float(np.clip(glow, 0, 1))
-        rim = hexc('c76a2e'); mid = hexc('f2a649'); core = hexc('fff1c2')
+        e_rim, e_mid, e_core = hexc('6e2a22'), hexc('a9442a'), hexc('d9702f')
+        b_rim, b_mid, b_core = hexc('e08436'), hexc('ffb552'), hexc('fff3c8')
+        rim = e_rim * (1 - g) + b_rim * g; mid = e_mid * (1 - g) + b_mid * g; core = e_core * (1 - g) + b_core * g
         col = np.where((r < 0.36)[:, None], core, np.where((r < 0.7)[:, None], mid, rim))
-        out = out * (1 - g) + col * g
+        out = col.astype(np.float32)
     return out.astype(np.float32)

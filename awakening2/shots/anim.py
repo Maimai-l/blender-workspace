@@ -25,6 +25,8 @@ def _pose_of(k):
 
 def spacing(u, kind='inout'):
     u = min(max(u, 0.0), 1.0)
+    if kind == 'linear':
+        return u
     if kind == 'in':
         return u * u
     if kind == 'out':
@@ -59,6 +61,7 @@ _cache = {}
 
 def pose_at(shot, t, kind='heavy'):
     """Pose at shot-local time t, quantised to the shot's drawing step."""
+    kind = shot.get('spacing', kind)
     keys = shot['pose']
     if not keys:
         return None

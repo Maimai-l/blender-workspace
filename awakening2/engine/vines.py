@@ -98,24 +98,24 @@ class VineSet:
             pp[:] = p; p[:] = new
 
     def draw(self, canvas, f, cam, depth=None, light=(0.6, -0.8), colours=None, on=2, scale=1.0):
-        """Draw onto a straight-alpha RGBA canvas. depth: (H, W) robot depth for occlusion."""
+        """Draw onto a straight-alpha RGBA canvas. depth: (H, W) robot depth for occlusion.
+        All stems go through two batched stroke passes (ink, then fill); leaves are local patches."""
         fh = (f // on) * on
         pts_all = self.step_to(fh)
         H, W = canvas.shape[:2]
         cols = colours or dict(stem=(0.24, 0.33, 0.20), leaf=(0.46, 0.60, 0.30), leaf_sh=(0.22, 0.36, 0.26),
                               leaf_hi=(0.72, 0.78, 0.42), ink=(0.16, 0.14, 0.11))
         lx, ly = light
+        ink_strokes, stem_strokes, leaves = [], [], []
         for v, P in zip(self.vines, pts_all):
             q = cam.project(P)
             if np.all(q[:, 2] < 0.5):
                 continue
-            vis = q[:, 2] > 0.5
+            vis = (q[:, 2] > 0.5) & (q[:, 0] > -200) & (q[:, 0] < W + 200) & (q[:, 1] > -200) & (q[:, 1] < H + 200)
             if depth is not None:
                 ix = np.clip(q[:, 0].astype(int), 0, W - 1); iy = np.clip(q[:, 1].astype(int), 0, H - 1)
                 vis &= q[:, 2] <= depth[iy, ix] + 0.6
-            # stem: split into visible runs
-            runs = []
-            cur = []
+            runs, cur = [], []
             for i in range(len(q)):
                 if vis[i]:
                     cur.append(i)
@@ -130,36 +130,38 @@ class VineSet:
                 pts = ink.resample(ink.smooth_chain(pts, 1.0), 3.0)
                 if len(pts) < 2:
                     continue
-                wpx = cam.fpx * v.width / np.mean(q[run, 2]) * scale
-                wpx = float(np.clip(wpx, 1.0, 9.0))
+                wpx = float(np.clip(cam.fpx * v.width / np.mean(q[run, 2]) * scale, 1.0, 9.0))
                 tpr = np.linspace(1.0, 0.45, len(pts)).astype(np.float32)
-                cov_ink = ink.draw_strokes((H, W), [(pts, (tpr * (wpx + 1.6)).astype(np.float32))])
-                cov = ink.draw_strokes((H, W), [(pts, (tpr * wpx).astype(np.float32))])
-                _over(canvas, cov_ink, cols['ink'])
-                _over(canvas, cov, cols['stem'])
-            # leaves along the vine (alternating), cel 2-tone with an ink edge
+                ink_strokes.append((pts, (tpr * (wpx + 1.6)).astype(np.float32)))
+                stem_strokes.append((pts, (tpr * wpx).astype(np.float32)))
             L = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
             nleaf = int(L[-1] / v.leaf_every)
             rng = np.random.default_rng(zlib.crc32(v.name.encode()))
             for j in range(1, nleaf):
-                s = j * v.leaf_every + rng.uniform(-0.05, 0.05)
-                i = int(np.searchsorted(L, s)) - 1
+                s_ = j * v.leaf_every + rng.uniform(-0.05, 0.05)
+                i = int(np.searchsorted(L, s_)) - 1
                 i = min(max(i, 0), len(P) - 2)
-                if not (vis[i] and vis[i + 1]):
+                r1, r2, r3, r4 = rng.uniform(-0.7, 0.7), rng.uniform(0.55, 1.3), rng.random(), rng.random()
+                if r4 < 0.22 or not (vis[i] and vis[i + 1]):      # gaps: not every node has a leaf
                     continue
-                u = (s - L[i]) / max(L[i + 1] - L[i], 1e-6)
+                u = (s_ - L[i]) / max(L[i + 1] - L[i], 1e-6)
                 c = q[i, :2] * (1 - u) + q[i + 1, :2] * u
                 z = q[i, 2]
                 d = q[i + 1, :2] - q[i, :2]; nd = np.linalg.norm(d) + 1e-6; d = d / nd
                 side = 1 if j % 2 else -1
                 perp = np.array([-d[1], d[0]]) * side
-                ang = math.atan2(perp[1] + d[1] * 0.6, perp[0] + d[0] * 0.6) + rng.uniform(-0.4, 0.4)
-                size = cam.fpx * v.leaf_size / max(z, 0.5) * rng.uniform(0.7, 1.15) * scale
+                ang = math.atan2(perp[1] + d[1] * 0.6, perp[0] + d[0] * 0.6) + r1
+                size = cam.fpx * v.leaf_size / max(z, 0.5) * r2 * scale
                 if size < 2.0:
                     continue
                 lit = (math.cos(ang) * lx + math.sin(ang) * ly) > -0.1
-                _leaf(canvas, c, ang, size, cols['leaf'] if lit else cols['leaf_sh'], cols['ink'],
-                      cols['leaf_hi'] if lit and rng.random() < 0.35 else None)
+                leaves.append((c, ang, size, cols['leaf'] if lit else cols['leaf_sh'],
+                               cols['leaf_hi'] if lit and r3 < 0.35 else None))
+        if ink_strokes:
+            _over(canvas, ink.draw_strokes((H, W), ink_strokes), cols['ink'])
+            _over(canvas, ink.draw_strokes((H, W), stem_strokes), cols['stem'])
+        for c, ang, size, fill, hi in leaves:
+            _leaf(canvas, c, ang, size, fill, cols['ink'], hi)
 
 
 def _over(canvas, cov, col):

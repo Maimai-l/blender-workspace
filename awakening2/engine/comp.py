@@ -105,19 +105,34 @@ def light_wrap(rgb_robot_pm, alpha, bg_rgb, radius=18, strength=0.55):
     return rgb_robot_pm * (1 - k) + glow * a[..., None] * k
 
 
+def blur_small(img, sigma, k=4):
+    """A wide Gaussian blur computed at 1/k resolution (same look, ~k^2 times faster)."""
+    h, w = img.shape[:2]
+    sm = cv2.resize(img, (w // k, h // k), interpolation=cv2.INTER_AREA)
+    sm = cv2.GaussianBlur(sm, (0, 0), sigma / k)
+    return cv2.resize(sm, (w, h), interpolation=cv2.INTER_LINEAR)
+
+
 def bloom(rgb, thr=0.74, sigma=22, strength=0.24, tint=(1.0, 0.86, 0.62)):
     b = np.clip(rgb - thr, 0, None) / (1 - thr)
-    g = blur(b, sigma) * 0.6 + blur(b, sigma * 3) * 0.4
+    g = blur_small(b, sigma) * 0.6 + blur_small(b, sigma * 3) * 0.4
     return rgb + g * np.asarray(tint, np.float32) * strength
 
 
-def grade(rgb, lift=(0.02, 0.015, 0.04), gain=(1.03, 1.0, 0.95), gamma=1.0, sat=1.04,
+def s_curve(x, c=1.12, pivot=0.48):
+    x = np.clip(x, 0, 1)
+    return np.where(x < pivot, pivot * (x / pivot) ** c, 1 - (1 - pivot) * ((1 - x) / (1 - pivot)) ** c)
+
+
+def grade(rgb, lift=(0.015, 0.012, 0.035), gain=(1.03, 1.0, 0.95), gamma=1.0, sat=1.1, contrast=1.12,
           warm_hi=(1.03, 0.99, 0.92), cool_lo=(0.94, 0.97, 1.06)):
     x = np.clip(rgb, 0, 1.5)
     lum = x @ np.array([0.299, 0.587, 0.114], np.float32)
     hi = np.clip((lum - 0.45) / 0.45, 0, 1)[..., None]
     x = x * (np.asarray(cool_lo, np.float32) * (1 - hi) + np.asarray(warm_hi, np.float32) * hi)
     x = x * np.asarray(gain, np.float32) + np.asarray(lift, np.float32) * (1 - x)
+    if contrast != 1.0:
+        x = s_curve(x, contrast)
     mean = x.mean(-1, keepdims=True)
     x = mean + (x - mean) * sat
     if gamma != 1.0:

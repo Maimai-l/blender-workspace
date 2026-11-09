@@ -69,3 +69,20 @@ not read; the robot is washed pink by haze and bloom; S10 uses a fallback painti
 at its top edge; S16's trail is a vertical plume that buries the light ribbon; S04's light
 spill is a flat orange disc; S01's robot drifts against the painted floor during the tilt; no
 vines yet; the rise is a simple blend between three poses.
+
+### v2 (12:50)
+- Vines on the robot (verlet chains drawn as inked strokes with cel leaves); rooted vines tear
+  loose as it rises, the rest swing with the breeze and the motion.
+- The rise rebuilt from seven key poses (sink, plant the hand, push, crouch, rise, stand, torso
+  up, look up) on 3s with holds; sound cues retimed to them.
+- Face shots: level-eyed cameras in front of the bowed face; the first ray is a low sunrise beam
+  that lights the face (the brow throws a crescent shadow over the shut eyes), motes in the beam.
+- The launch: a held crouch with the engines roaring behind it, two smear frames, two impact
+  frames (black/gold), then a blast with ground dust rolls, debris, leaves and speed lines.
+- The climax redesigned: the robot climbs along a big screen-space arc toward the sun, the trail
+  of light and mist follows the arc (S16).
+- All 14 backgrounds repainted by the painter's Phase 3 (golden sky with sculpted clouds, ground
+  close-up, layered crowns instead of pads, rim-lit canopy for the flock).
+- Fixes: S01 tilt drift, S10 painting window, S04 framing, bigger bird, less haze and bloom,
+  rivets, tufts on the roof tree, S05 camera matched to its painting's horizon, flock between
+  the canopy layers.

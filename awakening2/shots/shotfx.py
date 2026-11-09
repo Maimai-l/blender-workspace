@@ -219,7 +219,7 @@ class Base:
             a = cel_rgba[..., 3]
             robot_rgb = cel_rgba[..., :3]
             if self.haze > 0:
-                mist = cv2.GaussianBlur(rgb, (0, 0), 25)
+                mist = comp.blur_small(rgb, 25)
                 robot_rgb = robot_rgb * (1 - self.haze) + mist * a[..., None] * self.haze
             if self.wrap > 0:
                 robot_rgb = comp.light_wrap(robot_rgb, a, rgb, radius=16, strength=self.wrap)
@@ -536,7 +536,7 @@ class S07(S03):
     """Face: the lids crack open, the eyes flicker alive; the small bird flees."""
     painting = 'S03'
     fallback = ('S01', (0.0, 300.0), 1.0, 5)
-    light_az, light_el = -50, 42
+    light_az, light_el = -35, 10        # the same low sunrise ray as S03: the face stays lit
     def glow(self, tq):
         if tq < 1.3: return 0.0
         seq = [(1.3, 0.35), (1.42, 0.0), (1.5, 0.6), (1.62, 0.2), (1.7, 0.85), (2.0, 1.0)]
@@ -593,6 +593,7 @@ class Rise(Base):
             q = self._proj_at(part, loc, t0)
             self.puff_fx.append(fx.DustPuff(f'{self.S.sid}_{name}', origin=(float(q[0]), float(q[1])), frame0=int(t0 * 24),
                                             size=size * 0.7, ground=self._ground_y(), spread=3.0, life=40, aspect=0.6,
+                                            palette=fx.palettes.DUST_DARK,
                                             light=screen_dir(self.S.cam(t0), self.light(self.S.cam(t0)))))
         tree = self._proj_at('roof_L', (-3.2, -0.2, 3.6), 0.0)
         self.leaves = fx.LeafBurst(f'{self.S.sid}_treeleaves', origin=(float(tree[0]), float(tree[1])), frame0=int(0.8 * 24),
@@ -717,8 +718,10 @@ class S12(Base):
     def setup(self):
         self.flames = [fx.EngineFlame(f'S12_e{i}', ignite=int(3.0 * 24), sputters=[(int(2.4 * 24), .32), (int(2.6 * 24), .5), (int(2.8 * 24), .28)],
                                       diamonds=True, smoke=True, sparks=True) for i in range(2)]
-        self.dust = fx.GroundDust('S12_dust', start=(960, 1000), direction=(1, 0), frame0=int(3.0 * 24), distance=900, duration=24, height=120)
-        self.dust2 = fx.GroundDust('S12_dust2', start=(960, 1000), direction=(-1, 0), frame0=int(3.0 * 24), distance=900, duration=24, height=120)
+        self.dust = fx.GroundDust('S12_dust', start=(960, 1000), direction=(1, 0), frame0=int(3.0 * 24), distance=900, duration=24, height=120,
+                                  palette=fx.palettes.DUST_DARK)
+        self.dust2 = fx.GroundDust('S12_dust2', start=(960, 1000), direction=(-1, 0), frame0=int(3.0 * 24), distance=900, duration=24, height=120,
+                                   palette=fx.palettes.DUST_DARK)
     def fx_mid(self, rgb, f, t, ctx):
         import anim
         cv_ = fx.new_canvas(H, W)
@@ -771,35 +774,62 @@ class S14(Base):
     def setup(self):
         cam = self.S.cam(0.0)
         g = project(cam, (0, 0, 0))
-        self.blast = fx.DustPuff('S14_blast', origin=(float(g[0]), float(g[1]) + 20), frame0=5, size=620, spread=3.2,
-                                 life=40, ground=float(g[1]) + 60, aspect=0.6, arms=0.9)
+        self.blast = fx.DustPuff('S14_blast', origin=(float(g[0]), float(g[1]) + 40), frame0=7, size=560, spread=3.8,
+                                 life=40, ground=float(g[1]) + 70, aspect=0.45, arms=1.2, direction=(0, -1),
+                                 palette=fx.palettes.DUST_DARK)
+        self.ring = fx.GroundDust('S14_ringL', start=(float(g[0]), float(g[1]) + 60), direction=(-1, 0), frame0=8,
+                                  distance=1100, duration=20, height=170)
+        self.ring2 = fx.GroundDust('S14_ringR', start=(float(g[0]), float(g[1]) + 60), direction=(1, 0), frame0=8,
+                                   distance=1100, duration=20, height=170)
+        self.debris = fx.DebrisBurst('S14_debris', origin=(float(g[0]), float(g[1])), frame0=8, count=70,
+                                     direction=(0, -1), spread=2.4, speed=(14, 40), gravity=1.0, ground=float(g[1]) + 80,
+                                     size=(5, 18), origin_radius=180)
+        self.leafburst = fx.LeafBurst('S14_leaves', origin=(float(g[0]), float(g[1]) - 200), frame0=8, count=60,
+                                      direction=(0, -1), spread=3.0, speed=(14, 34), size=(16, 30), origin_radius=400)
         self.flames = [fx.EngineFlame(f'S14_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+    def fx_behind(self, rgb, f, t, ctx):
+        # the engines fire from the back, so from the front the flames are behind the robot:
+        # only their glow and the licks past the silhouette show
+        if f > 6:
+            return rgb
+        import anim
+        cv_ = fx.new_canvas(H, W)
+        pose = anim.pose_at(self.shot, t)
+        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
+            fl.draw(cv_, f, nozzle=noz, direction=(d[0] * 0.3, 1.0), radius=rad * 1.3, length=rad * 9)
+        return comp.over_straight(rgb, cv_)
     def compose(self, f, t, cam):
-        if 7 <= f <= 8:      # impact frames
-            ent = self.S.robot_cel(5 / 24)
+        if 8 <= f <= 9:      # impact frames
+            ent = self.S.robot_cel(6 / 24)
             celr = ent['rgba'].copy()
             a = np.clip(celr[..., 3:4], 1e-4, 1)
             straight = np.concatenate([celr[..., :3] / a, celr[..., 3:4]], -1)
-            return np.clip(fx.impact_frame(H, W, straight, mode='black_gold' if f == 7 else 'gold_black', frame=f)[..., :3], 0, 1)
+            return np.clip(fx.impact_frame(H, W, straight, mode='black_gold' if f == 8 else 'gold_black', frame=f)[..., :3], 0, 1)
         return Base.compose(self, f, t, cam)
     def robot_extra(self, robot_rgb, a, rgb, f, t, ctx):
-        if 5 <= f <= 6:
+        if 6 <= f <= 7:
             ent = ctx['ent']
             pm = ctx['cel']
             aa = np.clip(pm[..., 3:4], 1e-4, 1)
             straight = np.concatenate([pm[..., :3] / aa, pm[..., 3:4]], -1)
-            sm = fx.smear_stretch(straight, motion=(0, -520 if f == 5 else -900), stretch=0.45, tail=1.6, name='S14', frame=f)
+            sm = fx.smear_stretch(straight, motion=(0, -520 if f == 6 else -900), stretch=0.45, tail=1.6, name='S14', frame=f)
             return comp.over_straight(rgb, sm)
         return robot_rgb + rgb * (1 - a[..., None])
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
+        self.ring.draw(cv_, f); self.ring2.draw(cv_, f)
         self.blast.draw(cv_, f)
-        if f >= 9:
-            fx.speed_lines(cv_, (960, 300), f, n=70, inner=(0.3, 0.55))
+        self.debris.draw(cv_, f)
+        self.leafburst.draw(cv_, f)
+        if 10 <= f <= 22:
+            fx.speed_lines(cv_, (960, 250), f, n=70, inner=(0.3, 0.55))
         return comp.over_straight(rgb, cv_)
+    def shake_gain(self, t):
+        return 0.5 if t < 0.25 else (1.6 if t < 0.8 else 0.8)
 
 
 class S15(Base):
+    """From below: it tears up through the canopy gap; the canopy bursts; leaves rain down."""
     painting = 'S11'
     ground = False
     vines = False
@@ -809,15 +839,42 @@ class S15(Base):
     def anchor(self):
         return np.array([0, 2, 44], np.float32)
     def setup(self):
-        self.burst = fx.LeafBurst('S15_burst', origin=(960, 470), frame0=10, count=80, direction=(0, 1), spread=3.0,
-                                  speed=(8, 26), size=(16, 32), origin_radius=260)
-        self.fall = fx.LeafFall('S15_fall', region=(0, -300, 1920, 900), frame0=20, count=30, size=(16, 30), spiral=0.8)
+        # the moment it crosses the canopy (44 m) decides when the canopy bursts
+        import anim
+        tc = 0.5
+        for k in range(0, 72):
+            p = anim.pose_at(self.shot, k / 24.0)
+            if p is not None and p['_root'][2, 3] > 30.0:
+                tc = k / 24.0
+                break
+        fc = int(tc * 24)
+        self.burst = fx.LeafBurst('S15_burst', origin=(960, 470), frame0=fc, count=110, direction=(0, 1), spread=3.1,
+                                  speed=(10, 30), size=(16, 34), origin_radius=300)
+        self.twigs = fx.DebrisBurst('S15_twigs', origin=(960, 470), frame0=fc, count=46,
+                                    kinds={'bark': 0.35, 'root': 0.25, 'vine': 0.25, 'moss': 0.15}, size=(8, 22),
+                                    direction=(0, 1), spread=3.0, speed=(10, 26), gravity=0.8, origin_radius=260)
+        self.fall = fx.LeafFall('S15_fall', region=(0, -300, 1920, 900), frame0=fc + 6, count=40, size=(16, 30), spiral=0.8)
+        self.flames = [fx.EngineFlame(f'S15_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+    def fx_mid(self, rgb, f, t, ctx):
+        # the bells fire straight down at the camera: short flames and a blinding glow
+        import anim
+        pose = anim.pose_at(self.shot, t)
+        cv_ = fx.new_canvas(H, W)
+        lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
+        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
+            if z < 1:
+                continue
+            fl.draw(cv_, f, nozzle=noz, direction=(0.0, 1.0), radius=rad * 1.0, length=rad * 2.5)
+            fx.glow(lb, noz, rad * 4.0, colour=(1.0, 0.8, 0.45), intensity=0.7)
+        return comp.over_straight(rgb, cv_)
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
-        self.burst.draw(cv_, f); self.fall.draw(cv_, f)
+        self.burst.draw(cv_, f); self.twigs.draw(cv_, f); self.fall.draw(cv_, f)
         return comp.over_straight(rgb, cv_)
     def light_buf(self, lb, f, t, ctx):
-        fx.glow(lb, (960, 470), 600, colour=(1.0, 0.85, 0.5), intensity=0.35 + 0.25 * ease((t - 0.3) / 0.6))
+        if 'lb' in ctx:
+            lb += ctx['lb']
+        fx.glow(lb, (960, 470), 600, colour=(1.0, 0.85, 0.5), intensity=0.3 + 0.3 * ease((t - 0.6) / 0.6))
 
 
 class S16(Base):
@@ -861,6 +918,19 @@ class S16(Base):
         pts, n = self.trail_points(t, ctx['cam'])
         births = np.arange(f - n + 1, f + 1)
         self.trail.draw(cv_, f, pts, births=births, light_buf=lb)
+        # engine flames from the two bells, streaming back along the path (on 1s)
+        cam = ctx['cam']
+        M = SD.s16_root(t); M2 = SD.s16_root(t - 0.2)
+        for fl, b in zip(self.flames, Engines.BELLS):
+            P = r3d.xform_points(M, np.array([b], np.float32))[0]
+            Pb = r3d.xform_points(M2, np.array([b], np.float32))[0]
+            q0 = cam.project(P[None])[0]; q1 = cam.project(Pb[None])[0]
+            d = q1[:2] - q0[:2]; nd = float(np.linalg.norm(d)) + 1e-6
+            rad = cam.fpx * 1.0 / max(q0[2], 1.0)
+            fl.draw(cv_, f, nozzle=(float(q0[0]), float(q0[1])), direction=(float(d[0] / nd), float(d[1] / nd)),
+                    radius=rad * 0.9, length=rad * 7)
+            fl.glow(lb, f, nozzle=(float(q0[0]), float(q0[1])), direction=(float(d[0] / nd), float(d[1] / nd)),
+                    radius=rad * 0.9, length=rad * 7)
         return comp.over_straight(rgb, cv_)
     def light_buf(self, lb, f, t, ctx):
         if 'lb' in ctx:
@@ -878,7 +948,7 @@ class S17(Base):
         self.leaves = fx.LeafFall('S17_leaves', region=(300, -400, 1700, 1000), frame0=0, count=34, size=(14, 28),
                                   spiral=0.9, preroll=200, fall=(0.9, 1.6))
         self.motes = fx.Motes('S17_motes', (300, 0, 1700, 1000), count=220)
-        self.track = birds.landing(x=980, y=905, scale=34, facing=-1, t_flare=int(3.0 * 24), t_touch=int(3.5 * 24),
+        self.track = birds.landing(x=1010, y=930, scale=62, facing=-1, t_flare=int(3.0 * 24), t_touch=int(3.5 * 24),
                                    t_hop=None, t_chirp=int(4.6 * 24), t_end=180)
         self.beam_mask = None
     def fx_front(self, rgb, f, t, ctx):

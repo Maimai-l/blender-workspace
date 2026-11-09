@@ -43,7 +43,7 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
         m = rig.parts[nm].mesh
         tri = m.V[m.F]
         area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
-        n = int(area.sum() * (45 if nm == 'foliage' else 30))
+        n = int(area.sum() * (40 if nm == 'foliage' else 22))
         idx = rng.choice(len(m.F), size=n, p=area / area.sum())
         w = rng.dirichlet((1, 1, 1), size=n).astype(np.float32)
         P = np.einsum('nk,nkd->nd', w, tri[idx]).astype(np.float32)
@@ -52,11 +52,30 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
         tufts.append((rig.parts[nm].parent, P, N))   # anchored to the parent part's frame (same as moss)
     fl = [(p, F) for p, F in flowers.items()]
     rivets = make_rivets(rig)
+    # grass sprouts from the moss (part-local anchors): height, blade count, lean
+    sprouts = []
+    rng2 = SF.rng_for('sprouts')
+    for nm in rig.order:
+        if not nm.startswith('moss_'):
+            continue
+        m = rig.parts[nm].mesh
+        tri = m.V[m.F]
+        area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
+        n = int(area.sum() * 1.6)
+        if n == 0:
+            continue
+        idx = rng2.choice(len(m.F), size=n, p=area / area.sum())
+        w = rng2.dirichlet((1, 1, 1), size=n).astype(np.float32)
+        P = np.einsum('nk,nkd->nd', w, tri[idx]).astype(np.float32)
+        N = np.einsum('nk,nkd->nd', w, m.N[m.F[idx]]).astype(np.float32)
+        N /= np.linalg.norm(N, axis=1, keepdims=True)
+        R = np.stack([rng2.uniform(0.35, 0.95, n), rng2.integers(3, 8, n), rng2.random(n)], -1).astype(np.float32)
+        sprouts.append((rig.parts[nm].parent, P, N, R))
     style = dict(pal=PAL, matfn=mf, panelfn=pf, decals=dec, decal_cols=SF.DECAL_COLS,
                  roof_decal_cols=SF.ROOF_DECAL_COLS, decal_mats=(WD.PAINT, WD.LIDS), roof_mats=(WD.ROOF,),
                  lens_fn=lambda o, l: WD.eye_colour(o, 0.0, l), lens_mat=WD.LENS,
                  emissive={WD.GLOW: WD.hexc('3a2a30')}, flowers=fl, tufts=tufts,
-                 soft_mats=(WD.MOSS, SF.FOLIAGE), tuft_mats=(WD.MOSS, SF.FOLIAGE), rivets=rivets,
+                 soft_mats=(WD.MOSS, SF.FOLIAGE), tuft_mats=(WD.MOSS, SF.FOLIAGE), rivets=rivets, sprouts=sprouts,
                  widths={ink.SIL: 3.2, ink.OCC: 2.6, ink.PART: 2.0, ink.CREASE: 1.5, ink.DETAIL: 1.0})
     return rig, style
 

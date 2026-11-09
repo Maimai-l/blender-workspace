@@ -96,14 +96,15 @@ def status(name):
              f'grep -l FAILED _done/{name}_*.log 2>/dev/null; tail -n 3 _done/{name}_*.out 2>/dev/null | tail -20'))
 
 
-def encode(version, crf=18, fdir='frames'):
+def encode(version, crf=18, fdir='frames', overrides=None):
     sys.path.insert(0, os.path.join(ROOT, 'tools'))
     cues = json.load(open(os.path.join(ROOT, 'audio', 'cues.json')))
     lines = []
     for s in cues['shots']:
         n = int(round((s['out'] - s['in']) * 24))
         for f in range(n):
-            lines.append(f"file 'C:/Users/blender/Documents/awakening2/{fdir}/{s['id']}/{s['id']}_{f:04d}.png'\nduration 0.041667\n")
+            fd = (overrides or {}).get(s['id'], fdir)
+            lines.append(f"file 'C:/Users/blender/Documents/awakening2/{fd}/{s['id']}/{s['id']}_{f:04d}.png'\nduration 0.041667\n")
     lst = os.path.join(SCRATCH, f'list_{version}.txt')
     open(lst, 'w').write(''.join(lines))
     pcx.put(lst, PCROOT + f'\\list_{version}.txt')
@@ -130,12 +131,12 @@ def mux(video, version):
     print('delivered', out, os.path.getsize(out) // 1024, 'kB')
 
 
-def fetch(sid, frames):
+def fetch(sid, frames, fdir='frames'):
     os.makedirs('/home/user/aw2_pcframes', exist_ok=True)
     for f in frames:
         f = int(f)
         W_ = 'C:/Users/blender/Documents/awakening2'
-        src = f'{W_}/frames/{sid}/{sid}_{f:04d}.png'
+        src = f'{W_}/{fdir}/{sid}/{sid}_{f:04d}.png'
         jpg = f'{W_}/tmp/{sid}_{f:04d}.jpg'
         sh(f'mkdir -p {U}/tmp && "$PY" -c "import cv2; cv2.imwrite(r\'{jpg}\', cv2.imread(r\'{src}\'), [cv2.IMWRITE_JPEG_QUALITY, 92])"')
         pcx.fetch(PCROOT + f'\\tmp\\{sid}_{f:04d}.jpg', f'/home/user/aw2_pcframes/{sid}_{f:04d}.jpg')
@@ -163,8 +164,16 @@ if __name__ == '__main__':
     elif a[0] == 'status':
         status(a[1])
     elif a[0] == 'encode':
-        encode(a[1], fdir=a[2] if len(a) > 2 else 'frames')
+        # pc.py encode vN FRAMESDIR [S07=frames_x S14=frames_x ...]
+        ov = dict(x.split('=') for x in a[3:] if '=' in x)
+        encode(a[1], fdir=a[2] if len(a) > 2 else 'frames', overrides=ov)
+    elif a[0] == 'pipeline_shots':
+        # pc.py pipeline_shots NAME WORKERS S07 S14 ...   (no background regen)
+        pipeline(a[1], [], workers=int(a[2]), chunk=48, shots=a[3:])
     elif a[0] == 'fetch':
-        fetch(a[1], a[2:])
+        # pc.py fetch SID F [F ...] [--dir frames_v2]
+        fd = a[a.index('--dir') + 1] if '--dir' in a else 'frames'
+        fr = [x for x in a[2:] if x.isdigit()]
+        fetch(a[1], fr, fd)
     elif a[0] == 'sh':
         print(sh(a[1]))

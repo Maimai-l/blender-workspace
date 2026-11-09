@@ -119,7 +119,7 @@ def make_boards():
         sh.save(os.path.join(OUT, f'storyboard_{k // 6 + 1}.jpg'), quality=85)
 
 
-def make_animatic(fps=8, W=640, H=347):
+def make_animatic(fps=8, W=640, H=348):
     tmp = os.path.join(OUT, 'animatic_frames')
     os.makedirs(tmp, exist_ok=True)
     n = 0

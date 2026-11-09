@@ -180,15 +180,17 @@ SHOTS = [
          notes='Ring from 0.0 s to the frame edges by 2.6 s; ferns flatten; dust wall; leaves; mist pushed out.'),
     dict(id='S14', t0=55.0, t1=56.5, step=1,
          desc='LAUNCH: 2-3 smear frames, an impact frame, the robot leaves frame upward',
-         cam=[(0.0, v(-8, 22, 3.0), v(0, 0, 12), 28)],
-         pose=[(0.0, 'LAUNCH_CROUCH'), (0.2, 'LAUNCH_UP', dict(lift=2.0)), (0.5, 'LAUNCH_UP', dict(lift=30.0)), (1.5, 'LAUNCH_UP', dict(lift=90.0))],
+         cam=[(0.0, v(-9, 30, 2.6), v(0, 0, 8.5), 28)],
+         pose=[(0.0, 'LAUNCH_CROUCH'), (0.25, 'LAUNCH_CROUCH'), (0.29, 'LAUNCH_UP', dict(lift=3.0)),
+               (0.45, 'LAUNCH_UP', dict(lift=45.0)), (1.5, 'LAUNCH_UP', dict(lift=140.0))],
          light=SUN_BACK, bg='S09', shake=(0.15, 1.5, 9.0),
          notes='0.0-0.2 s anticipation hold, 0.2 s smear x2, 0.3 s impact frame x2, then the robot exits frame top.'),
     dict(id='S15', t0=56.5, t1=59.5, step=2,
          desc='From below: it tears through the canopy gap; branches and leaves explode outward; light flare',
          cam=[(0.0, v(1, 6, 1.0), v(0.2, 2, 90), 24)],
-         pose=[(0.0, 'LAUNCH_UP', dict(lift=8.0)), (0.5, 'LAUNCH_UP', dict(lift=40.0)), (1.2, 'LAUNCH_UP', dict(lift=110.0)), (3.0, 'LAUNCH_UP', dict(lift=400.0))],
-         light=SUN_BACK, bg='S11',
+         pose=[(0.0, 'LAUNCH_UP', dict(lift=2.0)), (0.3, 'LAUNCH_UP', dict(lift=14.0)), (0.6, 'LAUNCH_UP', dict(lift=40.0)),
+               (0.9, 'LAUNCH_UP', dict(lift=80.0)), (1.4, 'LAUNCH_UP', dict(lift=170.0)), (3.0, 'LAUNCH_UP', dict(lift=520.0))],
+         spacing='linear', light=SUN_BACK, bg='S11',
          notes='Robot silhouette punches through the gap at 0.4 s, gone by 1.0 s; leaves burst and fall.'),
     dict(id='S16', t0=59.5, t1=67.5, step=3,
          desc='Golden sky, long lens: it climbs in a long curve leaving a wide trail of light and mist',
@@ -196,7 +198,8 @@ SHOTS = [
          pose=None, light=SUN_BACK, bg='S16', notes='Locked. The robot enters lower left and climbs along a big arc to the upper right, toward the sun.'),
     dict(id='S17', t0=67.5, t1=75.0, step=2,
          desc='Ending: the empty clearing, sunbeams, leaves spiral down; the small bird lands on the moss where the robot knelt; fade out',
-         cam=[(0.0, v(15, 31, 3.0), A['pelvis'] + v(0.5, 0, 4.4), 26)], pose=[], light=SUN_BACK, bg='S17',
+         cam=[(0.0, v(15, 31, 3.0), A['pelvis'] + v(0.5, 0, 4.4), 26),
+              (7.5, v(13.6, 28.1, 3.1), A['pelvis'] + v(0.5, 0, 4.0), 26)], pose=[], light=SUN_BACK, bg='S17',
          notes='Locked (the S01 end framing, robot gone). Fade out from 72.5 s.'),
 ]
 
@@ -243,7 +246,7 @@ def _bez(p, t):
 
 
 S16_SCREEN = [(230, 1300), (430, 330), (1080, 160), (1640, 300)]     # screen-space arc (px)
-S16_DEPTH = (105.0, 300.0)
+S16_DEPTH = (78.0, 270.0)
 
 
 def s16_root(t, dur=8.0):
@@ -261,9 +264,13 @@ def s16_root(t, dur=8.0):
         return cam.pos + ray * d
     P = world_at(t); P2 = world_at(t + 0.15)
     vel = P2 - P; vel /= np.linalg.norm(vel) + 1e-6
-    up = vel
-    away = np.array([cam.f[0], cam.f[1], 0.0], np.float32); away /= np.linalg.norm(away)
-    fwd = away - up * np.dot(away, up); fwd /= np.linalg.norm(fwd) + 1e-6
+    # body axis leans into the climb (70% along the velocity, 30% world up)
+    up = 0.7 * vel + 0.3 * np.array([0, 0, 1.0], np.float32); up /= np.linalg.norm(up)
+    # face turned three-quarters toward the camera, so the eyes and chest read in the climb
+    toward = -np.array([cam.f[0], cam.f[1], 0.0], np.float32); toward /= np.linalg.norm(toward)
+    side = np.cross(np.array([0, 0, 1.0], np.float32), toward)
+    look = 0.75 * toward + 0.65 * side * np.sign(np.dot(side, vel) + 1e-6)
+    fwd = look - up * np.dot(look, up); fwd /= np.linalg.norm(fwd) + 1e-6
     right = np.cross(fwd, up)
     M = np.eye(4, dtype=np.float32)
     M[:3, 0] = right; M[:3, 1] = fwd; M[:3, 2] = up

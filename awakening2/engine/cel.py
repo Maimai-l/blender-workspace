@@ -141,6 +141,20 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
         rgb[band] = rgb[band] * (1 - 0.55 * strength) + np.asarray(col, np.float32) * 0.55 * strength
         ps['spill_soft'] = fall
 
+    # warm rim light on the sun side when the sun is behind the subject (designed band, hard edge)
+    back = float(np.dot(L, camS.f))
+    if style.get('rim', True) and back > 0.15 and m.any():
+        Vd = ps['wpos'] - camS.pos
+        Vd /= np.linalg.norm(Vd, axis=-1, keepdims=True) + 1e-6
+        ndv = np.sum(nrm * Vd, -1)
+        rim_raw = m & (lam > 0.12) & (ndv > -0.38) & (castlit > 0.5)
+        rim = look.clean_mask(rim_raw, 1.0 * ss, 1.0 * ss, 12 * ss * ss, 0.8 * ss, valid=m)
+        rim &= ~np.isin(mat, list(style.get('emissive', {}).keys()))
+        k = min(1.0, (back - 0.15) / 0.4) * style.get('rim_strength', 0.6)
+        warm = np.asarray(style.get('rim_col', (1.0, 0.86, 0.6)), np.float32)
+        rgb[rim] = rgb[rim] * (1 - k) + (np.maximum(rgb[rim], 0.35) * 0.35 + warm * 0.65) * k
+        ps['rim'] = rim
+
     # painted moss tufts (object-anchored, so they never swim)
     if style.get('tufts'):
         _draw_tufts(rgb, ps, camS, mats, style, L, lit, ss)
@@ -174,6 +188,8 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
 
     if style.get('rivets'):
         _draw_rivets(rgb, ps, camS, mats, style, L, lit, ss, inkc)
+    if style.get('sprouts'):
+        _draw_sprouts(rgb, a, ps, camS, mats, style, L, ss, inkc)
     if style.get('flowers'):
         _draw_flowers(rgb, a, ps, camS, mats, style, L, ss, inkc)
 
@@ -217,11 +233,18 @@ def _draw_tufts(rgb, ps, camS, mats, style, L, lit, ss):
         size = np.clip(camS.fpx * 0.16 / q[:, 2], 0, 40 * ss)
         keep = size > 1.6 * ss
         lam = np.sum(Nw * L, -1)
+        rng = np.random.default_rng(len(P))
+        jit = rng.uniform(0.6, 1.4, len(size)); rot = rng.uniform(-0.45, 0.45, len(size))
+        u = np.linspace(-1, 1, 5).astype(np.float32)
+        prof = (1 - u * u).astype(np.float32)                    # a rounded arc, not a chevron
+        wprof = np.array([0.25, 0.8, 1.0, 0.8, 0.2], np.float32)
         for i in np.where(keep)[0]:
-            c = q[i, :2]; s = size[i]
-            p0 = c - t2[i] * s * 0.5; p1 = c + n2[i] * s * 0.28; p2 = c + t2[i] * s * 0.5
-            pts = np.array([p0, p1, p2], np.float32)
-            w = np.array([0.3, 1.0, 0.25], np.float32) * max(0.9 * ss, s * 0.16)
+            c = q[i, :2]; s_ = size[i] * jit[i]
+            ca, sa = np.cos(rot[i]), np.sin(rot[i])
+            t = np.array([t2[i, 0] * ca - t2[i, 1] * sa, t2[i, 0] * sa + t2[i, 1] * ca])
+            nn = np.array([-t[1], t[0]]) * np.sign(np.dot([-t[1], t[0]], n2[i]) + 1e-6)
+            pts = (c[None] + t[None] * (u[:, None] * s_ * 0.5) + nn[None] * (prof[:, None] * s_ * 0.22)).astype(np.float32)
+            w = wprof * max(0.9 * ss, s_ * 0.14)
             (segs_l if (lit[iy[i], ix[i]] and lam[i] > 0.25) else segs_d).append((pts, w))
     sel = np.isin(mat, moss_mats).astype(np.float32)
     for segs, col, alpha in ((segs_d, lo, 0.75), (segs_l, hi, 0.9)):
@@ -261,6 +284,59 @@ def _draw_rivets(rgb, ps, camS, mats, style, L, lit, ss, inkc):
                 hx = x - r * 0.25; hy = y - r * 0.3
                 cv2.circle(rgb, (int(hx * 4), int(hy * 4)), max(1, int(r * 0.28 * 4)),
                            np.clip(base * 1.35 + 0.08, 0, 1).tolist(), -1, cv2.LINE_AA, 2)
+
+
+def _draw_sprouts(rgb, a, ps, camS, mats, style, L, ss, inkc):
+    """Grass blades and fern fronds sprouting from the moss: tapered, inked, 2 tones."""
+    H, W = a.shape
+    up = np.array([0, 0, 1.0], np.float32)
+    ink_s, lit_s, sh_s = [], [], []
+    sun2 = None
+    for pname, P, Nn, R in style['sprouts']:
+        if pname not in mats:
+            continue
+        M = mats[pname]
+        Pw = r3d.xform_points(M, P); Nw = r3d.xform_dirs(M, Nn)
+        q = camS.project(Pw)
+        q2 = camS.project(Pw + up * 1.0)
+        for i in range(len(P)):
+            x, y, z = q[i]
+            if z < 0.5 or not (2 <= x < W - 2 and 2 <= y < H - 2):
+                continue
+            if z > ps['depth'][int(y), int(x)] + 0.3 + 0.01 * z:
+                continue
+            if Nw[i, 2] < 0.3:
+                continue
+            h_px = camS.fpx * R[i, 0] / z
+            if h_px < 4 * ss:
+                continue
+            d = q2[i, :2] - q[i, :2]
+            nd = np.linalg.norm(d)
+            if nd < 1e-3:
+                continue
+            d = d / nd
+            nb = int(R[i, 1])
+            for b in range(nb):
+                ang = (b - (nb - 1) / 2) * 0.32 + (R[i, 2] - 0.5) * 0.5
+                ca, sa = np.cos(ang), np.sin(ang)
+                dd = np.array([d[0] * ca - d[1] * sa, d[0] * sa + d[1] * ca])
+                ln = h_px * (0.65 + 0.45 * np.cos(ang * 1.7))
+                bend = np.array([-dd[1], dd[0]]) * ln * 0.18 * np.sign(ang + 1e-3)
+                t = np.linspace(0, 1, 6)[:, None]
+                pts = (np.array([x, y]) + dd * ln * t + bend * t * t).astype(np.float32)
+                w0 = max(1.2 * ss, camS.fpx * 0.05 / z)
+                wv = (w0 * (1 - t[:, 0] * 0.92)).astype(np.float32)
+                ink_s.append((pts, wv + 1.2 * ss))
+                (lit_s if (b + i) % 3 else sh_s).append((pts, wv))
+    if not ink_s:
+        return
+    cov = ink.draw_strokes((H, W), ink_s)
+    rgb[:] = rgb * (1 - cov[..., None]) + inkc * cov[..., None]
+    a[:] = np.maximum(a, cov)
+    for segs, col in ((sh_s, style.get('sprout_dark', (0.30, 0.45, 0.30))), (lit_s, style.get('sprout_light', (0.62, 0.74, 0.36)))):
+        if segs:
+            cv = ink.draw_strokes((H, W), segs)
+            rgb[:] = rgb * (1 - cv[..., None]) + np.asarray(col, np.float32) * cv[..., None]
 
 
 def _draw_flowers(rgb, a, ps, camS, mats, style, L, ss, inkc):

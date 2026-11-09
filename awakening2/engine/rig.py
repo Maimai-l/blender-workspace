@@ -57,7 +57,7 @@ class Rig:
         os.makedirs(CACHE, exist_ok=True)
         for nm in self.order:
             p = self.parts[nm]
-            if p.mirror_of is not None:
+            if p.mirror_of is not None or p.mesh is not None or p.sdf is None:
                 continue
             key = hashlib.md5(f'{self.name}/{nm}/{p.version}/{p.voxel}/{p.lo}/{p.hi}'.encode()).hexdigest()[:10]
             path = os.path.join(CACHE, f'{self.name}_{nm}_{key}.npz')
@@ -72,7 +72,7 @@ class Rig:
             p.mesh.part = p.index; p.mesh.mat = p.mat
         for nm in self.order:
             p = self.parts[nm]
-            if p.mirror_of is None:
+            if p.mirror_of is None or p.mesh is not None:
                 continue
             src = self.parts[p.mirror_of].mesh
             V = src.V * np.array([-1, 1, 1], np.float32)

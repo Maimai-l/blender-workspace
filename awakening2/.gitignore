@@ -1,0 +1,8 @@
+# generated background layers (reproducible: python3 -m gouache.render <shot> from engine/)
+bg/**/*.png
+bg/.tmp_*/
+# large intermediate test images from the effect / bird helpers (contact sheets and loops are kept)
+fx_tests/*_f[0-9][0-9][0-9].png
+bird_tests/*_f[0-9][0-9][0-9].png
+__pycache__/
+*.pyc

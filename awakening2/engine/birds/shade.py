@@ -68,14 +68,14 @@ def head_zone(dx, dy, dz, eye_d, eye_a, ring_a, blink, baz, bel):
             return Z_LORES
     elb = _interp(az, baz, bel)
     if el > elb:
-        if az < 0.50 and el < 0.62:
+        if az < 0.22 and el < 0.05:
             return Z_FOREHEAD
         return Z_OLIVE
     return Z_YELLOW
 
 
 @nb.njit(cache=True, fastmath=True)
-def shade_core(depth, idx, sx, sy, sz, sr, mirror, Rinv,
+def shade_core(depth, idx, nrm, ss, offx, offy, ppc, mirror, Rinv,
                c_loc, r_loc, region, s_arr, tan, up, spine_len,
                hc, RhT, bc, RbT, folded, tex, tex_x0, tex_y1, tex_inv,
                eye_d, eye_a, ring_a, blink, L, bias, rim_on, rim_w, hilite, sil_mode,
@@ -92,18 +92,21 @@ def shade_core(depth, idx, sx, sy, sz, sr, mirror, Rinv,
             k = idx[y, x]
             if k < 0:
                 continue
-            rr = sr[k]
-            nsx = (x - sx[k]) / rr
-            nsy = -(y - sy[k]) / rr
-            nsz = (depth[y, x] - sz[k]) / rr
+            nsx = nrm[y, x, 0]
+            nsy = nrm[y, x, 1]
+            nsz = nrm[y, x, 2]
             # camera-frame normal (undo mirror), then root frame
             ncx = nsx * mirror
             n0 = Rinv[0, 0] * ncx + Rinv[0, 1] * nsy + Rinv[0, 2] * nsz
             n1 = Rinv[1, 0] * ncx + Rinv[1, 1] * nsy + Rinv[1, 2] * nsz
             n2 = Rinv[2, 0] * ncx + Rinv[2, 1] * nsy + Rinv[2, 2] * nsz
-            px = c_loc[k, 0] + r_loc[k] * n0
-            py = c_loc[k, 1] + r_loc[k] * n1
-            pz = c_loc[k, 2] + r_loc[k] * n2
+            # true envelope point from the pixel position and depth
+            cx_ = mirror * ((x - (ss - 1) * 0.5) / ss - offx) / ppc - bc[0]
+            cy_ = -((y - (ss - 1) * 0.5) / ss - offy) / ppc - bc[1]
+            cz_ = depth[y, x] / ss / ppc - bc[2]
+            px = Rinv[0, 0] * cx_ + Rinv[0, 1] * cy_ + Rinv[0, 2] * cz_ + bc[0]
+            py = Rinv[1, 0] * cx_ + Rinv[1, 1] * cy_ + Rinv[1, 2] * cz_ + bc[1]
+            pz = Rinv[2, 0] * cx_ + Rinv[2, 1] * cy_ + Rinv[2, 2] * cz_ + bc[2]
             reg = region[k]
             zone = Z_OLIVE
             tg = 1
@@ -117,7 +120,8 @@ def shade_core(depth, idx, sx, sy, sz, sr, mirror, Rinv,
             else:
                 upc = n0 * up[k, 0] + n1 * up[k, 1] + n2 * up[k, 2]
                 side = abs(n2)
-                sh = s_arr[k] + (n0 * tan[k, 0] + n1 * tan[k, 1] + n2 * tan[k, 2]) * r_loc[k] / spine_len
+                sh = s_arr[k] + ((px - c_loc[k, 0]) * tan[k, 0] + (py - c_loc[k, 1]) * tan[k, 1]
+                                 + (pz - c_loc[k, 2]) * tan[k, 2]) / spine_len
                 if upc > -0.10:
                     zone = Z_OLIVE
                 else:
@@ -160,8 +164,8 @@ def shade_core(depth, idx, sx, sy, sz, sr, mirror, Rinv,
             else:
                 if nl < bias:
                     tone = 1
-                elif hilite and reg == 2 and (zone == Z_OLIVE or zone == Z_FOREHEAD):
-                    if nsx * hx + nsy * hy + nsz * hz > 0.955:
+                elif hilite and reg == 2 and zone == Z_OLIVE:
+                    if nsz > 0.10 and nsz < 0.36 and nsx * lx2 + nsy * ly2 > 0.62 and nsy > 0.1:
                         tone = 3
             if zone == Z_EYE:
                 tone = 0

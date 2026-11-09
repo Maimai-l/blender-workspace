@@ -104,14 +104,64 @@ def cumulus_blobs(rng, x, y, w, h, n=None, flat_base=True, lumpy=0.12, rows=3, l
 
 
 def paint_clouds(cv, rng, blobs, stops, pos=None, light3=(0.6, -0.5, 0.25), leaf=16, density=1.0,
-                 rim=None, rim_amt=0.0, vnoise=0.1, edge=0.38, opacity=1.0, wrap=0.6, under=0.45,
-                 bands=4, aspect=0.55, trans=None, trans_amt=0.0, sun2=None, fringe=0.4, tip=None):
+                 rim=None, rim_amt=0.0, vnoise=0.07, edge=0.45, opacity=1.0, wrap=0.6, under=0.45,
+                 bands=4, aspect=0.55, trans=None, trans_amt=0.0, sun2=None, fringe=0.3, tip=None,
+                 edge_leaves=0.35, size_dark=1.7, size_lit=0.9, bristle=0.3):
     G = render_gbuffer(cv, blobs, light3=light3, wrap=wrap, under=under)
     if sun2 is None:
         sun2 = (light3[0], light3[1])
     paint_mass(cv, G, rng, stops, pos, leaf=leaf, density=density, aspect=aspect, shape='round',
                vnoise=vnoise, hue_var=0.03, sun2=sun2, trans=trans, trans_amt=trans_amt, rim=rim,
-               rim_amt=rim_amt, tip=tip, tip_amt=0.12 if tip is not None else 0, edge_leaves=0.8,
-               droop=0.0, size_dark=1.3, size_lit=0.85, bristle=0.35, rag=0.35, edge=edge,
+               rim_amt=rim_amt, tip=tip, tip_amt=0.12 if tip is not None else 0, edge_leaves=edge_leaves,
+               droop=0.0, size_dark=size_dark, size_lit=size_lit, bristle=bristle, rag=0.3, edge=edge,
                split=0.0, bands=bands, opacity=opacity, fringe=fringe, orient='tangent')
     return G
+
+
+def sculpted_blobs(rng, cx, base_y, w, h, kind='cumulus', blobs=None, light=1.0, hue=0.0, lobes=None):
+    """A large sculpted cloud form: a flat base slab, a few big crown lobes following a
+    dome (cumulus) or an undulating band (strato), and small satellite lobes on the
+    crown so the painted edge breaks up. Painter's order: base, then lobes back->front."""
+    if blobs is None:
+        blobs = Blobs()
+    items = []
+    # flat base slab (a row of wide, thin ellipses)
+    nb = max(3, int(w / max(h * 0.9, 1)))
+    for i in range(nb):
+        u = (i + 0.5) / nb - 0.5
+        items.append((0.0, cx + u * w * 0.95, base_y - h * 0.16, w / nb * 0.9, h * 0.2, 0.0, 0.9))
+    nl = lobes or (int(rng.integers(3, 6)) if kind == 'cumulus' else int(rng.integers(5, 9)))
+    us = np.sort(rng.uniform(-0.42, 0.42, nl))
+    for u in us:
+        if kind == 'cumulus':
+            env = np.sqrt(max(1 - (2 * u) ** 2, 0.05))
+            r = h * rng.uniform(0.32, 0.5) * (0.6 + 0.5 * env)
+            y = base_y - h * env * rng.uniform(0.55, 0.85) + r * 0.25
+        else:
+            env = 1.0 - abs(2 * u) ** 3
+            r = h * rng.uniform(0.35, 0.6)
+            y = base_y - h * rng.uniform(0.35, 0.7) * env
+        x = cx + u * w
+        y = min(y, base_y - r * 0.5)
+        items.append((1.0 + rng.random(), x, y, r * rng.uniform(1.05, 1.5), r * rng.uniform(0.75, 0.95),
+                      rng.normal(0, 0.12), 1.0))
+        # satellites on the upper edge of each lobe
+        for k in range(int(rng.integers(1, 3))):
+            a = rng.uniform(-np.pi * 0.9, -np.pi * 0.1)
+            rr = r * rng.uniform(0.32, 0.5)
+            items.append((2.0 + rng.random(), x + np.cos(a) * r * 1.05, y + np.sin(a) * r * 0.85, rr * 1.2, rr,
+                          rng.normal(0, 0.2), 1.05))
+    items.sort(key=lambda it: it[0])
+    for _, x, y, rx, ry, rot, lt in items:
+        blobs.add(x, y, rx, ry, rot=rot, light=light * lt * rng.uniform(0.95, 1.05), hue=hue + rng.normal(0, 0.02),
+                  val=rng.normal(0, 0.025), rng=rng, lumpy=0.08)
+    return blobs
+
+
+def sculpted_cloud(cv, rng, cx, base_y, w, h, stops, pos=None, kind='cumulus', light3=(0.6, -0.6, 0.18),
+                   rim=None, rim_amt=0.8, tip=None, opacity=1.0, under=0.95, leaf=None, density=0.45):
+    b = sculpted_blobs(rng, cx, base_y, w, h, kind=kind)
+    leaf = leaf or max(h / 9.0, 7.0)
+    return paint_clouds(cv, rng, b, stops, pos, light3=light3, leaf=leaf, density=density, rim=rim,
+                        rim_amt=rim_amt, edge=0.45, opacity=opacity, wrap=0.5, under=under, bands=4,
+                        edge_leaves=0.5, size_dark=1.8, size_lit=1.0, tip=tip, fringe=0.35)

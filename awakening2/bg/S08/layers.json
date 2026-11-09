@@ -1,0 +1,171 @@
+{
+  "painting": "S08",
+  "size": [
+    1920,
+    1040
+  ],
+  "margin": 48,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "misty dawn glow behind the forest; opaque"
+    },
+    {
+      "name": "far",
+      "file": "01_far.png",
+      "depth": 0.15,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.498,
+      "note": "far trunks dissolving into mist, far understorey on the horizon"
+    },
+    {
+      "name": "mist_far",
+      "file": "02_mist_far.png",
+      "depth": 0.25,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.924,
+      "note": "mist between far and mid trees; glow behind the robot"
+    },
+    {
+      "name": "mid",
+      "file": "03_mid.png",
+      "depth": 0.45,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.429,
+      "note": "mid broadleaf trees, the clearing floor (the robot kneels on it)"
+    },
+    {
+      "name": "mist_mid",
+      "file": "04_mist_mid.png",
+      "depth": 0.55,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.158,
+      "note": "ground mist; the robot goes above this layer"
+    },
+    {
+      "name": "beams",
+      "file": "05_beams.png",
+      "depth": 0.6,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.186,
+      "note": "sunbeams slanting down-left through the canopy"
+    },
+    {
+      "name": "near",
+      "file": "06_near.png",
+      "depth": 0.8,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.402,
+      "note": "giant framing trunks (camphor left, beech right) and their roots; canopy corners"
+    },
+    {
+      "name": "fg",
+      "file": "07_fg.png",
+      "depth": 1.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.031,
+      "note": "ferns, grass and vines in front (bottom corners / sides only)"
+    }
+  ],
+  "seconds": 45.4,
+  "layer_seconds": {
+    "sky": 1.5,
+    "far": 30.0,
+    "mist_far": 0.8,
+    "mid": 6.6,
+    "mist_mid": 0.9,
+    "beams": 1.0,
+    "near": 3.1,
+    "fg": 1.0
+  },
+  "sun": [
+    1290.0,
+    300.0
+  ],
+  "light_dir": [
+    0.45,
+    -0.85,
+    -0.35
+  ],
+  "horizon_y": 757.0,
+  "robot_zone": [
+    630,
+    130,
+    1230,
+    870
+  ],
+  "robot_between": [
+    "beams",
+    "near"
+  ],
+  "reuse": "S14 reuses these layers"
+}

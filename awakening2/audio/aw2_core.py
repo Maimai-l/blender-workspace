@@ -149,6 +149,21 @@ class Cues:
         return int(round(t * self.fps))
 
 
+def launch_silence(C):
+    """The held breath before the launch, shared by score, effects and master: it ends where
+    the smear begins and lasts 15 % of the wind-ring -> smear build-up (0.3-0.7 s).
+    Returns (start, end) or None when there is no launch in the cues."""
+    imp = C.first("impact_frame")
+    if imp is None:
+        return None
+    s1 = C.first("launch_smear", imp - 0.2)
+    ref = C.first("wind_ring", C.first("engine_ignite", s1 - 3.2))
+    if ref is None or ref >= s1:
+        ref = s1 - 3.2
+    L = float(np.clip(0.15 * (s1 - ref), 0.3, 0.7))
+    return s1 - L, s1
+
+
 # ============================================================================ envelopes
 def smooth(x, ms):
     """Zero-phase smoothing (two box passes ~ triangle of width ms)."""
@@ -470,7 +485,8 @@ class Bus:
         self.n = n
         self.dry = np.zeros((n, 2))
         self.sends = {k: np.zeros((n, 2)) for k in sends}
-        self.log = []          # (t0, t1, name, peak_db)
+        self.log = []          # (t0, t1, name, peak_db, cue time, energy onset)
+        self.cue = None        # cue time that placements are attributed to (set by event handlers)
 
     def add(self, x, t0, pan=0.0, gain=1.0, send=None, name=None, fade_in_ms=0.3,
             fade_out_ms=3.0, width=1.0, log_onset=None):
@@ -498,13 +514,18 @@ class Bus:
         seg = st[: e - s0]
         fades(seg, fade_in_ms, fade_out_ms if e - s0 == len(st) else 20.0)
         self.dry[s0:e] += seg
+        if getattr(self, "keep", None) is not None:          # diagnostics: keep every placed sound
+            self.keep.append((s0 / SR, name or "", seg.copy()))
         if send:
             for k, v in send.items():
                 if v:
                     self.sends[k][s0:e] += v * seg
-        if name:
-            self.log.append((s0 / SR, e / SR, name, to_db(np.abs(seg).max()),
-                             t0 if log_onset is None else log_onset))
+        if name or self.cue is not None:
+            a = np.abs(seg).max(axis=1)
+            pk = a.max()
+            on = (s0 + int(np.argmax(a > 0.1 * pk))) / SR if pk > 0 else s0 / SR
+            cue = log_onset if log_onset is not None else (self.cue if self.cue is not None else t0)
+            self.log.append((s0 / SR, e / SR, name or "", to_db(pk), cue, on))
 
     def render(self, irs):
         out = self.dry.copy()

@@ -7,26 +7,26 @@ tail and legs are curves/polygons attached to it.  Nothing here touches pixels.
 """
 import numpy as np
 
-CM_PER_UNIT = 6.1          # perched height (feet -> crown) in cm; `scale` = pixels per this
+CM_PER_UNIT = 6.0          # perched height (feet -> crown) in cm; `scale` = pixels per this
 
 # body profile in the body frame (x along the body axis, y dorsal): (x, y, radius)
 BODY_CTRL = np.array([
-    (-2.42, 0.06, 0.40),
-    (-2.08, 0.03, 0.76),
-    (-1.58, 0.00, 1.08),
-    (-0.88, -0.02, 1.36),
-    (-0.08, -0.03, 1.50),
-    (0.66, -0.02, 1.49),
-    (1.24, 0.06, 1.33),
-    (1.66, 0.24, 1.08),
+    (-2.15, 0.06, 0.40),
+    (-1.84, 0.03, 0.74),
+    (-1.40, 0.00, 1.05),
+    (-0.78, -0.02, 1.32),
+    (-0.08, -0.03, 1.45),
+    (0.58, -0.02, 1.44),
+    (1.10, 0.06, 1.29),
+    (1.48, 0.24, 1.06),
 ])
-SHOULDER = np.array([0.62, 0.78])         # body frame (x, y), wings attach at z = +-0.8
-HEAD_R = 1.12
+SHOULDER = np.array([0.55, 0.80])         # body frame (x, y), wings attach at z = +-0.8
+HEAD_R = 1.22
 EYE_DIR = np.array([0.30, 0.17, 0.94])
 EYE_A, RING_A = 0.25, 0.43                # angular radii on the head sphere (rad)
 
 DEFAULT_POSE = dict(
-    bx=0.0, by=2.75, tilt=35.0, fluff=1.0, neck=0.5, head_dx=0.0, head_dy=0.0,
+    bx=0.0, by=2.70, tilt=38.0, fluff=1.0, neck=0.5, head_dx=0.0, head_dy=0.0,
     head_yaw=0.0, head_pitch=0.0, head_roll=0.0, beak=0.0, blink=0.0,
     tail=-14.0, tail_spread=0.0, tail_len=1.0, tail_side=0.0,
     # folded wings (decals on the body): droop rotates about the shoulder, lift pushes out
@@ -112,26 +112,26 @@ def side_z(xb, yb, floor=0.42):
 # ----------------------------------------------------------------------------- folded wing design
 # Hand-designed side view of the folded wing in the body frame (x back = negative).
 FW_OUTLINE = np.array([
-    (0.62, 0.86), (0.18, 1.18), (-0.55, 1.30), (-1.35, 1.18), (-2.15, 0.88), (-2.95, 0.48),
-    (-3.62, 0.12), (-3.95, -0.06),                                   # primary tip
-    (-3.62, -0.12), (-3.70, -0.16), (-3.33, -0.22), (-3.40, -0.27),  # stepped primary tips
-    (-2.95, -0.33), (-2.40, -0.48), (-1.70, -0.70), (-0.95, -0.86),  # lower edge (secondaries)
-    (-0.25, -0.86), (0.35, -0.62), (0.80, -0.22), (0.98, 0.25), (0.88, 0.62),
+    (0.55, 0.98), (0.05, 1.24), (-0.65, 1.22), (-1.30, 1.00), (-1.95, 0.66), (-2.65, 0.30),
+    (-3.12, 0.08), (-3.38, -0.04),                                   # primary tip
+    (-3.06, -0.11), (-3.12, -0.14), (-2.82, -0.19), (-2.88, -0.22),  # stepped primary tips
+    (-2.52, -0.28), (-2.02, -0.42), (-1.45, -0.58), (-0.80, -0.69),  # lower edge (secondaries)
+    (-0.20, -0.65), (0.30, -0.45), (0.62, -0.10), (0.74, 0.35), (0.70, 0.74),
 ])
 FW_COVERTS = np.array([
-    (0.62, 0.86), (0.18, 1.18), (-0.55, 1.30), (-1.05, 1.24), (-1.28, 0.86), (-1.10, 0.40),
-    (-0.62, 0.02), (-0.02, -0.28), (0.52, -0.40), (0.80, -0.22), (0.98, 0.25), (0.88, 0.62),
+    (0.55, 0.98), (0.05, 1.24), (-0.65, 1.22), (-0.88, 1.16), (-1.06, 0.80), (-0.90, 0.32),
+    (-0.44, -0.05), (0.12, -0.27), (0.48, -0.26), (0.62, -0.10), (0.74, 0.35), (0.70, 0.74),
 ])
-FW_TERTIAL = np.array([(-1.05, 1.24), (-1.75, 1.05), (-2.25, 0.80), (-2.40, 0.55), (-1.95, 0.42),
-                       (-1.45, 0.60), (-1.28, 0.86)])
+FW_TERTIAL = np.array([(-0.88, 1.16), (-1.50, 0.93), (-1.95, 0.66), (-2.06, 0.42), (-1.66, 0.33),
+                       (-1.22, 0.50), (-1.06, 0.80)])
 # feather lines (open polylines) on the folded wing, body frame
 FW_LINES = [
-    np.array([(-1.30, 0.86), (-1.12, 0.40), (-0.62, 0.02), (-0.02, -0.28), (0.52, -0.40)]),  # coverts edge
-    np.array([(-2.30, 0.10), (-2.95, -0.10), (-3.50, -0.05)]),                                # primary edge
-    np.array([(-2.05, -0.12), (-2.70, -0.26), (-3.25, -0.22)]),
-    np.array([(-1.40, -0.38), (-2.05, -0.40)]),                                               # secondary edges
-    np.array([(-0.70, -0.55), (-1.35, -0.62)]),
-    np.array([(-1.42, 0.62), (-1.95, 0.44), (-2.38, 0.56)]),                                  # tertial
+    np.array([(-1.08, 0.86), (-0.92, 0.32), (-0.44, -0.05), (0.12, -0.27), (0.50, -0.25)]),  # coverts edge
+    np.array([(-1.95, 0.06), (-2.50, -0.08), (-3.06, -0.06)]),                                # primary edges
+    np.array([(-1.78, -0.16), (-2.30, -0.27), (-2.80, -0.20)]),
+    np.array([(-1.12, -0.40), (-1.68, -0.43)]),                                               # secondary edges
+    np.array([(-0.50, -0.50), (-1.05, -0.55)]),
+    np.array([(-1.22, 0.52), (-1.66, 0.36), (-2.04, 0.46)]),                                  # tertial
 ]
 
 
@@ -191,18 +191,19 @@ def flight_wing(P, pre, side, Rb, bc):
         stips.append(root + S_LEN[j] * d)
     B = np.array([-0.2, 1.95])
     LE1 = np.array([0.45 * L_arm, -0.32])
-    fd_out = lerp(0.05, 0.30, fan)
+    fd_out = lerp(0.04, 0.26, fan)
     outline = [np.zeros(2), LE1, W, HT + 0.12 * np.array([-h[1], h[0]]) * -1, tips[0]]
     is_hand = [False, False, False, True, True]
     for k in range(1, 9):
-        fd = fd_out if k <= 4 else 0.10
+        fd = fd_out * (1.0 if k <= 3 else 0.55 if k == 4 else 0.0)
         mr = 0.5 * (roots[k - 1] + roots[k]); mt = 0.5 * (tips[k - 1] + tips[k])
-        outline.append(mr + (mt - mr) * (1 - fd)); is_hand.append(True)
+        if fd > 0.01:
+            outline.append(mr + (mt - mr) * (1 - fd)); is_hand.append(True)
         outline.append(tips[k]); is_hand.append(True)
     for j in range(8):
-        if j > 0:
+        if j > 0 and j % 3 == 0:
             mr = 0.5 * (sroots[j - 1] + sroots[j]); mt = 0.5 * (stips[j - 1] + stips[j])
-            outline.append(mr + (mt - mr) * 0.94); is_hand.append(False)
+            outline.append(mr + (mt - mr) * 0.975); is_hand.append(False)
         outline.append(stips[j]); is_hand.append(False)
     outline.append(B); is_hand.append(False)
     outline = np.array(outline); is_hand = np.array(is_hand)
@@ -217,7 +218,8 @@ def flight_wing(P, pre, side, Rb, bc):
     lines, lines_hand = [], []
     for k in range(1, 6):
         mr = 0.5 * (roots[k - 1] + roots[k]); mt = 0.5 * (tips[k - 1] + tips[k])
-        p0 = mr + (mt - mr) * (1 - fd_out * 1.05); p1 = mr + (mt - mr) * 0.48
+        fdk = fd_out * (1.0 if k <= 3 else 0.55 if k == 4 else 0.0)
+        p0 = mr + (mt - mr) * (1 - fdk * 1.05 - 0.03); p1 = mr + (mt - mr) * 0.50
         lines.append(np.array([p0, p1])); lines_hand.append(True)
     for j in range(1, 7, 2):
         mr = 0.5 * (sroots[j - 1] + sroots[j]); mt = 0.5 * (stips[j - 1] + stips[j])
@@ -275,7 +277,7 @@ def build_rig(pose):
 
     # --- head position
     nb_ = body[-1]
-    nv = np.array([0.22 + 0.16 * P['neck'], 0.74 + 0.52 * P['neck'], 0.0]) * (0.9 + 0.1 * f)
+    nv = np.array([0.20 + 0.16 * P['neck'], 0.70 + 0.50 * P['neck'], 0.0]) * (0.9 + 0.1 * f)
     hc = nb_ + nv + np.array([P['head_dx'], P['head_dy'], 0.0])
     Rh = ry(D(P['head_yaw'])) @ rz(D(P['head_pitch'])) @ rx(D(P['head_roll']))
     rig.hc, rig.Rh, rig.rh = hc, Rh, HEAD_R * (0.97 + 0.03 * f)
@@ -293,8 +295,8 @@ def build_rig(pose):
     up_n = np.repeat(np.array([-hdir[1], hdir[0], 0.0])[None], nn, 0)
 
     # --- head spheres (head-local offsets)
-    hl = np.array([(0.0, 0.0, 0.0), (0.46, -0.10, 0.0), (-0.30, -0.24, 0.0), (0.22, 0.10, 0.0)])
-    hr = np.array([rig.rh, 0.80, 0.97, 1.02]) * np.array([1, 1, f, 1])
+    hl = np.array([(0.0, 0.0, 0.0), (0.50, -0.11, 0.0), (-0.32, -0.26, 0.0), (0.22, 0.10, 0.0)])
+    hr = np.array([rig.rh, 0.86, 1.04, 1.10]) * np.array([1, 1, f, 1])
     head = hc[None] + hl @ Rh.T
 
     c = np.vstack([body, neck, head])
@@ -315,7 +317,7 @@ def build_rig(pose):
         rig.eyes.append(dict(c=hc + Rh @ (d * rig.rh), n=Rh @ d, dloc=d))
 
     # --- beak (head-local -> root)
-    base = np.array([1.08, -0.13, 0.0])
+    base = np.array([1.16, -0.14, 0.0])
     tip = np.array([2.08, -0.27, 0.0])
     db = (tip - base) / np.linalg.norm(tip - base)
     ub_ = np.array([-db[1], db[0], 0.0])
@@ -324,18 +326,19 @@ def build_rig(pose):
     phi_l = np.linspace(np.pi, 2 * np.pi, 9)
     upper = [base + ub_ * 0.25 * np.sin(p) + wb * 0.215 * np.cos(p) for p in phi_u]
     upper += [base + (tip - base) * 0.5 + ub_ * 0.105, tip]
-    lower = [base + ub_ * 0.16 * np.sin(p) + wb * 0.19 * np.cos(p) for p in phi_l]
+    lower = [base + ub_ * 0.19 * np.sin(p) + wb * 0.19 * np.cos(p) for p in phi_l]
     lower += [base + (tip - base) * 0.5 - ub_ * 0.07, base + (tip - base) * 0.93 - ub_ * 0.015]
     upper, lower = np.array(upper), np.array(lower)
     gape = base - db * 0.12
     op = P['beak']
-    Rl = rot_axis(wb, -D(30.0) * op)
-    Ru = rot_axis(wb, D(7.0) * op)
+    Rl = rot_axis(wb, -D(21.0) * op)
+    Ru = rot_axis(wb, D(6.0) * op)
     lower = (lower - gape) @ Rl.T + gape
     upper = (upper - gape) @ Ru.T + gape
     mouth = None
     if op > 0.05:
-        mouth = np.array([gape + ub_ * 0.02, upper[-1] - db * 0.12, lower[-1] - db * 0.10])
+        mouth = np.array([gape + ub_ * 0.0 + db * 0.05, upper[-1] - db * 0.30 - ub_ * 0.03,
+                          lower[-1] - db * 0.28 + ub_ * 0.03])
     tohead = lambda q: hc[None] + np.atleast_2d(q) @ Rh.T
     rig.beak = dict(upper=tohead(upper), lower=tohead(lower), mouth=None if mouth is None else tohead(mouth),
                     tip=tohead(tip)[0], base=tohead(base)[0], gape=tohead(gape)[0],
@@ -347,30 +350,32 @@ def build_rig(pose):
     upb = np.array([dirb[1], -dirb[0]])
     if upb[1] < 0:
         upb = -upb
-    root = np.array([-2.12, 0.02])
-    L = 3.9 * P['tail_len']
-    prof_pts = [(0.0, 0.40), (1.4, 0.30), (L - 0.35, 0.26), (L - 0.02, 0.21), (L + 0.04, 0.06),
-                (L - 0.10, -0.01), (L + 0.03, -0.11), (L - 0.03, -0.23), (L - 0.40, -0.28),
-                (1.4, -0.33), (0.0, -0.50)]
-    wt = lerp(0.52, 2.0, P['tail_spread'])
-    fan_pts = [(0.0, 0.34), (L * 0.55, lerp(0.42, wt * 0.8, 0.8)), (L, wt), (L + 0.08, wt * 0.55),
-               (L - 0.12 - 0.15 * P['tail_spread'], 0.0), (L + 0.08, -wt * 0.55), (L, -wt),
-               (L * 0.55, -lerp(0.42, wt * 0.8, 0.8)), (0.0, -0.34)]
+    root = np.array([-1.88, 0.02])
+    L = 3.05 * P['tail_len']
+    prof_pts = [(0.0, 0.34), (1.3, 0.24), (L - 0.32, 0.21), (L - 0.02, 0.17), (L + 0.04, 0.05),
+                (L - 0.09, -0.01), (L + 0.03, -0.09), (L - 0.03, -0.19), (L - 0.38, -0.23),
+                (1.3, -0.27), (0.0, -0.44)]
+    wt = lerp(0.50, 1.95, P['tail_spread'])
     side_off = P['tail_side']
-
-    def tail3(pq, plane):
-        out = []
-        for p, q in pq:
-            xy = root + dirb * p
-            if plane == 'v':
-                v = np.array([xy[0] + upb[0] * q, xy[1] + upb[1] * q, side_off * p / L])
-            else:
-                v = np.array([xy[0], xy[1], q + side_off * p / L])
-            out.append(v)
-        return np.array(out) @ Rb.T + bc
-    rig.tail = dict(profile=tail3(prof_pts, 'v'), fan=tail3(fan_pts, 'h'),
-                    lines=[tail3([(0.9, -0.02), (L - 0.3, -0.04)], 'v'),
-                           tail3([(L - 0.15, 0.0), (L * 0.45, 0.0)], 'h')],
+    n_sec = 9
+    ps = np.linspace(0.0, L, n_sec)
+    tt = ps / L
+    half_w = lerp(0.36, wt, tt ** 0.8)                       # fan half-width (z)
+    half_h = lerp(0.36, 0.16, np.sqrt(tt))                    # stack thickness (y)
+    cen, wv, hv = [], [], []
+    for p, hw, hh in zip(ps, half_w, half_h):
+        xy = root + dirb * p
+        cen.append([xy[0], xy[1] - 0.04 * (1 - p / L), side_off * p / L])
+        wv.append([0.0, 0.0, hw])
+        hv.append([upb[0] * hh, upb[1] * hh, 0.0])
+    cen = np.array(cen) @ Rb.T + bc
+    wv = np.array(wv) @ Rb.T
+    hv = np.array(hv) @ Rb.T
+    tip_c = cen[-1]
+    rig.tail = dict(cen=cen, wv=wv, hv=hv,
+                    up=Rb @ np.array([upb[0], upb[1], 0.0]),
+                    lines=[np.array([cen[2] - hv[2] * 0.05, cen[-2] - hv[-2] * 0.05, tip_c - hv[-1] * 0.05]),
+                           np.array([tip_c + hv[-1] * 0.1, tip_c - (cen[-1] - cen[-2]) * 0.35])],
                     root=(np.array([root[0], root[1], 0]) @ Rb.T + bc))
 
     # --- wings
@@ -389,9 +394,9 @@ def build_rig(pose):
 def build_legs(P, bc, Rb):
     legs = []
     mode = P['legs']
-    if mode == 'none':
+    if mode in ('none', 'tuck'):
         return legs
-    Lt = 1.72
+    Lt = 1.62
     for side in (-1, 1):
         zf = 0.40 * side
         attach = (np.array([0.20, -1.02, 0.42 * side]) @ Rb.T) + bc
@@ -424,12 +429,12 @@ def build_legs(P, bc, Rb):
         if mode != 'tuck':
             ang_f = D(lerp(-4.0, -38.0, open_))
             ang_b = D(lerp(184.0, 215.0, open_))
-            for k, (ang, ln, dz) in enumerate([(ang_f, 1.05, 0.10), (ang_f + D(6), 0.92, -0.10), (ang_b, 0.78, 0.0)]):
+            for k, (ang, ln, dz) in enumerate([(ang_f, 0.84, 0.10), (ang_f + D(7), 0.74, -0.10), (ang_b, 0.62, 0.0)]):
                 d = np.array([np.cos(ang), np.sin(ang) + toe_dir_y * (1 if k < 2 else -0.3), 0.0])
                 d /= np.linalg.norm(d)
                 p1 = F + d * ln * 0.55 + np.array([0, 0, dz * side])
                 p2 = F + d * ln + np.array([0, -0.06 - 0.05 * (1 - open_), dz * side])
-                claw = p2 + np.array([d[0] * 0.18, -0.12, 0.0])
+                claw = p2 + np.array([d[0] * 0.13, -0.10, 0.0])
                 toes.append((np.array([F, p1, p2, claw]), np.array([0.085, 0.075, 0.060, 0.018])))
         legs.append(dict(side=side, tarsus=(np.array([H, F]), np.array([0.105, 0.090])),
                          thigh=(np.array([attach, H]), np.array([0.34, 0.20])), toes=toes))

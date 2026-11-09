@@ -294,23 +294,24 @@ def paint_tube(cv, path, widths, rng, bark, light3=(0.6, -0.7, -0.25), depth=0.0
                  rag=0.6, edge=0.3, bristle=0.2, opacity=rng.uniform(0.4, 0.8, nl), mode='lock', rng=rng)
     # --- dappled sunlight flecks
     if flecks > 0 and wmean > 6:
-        fc = fleck_col if fleck_col is not None else C(255, 206, 128)
-        npatch = int(flecks * Ltot / wmean * 1.0) + 1
+        fc = fleck_col if fleck_col is not None else C(255, 194, 96)
+        npatch = int(flecks * Ltot / wmean * 0.8) + 1
         for _ in range(npatch):
             s0 = rng.uniform(0.0, 1.0)
-            t0 = rng.uniform(-0.5, 0.9)
+            sgn0 = 1.0 if (fr.N[len(path) // 2, 0] * L2[0] + fr.N[len(path) // 2, 1] * L2[1]) > 0 else -1.0
+            t0 = rng.uniform(0.1, 0.85) * sgn0
             m = int(rng.integers(6, 18))
             ss = s0 + rng.normal(0, 0.25, m) * wmean / max(Ltot, 1)
             tt = np.clip(t0 + rng.normal(0, 0.1, m), -0.95, 0.95)
             pts, wl, Nn = fr.at(ss, tt)
             labc, val, _ = colour_for(tt, ss, 0.0)
-            k = np.clip(0.45 + 0.4 * tt, 0.2, 0.9)[:, None]
-            labc = labc + (oklab(fc) - labc) * k * 0.75
+            k = np.clip(0.35 + 0.4 * np.abs(tt), 0.2, 0.8)[:, None]
+            labc = labc + (oklab(fc) - labc) * k * 0.6
             c = np.clip(from_oklab(jitter_lab(labc, rng, 0.02, 0.1, 0.05)), 0, 1)
             ang = np.arctan2(fr.T[0, 1], fr.T[0, 0]) + rng.normal(0, 0.3, m)
-            dabs(cv, pts[:, 0], pts[:, 1], wl * rng.uniform(0.06, 0.2, m), c, aspect=rng.uniform(0.4, 0.8, m),
-                 angle=ang, edge=0.3, rag=0.6, bristle=0.25, opacity=rng.uniform(0.6, 0.95, m),
-                 mode='lock', rng=rng)
+            dabs(cv, pts[:, 0], pts[:, 1], np.clip(wl * rng.uniform(0.035, 0.1, m), 3, 40), c,
+                 aspect=rng.uniform(0.4, 0.8, m), angle=ang, edge=0.35, rag=0.6, bristle=0.25,
+                 opacity=rng.uniform(0.5, 0.85, m), mode='lock', rng=rng)
     # --- moss: velvety patches (solid under-layer + textured top, lit on the sun side)
     if moss > 0 and wmean > 4:
         mp = _hazed(moss_pal or MOSS, depth, haze)
@@ -369,17 +370,17 @@ def paint_tube(cv, path, widths, rng, bark, light3=(0.6, -0.7, -0.25), depth=0.0
             tt = t0 + np.cumsum(rng.normal(0, 0.05, k)) + np.sin(ss * Ltot / wmean * rng.uniform(0.6, 1.6)) * 0.25
             vis = np.abs(tt) < 0.97
             pts, wl, _ = fr.at(ss, np.clip(tt, -0.97, 0.97))
-            stem = np.clip(from_oklab(lab_shift(oklab(ip['dark']), dl=-0.02)), 0, 1)
+            stem = np.clip(mix(ip['dark'], C(110, 96, 80), 0.45), 0, 1)
             # stem segments (only visible parts)
             runs = np.split(np.arange(k), np.nonzero(np.diff(vis.astype(int)))[0] + 1)
             for rr in runs:
                 if len(rr) > 2 and vis[rr[0]]:
-                    stroke(cv, pts[rr], max(wmean * 0.012, 1.2), stem, opacity=0.9, bristle=0.2,
+                    stroke(cv, pts[rr], max(wmean * 0.006, 1.2), stem, opacity=0.6, bristle=0.3,
                            rag=0.2, rng=rng)
             # leaf clusters
-            nlc = int(k * rng.uniform(0.9, 1.4))
+            nlc = int(k * rng.uniform(0.35, 0.6))
             # leaves gather in clumps along the stem with bare stretches between
-            dens = noise1d(k, max(3, k // 18), rng) ** 2.2
+            dens = noise1d(k, max(3, k // 14), rng) ** 4.0 + 1e-4
             j = rng.choice(k, nlc, p=dens / dens.sum())
             j = j[vis[j]]
             if len(j) == 0:

@@ -358,9 +358,17 @@ class Mesh:
         self.name = name
 
     def save(self, path):
-        np.savez_compressed(path, V=self.V, F=self.F, N=self.N,
+        tmp = path + f'.tmp{os.getpid()}.npz'
+        np.savez_compressed(tmp, V=self.V, F=self.F, N=self.N,
                             meta=np.array([self.part, self.mat, int(self.cull)]),
                             name=np.array(self.name))
+        try:
+            os.replace(tmp, path)      # atomic: parallel renderers never read a half-written mesh
+        except OSError:                # Windows: another process wrote/holds it already
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
     @staticmethod
     def load(path):
@@ -379,17 +387,20 @@ class Scene:
 
     def gather(self):
         Vs, Ns, Fs, Os, parts, mats, culls = [], [], [], [], [], [], []
+        ONs = []
         off = 0
         for mesh, M in self.items:
             Vs.append(xform_points(M, mesh.V))
             Ns.append(xform_dirs(M, mesh.N))
             Os.append(mesh.V)
+            ONs.append(mesh.N)
             Fs.append(mesh.F + off)
             nf = len(mesh.F)
             parts.append(np.full(nf, mesh.part, np.int16))
             mats.append(np.full(nf, mesh.mat, np.int16))
             culls.append(np.full(nf, mesh.cull, np.bool_))
             off += len(mesh.V)
+        self._onrm = np.concatenate(ONs)
         return (np.concatenate(Vs), np.concatenate(Ns), np.concatenate(Os),
                 np.concatenate(Fs), np.concatenate(parts), np.concatenate(mats),
                 np.concatenate(culls))
@@ -430,6 +441,9 @@ def render_passes(scene, cam, want_opos=True):
         opos = np.zeros((H, W, 3), np.float32)
         opos[m] = interp(O)
         out['opos'] = opos
+        onrm = np.zeros((H, W, 3), np.float32)
+        onrm[m] = interp(scene._onrm)
+        out['onrm'] = onrm
     return out
 
 

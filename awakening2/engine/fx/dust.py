@@ -14,7 +14,7 @@ import math
 import numpy as np
 
 from . import core, palettes
-from .core import Layer, LobeBatch, cut_holes, ease_out, held, smoothstep
+from .core import Layer, cut_holes, ease_out, held, smoothstep
 
 TAU = 2 * math.pi
 
@@ -47,7 +47,7 @@ class _Billow:
         self.sp = g.uniform(0.38, 0.62, (n, m))     # how far each bump sticks out (x its r)
         self.send = g.uniform(0.80, 1.0, (n, m))
         self.wp = g.uniform(0, TAU, (n, m + 1))
-        self.hole_on = g.random(n) < 0.35
+        self.hole_on = g.random(n) < 0.3
         self.hole_ang = g.uniform(0, TAU, n)
         self.hole_k = g.uniform(0.55, 0.8, n)
         self.m = m
@@ -65,7 +65,7 @@ class _Billow:
             y0 = py[j]
             if ground is not None:
                 y0 = min(y0, ground - r0 * 0.42)
-            core_r = r0 * (1 - 0.88 * b)
+            core_r = r0 * (1 - 0.88 * b ** 1.4)
             wpd = drawing * 0.8
             discs = []
             if core_r > 0.6:
@@ -76,35 +76,51 @@ class _Billow:
                 sr = r0 * self.su[i, k] * (1 - 0.3 * b) * fade
                 if sr < 0.6:
                     continue
-                rho = max(0.15 * r0, r0 * (1 - 0.88 * b) - sr * (1 - self.sp[i, k])) + 0.85 * b * r0
+                rho = max(0.15 * r0, r0 * (1 - 0.88 * b ** 1.4) - sr * (1 - self.sp[i, k])) + 0.8 * b ** 1.3 * r0
                 sx = x0 + rho * math.cos(ph)
                 sy = y0 + rho * math.sin(ph) * 0.9
                 if ground is not None:
                     sy = min(sy, ground - sr * 0.3)
                 discs.append((sx, sy, sr, self.wp[i, k + 1] + wpd))
             if discs:
-                groups.append((z[j], discs, r0))
-            if self.hole_on[i] and b > 0.15:
-                hr = r0 * self.hole_k[i] * smoothstep(0.15, 0.8, b)
-                if hr > 1:
+                groups.append((z[j], discs, r0, int(i)))
+            if self.hole_on[i] and b > 0.35:
+                hr = r0 * self.hole_k[i] * smoothstep(0.3, 0.85, b)
+                if hr > max(1.5, 0.3 * r0):
                     a = self.hole_ang[i] + phase[j] * 0.3
-                    holes.append((x0 + math.cos(a) * r0 * 0.8, y0 + math.sin(a) * r0 * 0.8,
+                    holes.append((x0 + math.cos(a) * r0 * 1.05, y0 + math.sin(a) * r0 * 1.05,
                                   hr, wob * 2.0, self.wp[i, 0] * 1.3 + wpd))
         return groups, holes
 
 
 def paint_groups(canvas, groups, holes, palette, light, centre, size, line=2.5, wob=0.05,
                  opacity=1.0, bias=0.0, vert=0.45, contrast=1.0, layer=None, ref_r=None,
-                 alpha=1.0, inner=0.0):
-    """Paint billow groups [(z, discs[(cx, cy, r, wp)], r0)] as one cel layer onto the canvas."""
+                 alpha=1.0, inner=0.0, local=0.0, group_bias=None, texture=0.0, tex_anchor=None,
+                 tex_scale=1.0):
+    """Paint billow groups [(z, discs[(cx, cy, r, wp)], r0)] as one cel layer onto the canvas.
+
+    Shading comes from each disc's place in the whole cloud (`centre`, `size`); `local` (0..1)
+    blends in each disc's place inside its own billow (for long walls of separate billows);
+    `group_bias` (per group, same order as `groups`) brightens / darkens whole billows."""
     if not groups:
         return canvas
-    groups = sorted(groups, key=lambda g: g[0])
+    order = sorted(range(len(groups)), key=lambda i: groups[i][0])
     ref = ref_r if ref_r is not None else size * 0.35
     bb = core.BillowBatch()
-    for z, discs, r0 in groups:
+    for gi in order:
+        z, discs, r0 = groups[gi][:3]
         A = np.asarray(discs, np.float64)
-        tl, ts = shade_params(A[:, 0], A[:, 1], centre, size, light, bias, vert, contrast)
+        gb = bias + (0.0 if group_bias is None else group_bias[gi])
+        if local > 0:
+            gc = (A[0, 0], A[0, 1])
+            tl1, ts1 = shade_params(A[:, 0], A[:, 1], centre, size, light, gb, vert, contrast)
+            tl2, ts2 = shade_params(A[:, 0], A[:, 1], gc, r0 * 2.4, light, gb, vert, contrast)
+            tl = np.where((tl1 > 0) & (tl2 > 0), tl1 * (1 - local) + tl2 * local, np.maximum(tl1, tl2) * (1 - local) + tl2 * local)
+            ts = ts1 * (1 - local) + ts2 * local
+            tl = np.where(tl < 0.3, 0.0, np.maximum(tl, 0.4))
+            ts = np.where(ts < 0.28, 0.0, np.maximum(ts, 0.38))
+        else:
+            tl, ts = shade_params(A[:, 0], A[:, 1], centre, size, light, gb, vert, contrast)
         D = np.stack([A[:, 0], A[:, 1], A[:, 2], np.full(len(A), wob), A[:, 3], ts, tl], 1)
         lw = line * float(np.clip(r0 / ref, 0.5, 1.3)) if line > 0 else 0.0
         li = inner * float(np.clip(r0 / ref, 0.4, 1.2)) if inner > 0 else 0.0
@@ -114,6 +130,8 @@ def paint_groups(canvas, groups, holes, palette, light, centre, size, line=2.5, 
     bb.paint(layer, palette, light)
     if holes:
         cut_holes(layer, holes)
+    if texture > 0:
+        core.brush_grain(layer, texture, centre if tex_anchor is None else tex_anchor, tex_scale, light)
     layer.onto(canvas, opacity)
     return canvas
 
@@ -144,7 +162,7 @@ class DustPuff:
     def __init__(self, name, origin, frame0, size=150.0, direction=(0, -1), spread=2.6, life=40,
                  n=9, light=(0.55, -0.83), palette=None, ground=None, rise=0.25, drift=(0.0, 0.0),
                  roll=0.5, line=2.5, on=2, opacity=1.0, wobble=0.05, sub=(4, 7), bias=0.0,
-                 aspect=0.75, vert=0.45, arms=0.6):
+                 aspect=0.7, vert=0.45, arms=0.9, texture=0.0):
         self.name = name
         self.origin = np.asarray(origin, np.float64)
         self.frame0 = int(frame0)
@@ -163,6 +181,7 @@ class DustPuff:
         self.wobble = wobble
         self.bias = bias
         self.vert = vert
+        self.texture = texture
         g = core.rng('dustpuff', name)
         a0 = math.atan2(direction[1], direction[0])
         u = (np.arange(n) + g.uniform(0.2, 0.8, n)) / n          # stratified across the fan
@@ -194,7 +213,7 @@ class DustPuff:
         py = (self.origin[1] + np.sin(self.ang[idx]) * trav * self.aspect
               - self.rise * self.size * ti ** 1.3 + self.drift[1] * age)
         R = self.rad[idx] * (0.30 + 0.70 * ease_out(ti / 0.16, 2.5)) * (1 + 0.3 * ti)
-        brk = smoothstep(0.46, 1.0, ti + self.brk[idx])
+        brk = smoothstep(0.42, 1.06, ti + self.brk[idx])
         phase = self.rsign[idx] * TAU * self.roll * ti
         z = py + self.zj[idx] * self.size
         drawing = age // max(self.on, 1)
@@ -209,7 +228,8 @@ class DustPuff:
         if not rows:
             return canvas
         return paint_groups(canvas, rows, holes, self.palette, self.light if light is None else light,
-                            C, self.size, self.line, self.wobble, op, self.bias, self.vert)
+                            C, self.size, self.line, self.wobble, op, self.bias, self.vert,
+                            texture=self.texture, tex_anchor=self.origin, tex_scale=self.size / 260.0)
 
 
 class GroundDust:
@@ -226,7 +246,7 @@ class GroundDust:
     def __init__(self, name, start, direction, frame0, distance=600.0, duration=30, height=110.0,
                  life=26, light=(0.55, -0.83), palette=None, on=2, depth=0.3, roll=1.0,
                  line=2.5, grow=0.0, opacity=1.0, wobble=0.05, ground=None, bias=0.0, vert=0.45,
-                 head=3):
+                 head=3, texture=0.0):
         self.name = name
         self.start = np.asarray(start, np.float64)
         self.dir = core.unit(direction)
@@ -247,6 +267,7 @@ class GroundDust:
         self.bias = bias
         self.vert = vert
         self.ground = ground
+        self.texture = texture
         self.nh = head
         self.nsp = int(math.ceil(self.duration / on)) + 1
         n = head + self.nsp
@@ -338,7 +359,8 @@ class GroundDust:
             return canvas
         return paint_groups(canvas, rows, holes, self.palette, self.light if light is None else light,
                             C, size, self.line, self.wobble, op, self.bias, self.vert,
-                            ref_r=self.height * 0.4)
+                            ref_r=self.height * 0.4, texture=self.texture, tex_anchor=C,
+                            tex_scale=self.height / 150.0)
 
 
 def puff_trail_rows(points, births, frame, size, life, name, on=2, rise=0.4, grow=1.6,

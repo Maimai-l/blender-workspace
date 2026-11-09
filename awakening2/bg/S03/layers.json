@@ -1,0 +1,114 @@
+{
+  "painting": "S03",
+  "size": [
+    2100,
+    1140
+  ],
+  "margin": 48,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2196,
+        1236
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "dawn sky; the gap is upper left, sun near the top-left corner; opaque"
+    },
+    {
+      "name": "far",
+      "file": "01_far.png",
+      "depth": 0.2,
+      "size": [
+        2196,
+        1236
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.742,
+      "note": "far trunks converging upward, high canopy rimming the gap"
+    },
+    {
+      "name": "mid",
+      "file": "02_mid.png",
+      "depth": 0.55,
+      "size": [
+        2196,
+        1236
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.594,
+      "note": "dark mossy trunks converging upward and the near canopy; the face goes above this"
+    },
+    {
+      "name": "beam",
+      "file": "03_beam.png",
+      "depth": 0.7,
+      "size": [
+        2196,
+        1236
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.198,
+      "note": "the first ray: soft warm beam from the upper left (animate: slide/opacity)"
+    },
+    {
+      "name": "motes",
+      "file": "04_motes.png",
+      "depth": 0.75,
+      "size": [
+        2196,
+        1236
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.002,
+      "note": "floating dust motes in the beam (drift them slowly)"
+    }
+  ],
+  "seconds": 18.4,
+  "layer_seconds": {
+    "sky": 2.0,
+    "far": 8.9,
+    "mid": 5.1,
+    "beam": 1.0,
+    "motes": 0.8
+  },
+  "sun": [
+    300.0,
+    70.0
+  ],
+  "light_dir": [
+    -0.6,
+    -0.7,
+    -0.3
+  ],
+  "beam_angle_deg": 29.475889003245747,
+  "note_shots": "S07 reuses this painting",
+  "face_between": [
+    "mid",
+    "beam"
+  ]
+}

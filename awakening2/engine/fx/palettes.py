@@ -31,13 +31,13 @@ DEBRIS = {
 # --- leaves: front lit/shade, back lit/shade, ink, vein ---------------------------------------
 LEAF = {
     'green':  dict(f_lit=hexc('#a9c45a'), f_sh=hexc('#557a4c'), b_lit=hexc('#cfd9a0'),
-                   b_sh=hexc('#8a9a7c'), ink=hexc('#26361f'), vein=hexc('#6f8f42')),
+                   b_sh=hexc('#8a9a7c'), ink=hexc('#26361f'), vein=hexc('#4f6e38')),
     'deep':   dict(f_lit=hexc('#7fa64d'), f_sh=hexc('#3f6047'), b_lit=hexc('#b9c992'),
-                   b_sh=hexc('#76887a'), ink=hexc('#1d2b1c'), vein=hexc('#557a3b')),
+                   b_sh=hexc('#76887a'), ink=hexc('#1d2b1c'), vein=hexc('#3a5a31')),
     'gold':   dict(f_lit=hexc('#e7b649'), f_sh=hexc('#a86a3e'), b_lit=hexc('#efd59a'),
-                   b_sh=hexc('#b3927a'), ink=hexc('#4a2a1c'), vein=hexc('#c08a3a')),
+                   b_sh=hexc('#b3927a'), ink=hexc('#4a2a1c'), vein=hexc('#a1652f')),
     'rust':   dict(f_lit=hexc('#d98a45'), f_sh=hexc('#8f4c3c'), b_lit=hexc('#e9c49a'),
-                   b_sh=hexc('#a7887c'), ink=hexc('#3e1f1a'), vein=hexc('#b06a35')),
+                   b_sh=hexc('#a7887c'), ink=hexc('#3e1f1a'), vein=hexc('#8a4a2c')),
 }
 
 # --- flames (inner to outer) ---------------------------------------------------------------

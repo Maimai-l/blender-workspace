@@ -1,0 +1,74 @@
+{
+  "painting": "S02",
+  "size": [
+    1920,
+    1040
+  ],
+  "margin": 48,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "glowing mist; opaque"
+    },
+    {
+      "name": "far",
+      "file": "01_far.png",
+      "depth": 0.3,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.878,
+      "note": "three misty rows of forest (trunks, leafy side sprays, vines), hazy canopy, light shafts"
+    },
+    {
+      "name": "mid",
+      "file": "02_mid.png",
+      "depth": 0.6,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.275,
+      "note": "nearer mossy trunks at the edges, canopy corners, vines; shoulder goes above"
+    }
+  ],
+  "seconds": 51.3,
+  "layer_seconds": {
+    "sky": 1.4,
+    "far": 46.2,
+    "mid": 3.3
+  },
+  "sun": [
+    1500.0,
+    120.0
+  ],
+  "light_dir": [
+    0.5,
+    -0.8,
+    -0.35
+  ]
+}

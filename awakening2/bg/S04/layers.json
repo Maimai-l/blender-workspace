@@ -1,0 +1,49 @@
+{
+  "painting": "S04",
+  "size": [
+    1920,
+    1040
+  ],
+  "margin": 40,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "far",
+      "file": "00_far.png",
+      "depth": 0.2,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "deep cool forest interior at low height, ground mist; opaque"
+    },
+    {
+      "name": "mid",
+      "file": "01_mid.png",
+      "depth": 0.6,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.054,
+      "note": "dark ferns at the left strip with warm glints"
+    }
+  ],
+  "seconds": 17.0,
+  "layer_seconds": {
+    "far": 15.7,
+    "mid": 0.8
+  },
+  "note_robot": "the chest covers x > ~0.07 of the frame; paint visible on the left strip and top"
+}

@@ -1,0 +1,148 @@
+{
+  "painting": "S16",
+  "size": [
+    2400,
+    1040
+  ],
+  "margin": 40,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2480,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "gold sunrise sky, sun at upper right; opaque"
+    },
+    {
+      "name": "high_clouds",
+      "file": "01_high_clouds.png",
+      "depth": 0.08,
+      "size": [
+        2480,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.153,
+      "note": "large sculpted cloud forms + soft lenses, upper left (clear of the trail)"
+    },
+    {
+      "name": "ridge",
+      "file": "02_ridge.png",
+      "depth": 0.15,
+      "size": [
+        2480,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.117,
+      "note": "distant ridge breaking through the cloud sea under the sun"
+    },
+    {
+      "name": "cloud_sea",
+      "file": "03_cloud_sea.png",
+      "depth": 0.3,
+      "size": [
+        2480,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.427,
+      "note": "the far sea of clouds"
+    },
+    {
+      "name": "clouds_mid",
+      "file": "04_clouds_mid.png",
+      "depth": 0.5,
+      "size": [
+        2480,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.112,
+      "note": "sculpted cumulus banks rising from the sea (right half)"
+    },
+    {
+      "name": "clouds_near",
+      "file": "05_clouds_near.png",
+      "depth": 0.75,
+      "size": [
+        2480,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.136,
+      "note": "big near cumulus at the bottom right"
+    },
+    {
+      "name": "fg",
+      "file": "06_fg.png",
+      "depth": 1.0,
+      "size": [
+        2480,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.053,
+      "note": "forest canopy tops at the bottom-left edge (the launch point of the trail)"
+    }
+  ],
+  "seconds": 11.2,
+  "layer_seconds": {
+    "sky": 2.4,
+    "high_clouds": 1.2,
+    "ridge": 1.2,
+    "cloud_sea": 2.1,
+    "clouds_mid": 1.2,
+    "clouds_near": 1.4,
+    "fg": 1.0
+  },
+  "sun": [
+    2010.0,
+    205.0
+  ],
+  "trail_diagonal": [
+    [
+      140.0,
+      1010.0
+    ],
+    [
+      2080.0,
+      160.0
+    ]
+  ],
+  "camera": "slow pan across 2400 px; any 1920-wide window is composed"
+}

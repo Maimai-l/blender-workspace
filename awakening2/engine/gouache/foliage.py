@@ -159,6 +159,9 @@ def paint_mass(cv, G, rng, stops, pos=None, leaf=10.0, density=1.0, aspect=0.5, 
         core = cv2.erode(core, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * er + 1, 2 * er + 1)))
         a = cv2.GaussianBlur(core.astype(np.float32), (0, 0), 0.8)
         q = np.floor(np.clip(v * 0.85 + 0.02, 0, 0.999) * bands) / max(bands - 1, 1) * 0.72
+        if orient == 'tangent':
+            # clouds: keep more of the soft form under the strokes
+            q = 0.5 * q + 0.5 * np.clip(v * 0.9, 0, 1)
         q = cv2.GaussianBlur(q.astype(np.float32), (0, 0), max(leaf * 0.3, 1.0))
         rgb = ramp(stops, q, pos)
         d = cv.img[sub]
@@ -251,36 +254,61 @@ def paint_mass(cv, G, rng, stops, pos=None, leaf=10.0, density=1.0, aspect=0.5, 
 
 
 def spray(cv, x, y, ang, length, leaf, cols_dark, cols_lit, rng, n_leaves=None, sun2=(0.6, -0.8),
-          droop=0.5, stem_col=None, width=None, curl=0.4, shape='leaf', opacity=1.0, aspect=0.42):
-    """A leafy twig: curved stem with alternating leaves, lit side lighter."""
-    n = int(n_leaves or max(5, length / (leaf * 0.45)))
-    pts = [np.array([x, y], np.float32)]
-    a = ang
-    step = length / 8
-    for i in range(8):
-        a += curl / 8 + rng.normal(0, 0.12) + droop * 0.05 * np.cos(a)
-        pts.append(pts[-1] + step * np.array([np.cos(a), np.sin(a)], np.float32))
-    P = catmull(np.array(pts), n=max(n * 2, 16))
+          droop=0.5, stem_col=None, width=None, curl=0.4, shape='leaf', opacity=1.0, aspect=0.42, rim=None):
+    """A leafy twig: a bending stem with 1-3 side twigs; leaves gather in irregular
+    clusters toward the twig ends (not a regular fishbone), sizes and angles vary,
+    most leaves stay in the dark body colour, the ones facing the sun catch light,
+    and an optional rim colour lights their sun-side edges."""
+    def twig(x0, y0, a0, L, depth):
+        pts = [np.array([x0, y0], np.float32)]
+        a = a0
+        k = 7
+        for i in range(k):
+            a += curl / k + rng.normal(0, 0.14) + droop * 0.06 * np.cos(a)
+            pts.append(pts[-1] + (L / k) * np.array([np.cos(a), np.sin(a)], np.float32))
+        return catmull(np.array(pts), n=40)
+    twigs = [twig(x, y, ang, length, 0)]
+    for j in range(int(rng.integers(1, 4))):
+        P0 = twigs[0]
+        i = int(rng.integers(len(P0) // 4, len(P0) - 6))
+        t0 = np.gradient(P0, axis=0)[i]
+        a0 = np.arctan2(t0[1], t0[0]) + rng.choice([-1, 1]) * rng.uniform(0.4, 0.9)
+        twigs.append(twig(P0[i, 0], P0[i, 1], a0, length * rng.uniform(0.35, 0.6), 1))
     if stem_col is not None:
-        stroke(cv, P, taper(len(P), 1.0, 0.2, width or max(leaf * 0.12, 1.2)), stem_col,
-               bristle=0.2, rag=0.1, opacity=opacity, rng=rng)
-    t = np.linspace(0.08, 1.0, n)
-    idx = np.clip((t * (len(P) - 1)).astype(int), 0, len(P) - 1)
-    nrm = normals(P)[idx]
-    tang = np.gradient(P, axis=0)[idx]
-    ta = np.arctan2(tang[:, 1], tang[:, 0])
-    side = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)
-    la = ta + side * rng.uniform(0.5, 1.1, n)
-    la = la + droop * 0.4 * np.angle(np.exp(1j * (np.pi / 2 - la)))
-    L = leaf * (0.65 + 0.5 * np.sin(np.pi * np.clip(t * 0.9 + 0.1, 0, 1))) * rng.uniform(0.8, 1.2, n)
-    cx = P[idx, 0] + np.cos(la) * L * 0.5
-    cy = P[idx, 1] + np.sin(la) * L * 0.5
+        for j, P in enumerate(twigs):
+            stroke(cv, P, taper(len(P), 1.0, 0.15, (width or max(leaf * 0.12, 1.2)) * (1 if j == 0 else 0.6)),
+                   stem_col, bristle=0.2, rag=0.1, opacity=opacity, rng=rng)
     sx, sy = sun2
-    lit = np.clip(0.5 + 0.5 * (np.cos(la) * sx + np.sin(la) * sy) + rng.normal(0, 0.2, n), 0, 1)
-    cols = mix(cols_dark, cols_lit, lit[:, None])
-    cols = jitter(cols, rng, dl=0.03, dc=0.08, dh=0.05)
-    dabs(cv, cx, cy, L, cols, aspect=aspect * rng.uniform(0.85, 1.15, n), angle=la, shape=shape,
-         edge=0.25, rag=0.25, bristle=0.2, split=0.1, opacity=opacity, rng=rng)
+    xs, ys, angs, Ls = [], [], [], []
+    for j, P in enumerate(twigs):
+        n = int((n_leaves or max(6, length / (leaf * 0.5))) * (1.0 if j == 0 else 0.5))
+        t = 1 - rng.random(n) ** 1.8                  # bunched toward the tip
+        t = np.clip(t * 0.85 + 0.12, 0, 1)
+        idx = np.clip((t * (len(P) - 1)).astype(int), 0, len(P) - 1)
+        tang = np.gradient(P, axis=0)[idx]
+        ta = np.arctan2(tang[:, 1], tang[:, 0])
+        la = ta + rng.choice([-1, 1], n) * rng.uniform(0.25, 1.5, n) + rng.normal(0, 0.3, n)
+        la = la + droop * 0.35 * np.angle(np.exp(1j * (np.pi / 2 - la)))
+        L = leaf * rng.uniform(0.55, 1.45, n) * (0.75 + 0.35 * t)
+        xs.append(P[idx, 0] + np.cos(la) * L * 0.5)
+        ys.append(P[idx, 1] + np.sin(la) * L * 0.5)
+        angs.append(la)
+        Ls.append(L)
+    xs, ys, la, L = (np.concatenate(v) for v in (xs, ys, angs, Ls))
+    n = len(xs)
+    face = np.cos(la) * sx + np.sin(la) * sy
+    lit = np.clip(0.2 + 0.55 * np.maximum(face, 0) ** 1.5 + rng.normal(0, 0.12, n), 0, 1)
+    cols = jitter(mix(cols_dark, cols_lit, lit[:, None]), rng, dl=0.03, dc=0.1, dh=0.06)
+    order = np.argsort(lit)
+    dabs(cv, xs[order], ys[order], L[order], cols[order], aspect=(aspect * rng.uniform(0.75, 1.3, n))[order],
+         angle=la[order], shape=shape, edge=0.25, rag=0.25, bristle=0.2, split=0.12, opacity=opacity, rng=rng)
+    if rim is not None:
+        k = face > 0.35
+        if k.any():
+            ox = np.cos(la[k] + np.pi / 2) * L[k] * 0.12 * np.sign(face[k])
+            dabs(cv, xs[k] + sx * L[k] * 0.12, ys[k] + sy * L[k] * 0.12, L[k] * 0.8,
+                 jitter(np.broadcast_to(rim, (int(k.sum()), 3)), rng, dl=0.03), aspect=aspect * 0.5, angle=la[k],
+                 shape=shape, edge=0.3, rag=0.2, opacity=0.8 * opacity, rng=rng)
 
 
 def vine(cv, x, y, length, rng, stem, leaf_dark, leaf_lit, leaf=9.0, width=2.5, sway=0.06,

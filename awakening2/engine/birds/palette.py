@@ -34,14 +34,14 @@ BASE = {
     'tail':      '#5f5e39',
     'beak_up':   '#4a4440',
     'beak_lo':   '#7e7d82',
-    'mouth':     '#d08a6a',
+    'mouth':     '#b0574c',
     'leg':       '#7a7780',
-    'uw_cov':    '#dcd6bc',
-    'uw_flight': '#aaa691',
+    'uw_cov':    '#e2dcc4',
+    'uw_flight': '#bab59d',
     'catch':     '#ffffff',
     'edge':      '#a6b151',
-    'sil':       '#3f3433',
-    'sil_lit':   '#6e5d55',
+    'sil':       '#2e2526',
+    'sil_lit':   '#55463f',
     'thigh':     '#c9b896',
     'tail_under': '#77735a',
 }
@@ -52,8 +52,10 @@ SHADOW_OVERRIDE = {
     'eye':    '#2b1d17',
     'catch':  '#ffffff',
     'buff':   '#978c86',
-    'sil':    '#3f3433',
-    'sil_lit': '#4f4442',
+    'sil':    '#2e2526',
+    'sil_lit': '#4a3d38',
+    'uw_cov': '#a59f8c',
+    'uw_flight': '#8a8676',
 }
 DEFAULT_SHADOW_MUL = np.array([0.66, 0.70, 0.86])
 DEFAULT_RIM = _c('#ffd890')

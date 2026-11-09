@@ -163,5 +163,8 @@ LEAF_KINDS = ('ovate', 'lance', 'round', 'serrate', 'maple')
 
 def leaf(kind, g):
     if kind == 'maple':
-        return maple_outline(g)
+        p = maple_outline(g)
+        lo, hi = p[:, 0].min(), p[:, 0].max()
+        p = (p - np.array([(lo + hi) / 2, 0])) * (2.0 / (hi - lo))
+        return p
     return leaf_outline(kind, g)

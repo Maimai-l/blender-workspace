@@ -36,7 +36,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.212,
+      "coverage": 0.27,
       "note": "far crowns around the gap, pale far trunks, far understorey in mist"
     },
     {
@@ -52,7 +52,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.461,
+      "coverage": 0.446,
       "note": "mist between far and mid trees; glow behind the robot"
     },
     {
@@ -68,7 +68,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.322,
+      "coverage": 0.54,
       "note": "mid trunks + crowns rimming the gap, perch branches, clearing floor (robot kneels on it)"
     },
     {
@@ -84,7 +84,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.369,
+      "coverage": 0.37,
       "note": "warm glowing mist behind the robot; the robot goes above this layer"
     },
     {
@@ -100,7 +100,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.204,
+      "coverage": 0.224,
       "note": "sunbeams through the gap (could be animated: opacity shimmer)"
     },
     {
@@ -116,7 +116,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.385,
+      "coverage": 0.456,
       "note": "giant framing trunks (camphor left, beech right), roots, near crowns at the top"
     },
     {
@@ -136,20 +136,20 @@
       "note": "foreground: overhanging leaves at the top, vines, ferns in the bottom corners"
     }
   ],
-  "seconds": 155.2,
+  "seconds": 91.6,
   "layer_seconds": {
-    "sky": 4.5,
-    "far": 83.3,
-    "mist_far": 2.5,
-    "mid": 38.4,
-    "mist_mid": 2.5,
-    "beams": 2.6,
-    "near": 17.5,
+    "sky": 4.2,
+    "far": 29.3,
+    "mist_far": 2.8,
+    "mid": 32.1,
+    "mist_mid": 2.7,
+    "beams": 2.5,
+    "near": 14.2,
     "fg": 2.4
   },
   "sun": [
-    1530.0,
-    200.0
+    1330.0,
+    175.0
   ],
   "light_dir": [
     0.55,
@@ -171,10 +171,10 @@
     ]
   },
   "robot_zone": [
-    422.4,
-    2151.2,
-    1344.0,
-    2868.8
+    710.4,
+    2047.2,
+    1401.6,
+    2848.0
   ],
   "robot_between": [
     "beams",

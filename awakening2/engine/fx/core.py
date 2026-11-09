@@ -391,3 +391,52 @@ class BillowBatch:
         GP = np.asarray([(g[1], g[2]) for g in self.groups], np.float64)
         raster.paint_billows(layer.buf, layer.ox, layer.oy, starts, D, GP, P, float(l[0]), float(l[1]))
         return layer
+
+
+_GRAIN = {}
+
+
+def _grain_tex(n=512):
+    """Tileable dry-brush grain: soft streaks along x at a few scales (0..1, mean 0.5)."""
+    if n in _GRAIN:
+        return _GRAIN[n]
+    import cv2
+    g = np.random.default_rng(seed('fx_grain'))
+    acc = np.zeros((n, n), np.float32)
+    for sx, sy, wgt in ((30.0, 12.0, 0.6), (60.0, 30.0, 0.4), (10.0, 5.0, 0.2)):
+        z = g.standard_normal((n, n)).astype(np.float32)
+        z = np.tile(z, (3, 3))
+        z = cv2.GaussianBlur(z, (0, 0), sigmaX=sx, sigmaY=sy)[n:2 * n, n:2 * n]
+        acc += wgt * z / (z.std() + 1e-6)
+    acc = (acc - acc.mean()) / (acc.std() + 1e-6)
+    tex = np.clip(0.5 + 0.18 * acc, 0, 1).astype(np.float32)
+    _GRAIN[n] = tex
+    return tex
+
+
+def brush_grain(layer, amount=0.06, anchor=(0.0, 0.0), scale=1.0, light=(0.6, -0.8)):
+    """Low-contrast dry-brush grain inside a layer's fills (multiplies its colour by 1 +/- amount),
+    streaked across the light direction and anchored at `anchor` so it travels with the effect."""
+    if layer.empty or amount <= 0:
+        return layer
+    import cv2
+    tex = _grain_tex()
+    n = tex.shape[0]
+    h, w = layer.buf.shape[:2]
+    l = unit(light)
+    ang = math.atan2(l[1], l[0]) + math.pi / 2
+    s = max(scale, 0.05)
+    ca, sa = math.cos(ang) / s, math.sin(ang) / s
+    ox = layer.ox - anchor[0]
+    oy = layer.oy - anchor[1]
+    # affine map from layer pixels to texture pixels (rotation + scale), wrapped
+    M = np.array([[ca, sa, ca * ox + sa * oy], [-sa, ca, -sa * ox + ca * oy]], np.float32)
+    M[:, 2] = np.mod(M[:, 2], n)
+    big = np.tile(tex, (3, 3))
+    M2 = M.copy()
+    M2[:, 2] += n
+    T = cv2.warpAffine(big, M2, (w, h), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                       borderMode=cv2.BORDER_WRAP)
+    k = 1.0 + amount * 2.0 * (T - 0.5)
+    layer.buf[..., :3] *= k[..., None]
+    return layer

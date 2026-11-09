@@ -42,6 +42,44 @@ def zbuf_spheres(sx, sy, sz, sr, depth, idx):
                         idx[y, x] = k
 
 
+@nb.njit(cache=True, fastmath=True)
+def smooth_normals(sx, sy, sz, sr, depth, nrm, tau):
+    """Soft-union normals: blend the normals of every sphere whose surface lies within a few
+    tau of the front-most depth (removes the comb pattern of a sphere chain's terminator)."""
+    H, W = depth.shape
+    acc = np.zeros((H, W), np.float32)
+    for k in range(sx.shape[0]):
+        cx = sx[k]; cy = sy[k]; cz = sz[k]; r = sr[k]
+        if r <= 0.0:
+            continue
+        x0 = max(0, int(np.floor(cx - r))); x1 = min(W - 1, int(np.ceil(cx + r)))
+        y0 = max(0, int(np.floor(cy - r))); y1 = min(H - 1, int(np.ceil(cy + r)))
+        r2 = r * r
+        for y in range(y0, y1 + 1):
+            dy = y - cy
+            dy2 = dy * dy
+            if dy2 > r2:
+                continue
+            for x in range(x0, x1 + 1):
+                dx = x - cx
+                d2 = dx * dx + dy2
+                if d2 <= r2:
+                    z = cz + np.sqrt(r2 - d2)
+                    dz = depth[y, x] - z
+                    if dz < 5.0 * tau:
+                        w = np.exp(-dz / tau)
+                        nrm[y, x, 0] += w * dx / r
+                        nrm[y, x, 1] += w * (-dy) / r
+                        nrm[y, x, 2] += w * (z - cz) / r
+                        acc[y, x] += w
+    for y in range(H):
+        for x in range(W):
+            n0 = nrm[y, x, 0]; n1 = nrm[y, x, 1]; n2 = nrm[y, x, 2]
+            l = np.sqrt(n0 * n0 + n1 * n1 + n2 * n2)
+            if l > 1e-9:
+                nrm[y, x, 0] = n0 / l; nrm[y, x, 1] = n1 / l; nrm[y, x, 2] = n2 / l
+
+
 # ----------------------------------------------------------------------------- strokes
 @nb.njit(cache=True, fastmath=True)
 def stroke_poly(buf, xs, ys, rs, closed):
@@ -146,9 +184,9 @@ def to_ss(pts, ss):
 
 def fill_polys(mask, polys, ss, value=1):
     """Rasterise polygons given in final coords into an SS uint8 mask (non-zero winding-ish)."""
-    arrs = [to_ss(p, ss).reshape(-1, 1, 2) for p in polys if p is not None and len(p) >= 3]
-    if arrs:
-        cv2.fillPoly(mask, arrs, int(value), lineType=cv2.LINE_8, shift=SHIFT)
+    for p in polys:
+        if p is not None and len(p) >= 3:
+            cv2.fillPoly(mask, [to_ss(p, ss).reshape(-1, 1, 2)], int(value), lineType=cv2.LINE_8, shift=SHIFT)
     return mask
 
 

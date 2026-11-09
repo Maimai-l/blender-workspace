@@ -1,0 +1,124 @@
+{
+  "painting": "S11",
+  "size": [
+    1920,
+    1040
+  ],
+  "margin": 40,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "golden sky in the gap; opaque"
+    },
+    {
+      "name": "canopy_far",
+      "file": "01_canopy_far.png",
+      "depth": 0.3,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.78,
+      "note": "the highest canopy rimming the gap, backlit, translucent edges"
+    },
+    {
+      "name": "trunks",
+      "file": "02_trunks.png",
+      "depth": 0.6,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.169,
+      "note": "trunks converging toward the zenith"
+    },
+    {
+      "name": "canopy_mid",
+      "file": "03_canopy_mid.png",
+      "depth": 0.75,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.32,
+      "note": "crowns of the converging trees"
+    },
+    {
+      "name": "canopy_near",
+      "file": "04_canopy_near.png",
+      "depth": 0.9,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.058,
+      "note": "near leaves and twigs silhouetted with warm rims"
+    },
+    {
+      "name": "flare",
+      "file": "05_flare.png",
+      "depth": 1.0,
+      "size": [
+        2000,
+        1120
+      ],
+      "offset": [
+        -40,
+        -40
+      ],
+      "blend": "normal",
+      "coverage": 0.69,
+      "note": "sun flare at the gap edge (animate opacity)"
+    }
+  ],
+  "seconds": 11.5,
+  "layer_seconds": {
+    "sky": 1.9,
+    "canopy_far": 2.7,
+    "trunks": 2.2,
+    "canopy_mid": 1.6,
+    "canopy_near": 1.4,
+    "flare": 1.2
+  },
+  "sun": [
+    1225.0,
+    330.0
+  ],
+  "zenith": [
+    975.0,
+    470.0
+  ]
+}

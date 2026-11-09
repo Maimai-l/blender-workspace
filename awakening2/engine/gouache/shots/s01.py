@@ -14,16 +14,17 @@ from ..layers import Painting
 from ..foliage import Blobs, render_gbuffer, paint_mass, spray, vine
 from ..trees import (species, paint_tube, trunk_path, buttress_roots, crown_blobs, limb_fan, Frame,
                      MOSS, IVY)
-from ..sky import sky, cumulus_blobs, paint_clouds
+from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud
 from ..atmos import mist, beams, glow, dapple
 from ..ground import ground, fern, grass, stone, flowers
+from ..forest import broadleaf, far_trunks, surface_roots
 
 W, H, M = 1920, 2900, 48
-SUN = (1530.0, 200.0)
+SUN = (1330.0, 175.0)
 L3 = (0.55, -0.78, -0.32)
 SUN2 = (0.55, -0.83)
 FE = 1860                                   # top of the final framing
-ROBOT = (0.22 * W, FE + 0.28 * 1040, 0.70 * W, FE + 0.97 * 1040)
+ROBOT = (0.37 * W, FE + 0.18 * 1040, 0.73 * W, FE + 0.95 * 1040)
 GAP = (1010.0, 300.0, 640.0, 420.0)         # canopy gap ellipse (cx, cy, rx, ry)
 HAZE_W = C(255, 234, 202)
 HAZE_C = C(216, 208, 226)
@@ -58,28 +59,98 @@ def pal_depth(stops, d, haze=HAZE):
 
 
 def crown_layer(cv, rng, anchors, d, leaf, rad, light_k=1.0, gap_k=0.92, levels=2, extra=None,
-                density=1.0, trans_amt=0.55, rim_amt=0.7, haze=HAZE):
-    """Crowns seen from below. anchors: list of (x, y, angles, lengths, width)."""
+                density=1.0, trans_amt=0.55, rim_amt=0.7, haze=HAZE, along=True, limb_detail=0.5):
+    """Crowns seen from below. anchors: list of (x, y, angles, lengths, width).
+    Clusters sit at limb tips and along the outer half of the smaller limbs."""
     bark = species('camphor', depth=d, haze=haze)
     blobs = Blobs()
+    sites, sizes = [], []
     for (x, y, angs, lens, w) in anchors:
         limbs, tips, tw = limb_fan(rng, (x, y), angs, lens, [w] * len(angs), levels=levels, split=(1, 3),
                                    curl=0.3)
-        for pts, ww, lvl in limbs:
-            if ww[0] > 3:
-                paint_tube(cv, pts, ww, rng, bark, L3, detail=0.5, moss=0.4 if lvl == 0 else 0.0,
-                           depth=d, haze=haze, end_fade=0.2)
-        keep = ~in_gap(tips[:, 0], tips[:, 1], gap_k)
-        tips = tips[keep]
-        if len(tips) == 0:
-            continue
-        sizes = rad * rng.uniform(0.7, 1.25, len(tips))
-        crown_blobs(rng, tips, sizes, blobs=blobs, sun2=SUN2, light=light_k, per_tip=(2, 5), spread=0.7,
-                    flatten=0.8, lumpy=0.16)
+        for pts, ww, lvl in sorted(limbs, key=lambda l: -l[1][0]):
+            paint_tube(cv, pts, ww, rng, bark, L3, detail=limb_detail, moss=0.5 if lvl == 0 else 0.0,
+                       depth=d, haze=haze, end_fade=0.1)
+            if along and lvl >= 1:
+                k = len(pts)
+                idx = np.arange(int(k * 0.45), k, 2)
+                sites.append(pts[idx])
+                sizes.append(rad * rng.uniform(0.45, 0.8, len(idx)))
+        sites.append(tips)
+        sizes.append(rad * rng.uniform(0.75, 1.25, len(tips)))
+    if sites:
+        S = np.concatenate(sites)
+        Z = np.concatenate(sizes)
+        keep = ~in_gap(S[:, 0], S[:, 1], gap_k) & (S[:, 1] < 1500)
+        S, Z = S[keep], Z[keep]
+        crown_blobs(rng, S, Z, blobs=blobs, sun2=SUN2, light=light_k, per_tip=(2, 4), spread=0.6,
+                    flatten=0.8, lumpy=0.17)
     if extra:
         blobs.extend(extra)
     G = render_gbuffer(cv, blobs, light3=(L3[0], L3[1], -0.4), wrap=0.5, under=0.3)
-    # remove clusters that fall into the gap centre
+    stops = pal_depth(LEAF_NEAR, d, haze)
+    paint_mass(cv, G, rng, stops, leaf=leaf, density=density, trans=aerial(TRANS, d * 0.6, haze),
+               trans_amt=trans_amt, rim=aerial(RIM, d * 0.4, haze), rim_amt=rim_amt,
+               tip=aerial(C(255, 226, 150), d * 0.5, haze), tip_amt=0.12, sun2=SUN2, droop=0.4,
+               vnoise=0.16)
+    return G
+
+
+def understory(cv, rng, x, y_base, h, d, leaf, sp='beech'):
+    """A small hazy tree in the middle distance: thin trunk + 2-3 tiers of foliage."""
+    bark = species(sp, depth=d, haze=HAZE)
+    top = (x + rng.normal(0, h * 0.06), y_base - h)
+    pts, ww = trunk_path(rng, (x, y_base), top, h * 0.035, h * 0.02, sway=0.04, bulge=0.05)
+    paint_tube(cv, pts, ww, rng, bark, L3, detail=0.4, depth=d, haze=HAZE, moss=0.3,
+               mist_fade=(y_base - h * 0.3, y_base), mist_col=HAZE_W)
+    b = Blobs()
+    for tier in range(int(rng.integers(2, 4))):
+        ty = y_base - h * (0.55 + 0.17 * tier) + rng.normal(0, h * 0.03)
+        span = h * (0.32 - 0.07 * tier)
+        for k in range(int(rng.integers(3, 6))):
+            b.add(top[0] + rng.uniform(-span, span) * 0.8, ty + rng.normal(0, h * 0.03), span * rng.uniform(0.3, 0.5),
+                  span * rng.uniform(0.18, 0.28), light=rng.uniform(0.8, 1.05), rng=rng, lumpy=0.2)
+    G = render_gbuffer(cv, b, light3=(L3[0], L3[1], 0.1), wrap=0.5, under=0.4)
+    paint_mass(cv, G, rng, pal_depth(LEAF_NEAR, d), leaf=leaf, density=0.9,
+               trans=aerial(TRANS, d * 0.6, HAZE), trans_amt=0.6, rim=aerial(RIM, d * 0.5, HAZE), rim_amt=0.6,
+               sun2=SUN2, droop=0.6, vnoise=0.14)
+
+
+def gap_k(x, y):
+    cx, cy, rx, ry = GAP
+    return np.sqrt(((np.asarray(x) - cx) / rx) ** 2 + ((np.asarray(y) - cy) / ry) ** 2)
+
+
+def canopy_ring(cv, rng, d, rad, leaf, k_in, k_out, y_max, n, light_k=1.0, density=1.0, trans_amt=0.55,
+                rim_amt=0.7, haze=HAZE, limbs=(), limb_w=30, rag_amp=0.12, extra_blobs=None):
+    """Canopy seen from below: clusters fill the band k_in..k_out of the gap ellipse
+    (ragged by angle), above y_max(x). limbs: list of (start, end) to paint first."""
+    bark = species('camphor', depth=d, haze=haze)
+    for (p0, p1, w0) in limbs:
+        p0 = np.asarray(p0, np.float32)
+        p1 = np.asarray(p1, np.float32)
+        mid_ = (p0 + p1) / 2 + rng.normal(0, 0.08, 2) * np.hypot(*(p1 - p0))
+        pts = catmull(np.array([p0, mid_, p1]), n=24)
+        paint_tube(cv, pts, np.linspace(w0, w0 * 0.45, 24), rng, bark, L3, detail=0.6, moss=0.6, depth=d,
+                   haze=haze, end_fade=0.15)
+    xs = rng.uniform(-150, W + 150, n * 4)
+    ys = rng.uniform(-200, 1700, n * 4)
+    th = np.arctan2(ys - GAP[1], xs - GAP[0])
+    ragk = 1 + rag_amp * (np.sin(th * 5 + rng.uniform(0, 6)) * 0.6 + np.sin(th * 11 + rng.uniform(0, 6)) * 0.4)
+    k = gap_k(xs, ys) / ragk
+    ok = (k > k_in) & (k < k_out) & (ys < y_max(xs))
+    xs, ys = xs[ok][:n], ys[ok][:n]
+    # lower clusters in front (painter's order: top/back first)
+    order = np.argsort(ys)
+    blobs = Blobs()
+    for i in order:
+        r = rad * rng.uniform(0.6, 1.3)
+        lt = light_k * rng.uniform(0.75, 1.1)
+        blobs.add(xs[i], ys[i], r, r * rng.uniform(0.65, 0.85), rot=rng.normal(0, 0.3), light=lt,
+                  hue=rng.normal(0, 0.05), val=rng.normal(0, 0.05), rng=rng, lumpy=0.17)
+    if extra_blobs is not None:
+        blobs.extend(extra_blobs)
+    G = render_gbuffer(cv, blobs, light3=(L3[0], L3[1], -0.4), wrap=0.5, under=0.3)
     stops = pal_depth(LEAF_NEAR, d, haze)
     paint_mass(cv, G, rng, stops, leaf=leaf, density=density, trans=aerial(TRANS, d * 0.6, haze),
                trans_amt=trans_amt, rim=aerial(RIM, d * 0.4, haze), rim_amt=rim_amt,
@@ -100,11 +171,9 @@ def build(outdir, quick=False):
     sky(cv, rng, stops, pos, sun=SUN, glow=(620, C(255, 238, 198), 0.95), tilt=-0.04, n_strokes=0.7,
         stroke_w=(26, 90), stroke_len=(200, 700), angle=-0.1)
     cl_stops = [C(140, 126, 180), C(192, 154, 184), C(236, 182, 172), C(255, 214, 168), C(255, 238, 206)]
-    for (cx, cy, w_, h_) in [(640, 470, 430, 110), (1190, 600, 560, 140), (820, 210, 330, 70),
-                             (1380, 420, 260, 60)]:
-        b = cumulus_blobs(rng, cx, cy, w_, h_, lumpy=0.1, puff=(0.15, 0.32))
-        paint_clouds(cv, rng, b, cl_stops, light3=(0.5, -0.65, 0.15), leaf=11, rim=C(255, 236, 196),
-                     rim_amt=0.7, edge=0.42, vnoise=0.12)
+    for (cx, by, w_, h_, kind) in [(700, 560, 760, 150, 'strato'), (1240, 470, 520, 190, 'cumulus')]:
+        sculpted_cloud(cv, rng, cx, by, w_, h_, cl_stops, kind=kind, light3=(0.5, -0.65, 0.1),
+                       rim=C(255, 236, 196), rim_amt=0.8, tip=C(255, 246, 220))
     glow(cv, SUN[0], SUN[1], 170, C(255, 248, 226), 0.85)
     P.add('sky', 0.0, cv, 'dawn sky through the canopy gap; opaque')
 
@@ -113,25 +182,16 @@ def build(outdir, quick=False):
     d = 0.72
     # far crowns ring the gap (pale, hazy)
     anchors = []
-    for x in np.linspace(-80, 2000, 11):
-        if in_gap(x, 760, 1.0):
-            continue
-        anchors.append((x + rng.normal(0, 40), 820 + rng.normal(0, 60),
-                        [-np.pi / 2 + rng.uniform(-0.9, -0.3), -np.pi / 2 + rng.uniform(-0.2, 0.2),
-                         -np.pi / 2 + rng.uniform(0.3, 0.9)], [380, 420, 380], 18))
-    crown_layer(cv, rng, anchors, d, leaf=6.5, rad=30, gap_k=0.86, levels=2, density=0.8,
-                trans_amt=0.4, rim_amt=0.5)
-    # far trunks
-    xs = np.sort(rng.uniform(-40, 1960, 17))
-    for x in xs:
-        dd = 0.82 if 480 < x < 1360 else 0.7
-        wb = rng.uniform(18, 46)
-        top = (x + rng.normal(0, 30), rng.uniform(560, 900))
-        pts, w_ = trunk_path(rng, (x, 2560 + rng.uniform(-30, 20)), top, wb, wb * 0.7, sway=0.012, bulge=0.05,
-                             flare=0.3, flare_h=0.04)
-        paint_tube(cv, pts, w_, rng, species(['camphor', 'beech', 'cedar'][int(rng.integers(0, 3))], depth=dd,
-                   haze=HAZE), L3, detail=0.3, depth=dd, haze=HAZE, moss=0.3, end_fade=0.12,
-                   mist_fade=(2150, 2560), mist_col=HAZE_W)
+    for x in np.linspace(-80, 2000, 12):
+        anchors.append((x + rng.normal(0, 40), 900 + rng.normal(0, 70),
+                        [-np.pi / 2 + rng.uniform(-1.2, -0.6), -np.pi / 2 + rng.uniform(-0.25, 0.25),
+                         -np.pi / 2 + rng.uniform(0.6, 1.2)], [300, 360, 300], 16))
+    canopy_ring(cv, rng, d, 34, 6.5, 0.86, 1.25, lambda x: 980 + 0 * x, 420, density=0.8, trans_amt=0.45,
+                rim_amt=0.5)
+    # far trunks: varied width, lean, forks, side branches; some dissolve into the mist
+    xs = np.sort(np.concatenate([rng.uniform(-40, 1960, 16), rng.uniform(560, 1360, 6)]))
+    far_trunks(cv, rng, xs, 2560, (700, 900), d, HAZE, L3, HAZE_W, (2150, 2560), width=(12, 70), fade_p=0.45,
+               fork_p=0.45, branch_p=0.55, sun2=SUN2)
     # far understorey wall fading into mist
     b = Blobs()
     for x in np.linspace(-60, 1980, 34):
@@ -156,22 +216,44 @@ def build(outdir, quick=False):
     # ------------------------------------------------------------------ mid
     cv = P.layer('mid', 0.45)
     d = 0.38
+    # hazier back row first
+    for (x, w_, sp, xt) in [(760, 40, 'beech', 820), (1180, 46, 'camphor', 1120), (230, 50, 'cedar', 260),
+                            (1650, 54, 'beech', 1600)]:
+        pts, ww = trunk_path(rng, (x, 2575), (xt, 820 if 400 < xt < 1600 else 300), w_, w_ * 0.65, sway=0.02,
+                             bulge=0.06, flare=0.3)
+        paint_tube(cv, pts, ww, rng, species(sp, depth=0.55, haze=HAZE), L3, depth=0.55, haze=HAZE, moss=0.4,
+                   detail=0.5, mist_fade=(2100, 2600), mist_col=HAZE_W)
+    for (x, yb, h_, wb) in [(170, 2560, 1050, 46), (560, 2552, 760, 30), (1580, 2570, 980, 44),
+                            (1830, 2560, 820, 36)]:
+        broadleaf(cv, rng, (x, yb), h_, wb, 0.5, HAZE, L3, SUN2, leaf=7, mist_fade=(yb - 380, yb),
+                  mist_col=HAZE_W, lz=-0.15)
     mids = [(300, 2610, 118, 'camphor', 400, 0.18), (536, 2585, 58, 'beech', 640, 0.0),
             (1345, 2600, 80, 'cedar', 1250, 0.06), (1500, 2625, 150, 'camphor', 1380, -0.15),
             (60, 2600, 90, 'beech', 110, 0.0)]
-    # mid crowns first (behind trunks' upper parts? no: crowns hang in front of trunk tops)
     for (x, y, w_, sp, xt, tw) in mids:
-        pts, ww = trunk_path(rng, (x, y), (xt, -60), w_, w_ * 0.62, sway=0.02, bulge=0.07,
+        yt = 840 if 450 < xt < 1550 else (420 if 250 < xt < 1750 else -60)
+        pts, ww = trunk_path(rng, (x, y), (xt, yt), w_, w_ * 0.62, sway=0.02, bulge=0.07,
                              flare=0.5 if sp == 'camphor' else 0.2, flare_h=0.05)
         bark = species(sp, depth=d, haze=HAZE)
-        paint_tube(cv, pts, ww, rng, bark, L3, depth=d, haze=HAZE, moss=0.7, ivy=0.3 if sp == 'camphor' else 0,
+        paint_tube(cv, pts, ww, rng, bark, L3, depth=d, haze=HAZE, moss=0.8, ivy=0.25 if sp == 'camphor' else 0,
                    twist=tw, detail=0.7, flecks=0.4, mist_fade=(2250, 2640), mist_col=mix(HAZE_W, HAZE, 0.5))
-    anchors = [(400, 330, [-2.4, -1.9, -1.2], [520, 460, 420], 34),
-               (640, 420, [-2.2, -1.5], [380, 320], 22),
-               (1250, 380, [-1.6, -0.9, -0.4], [380, 460, 420], 26),
-               (1380, 480, [-1.9, -0.6, -0.2], [460, 520, 380], 38),
-               (110, 520, [-2.0, -1.2], [300, 380], 26)]
-    crown_layer(cv, rng, anchors, d, leaf=10, rad=46, gap_k=0.93, levels=2, density=0.9)
+    anchors = [(392, 760, [-0.55, -0.95], [520, 420], 30), (380, 380, [-0.3, -0.8, -2.6], [560, 440, 360], 26),
+               (630, 560, [-0.5, -1.1], [380, 300], 18),
+               (1270, 600, [np.pi + 0.5, np.pi + 1.0], [420, 380], 22),
+               (1400, 760, [np.pi + 0.45, np.pi + 0.9], [560, 420], 34),
+               (1385, 330, [np.pi + 0.25, np.pi + 0.7, -0.5], [560, 460, 320], 28),
+               (100, 600, [-0.4, -1.2], [380, 300], 22)]
+    limbs = [((392, 900), (620, 600), 28), ((380, 560), (560, 330), 24), ((630, 700), (760, 560), 16),
+             ((1270, 760), (1120, 600), 20), ((1400, 900), (1210, 700), 30), ((1385, 520), (1560, 330), 24),
+             ((100, 700), (300, 520), 20)]
+    canopy_ring(cv, rng, d, 50, 10, 1.02, 1.5, lambda x: 860 + 380 * np.abs(x - 1000) / 1000, 360,
+                density=0.9, limbs=limbs)
+    # vines from the mid limbs
+    for i in range(10):
+        x = rng.choice([rng.uniform(380, 700), rng.uniform(1200, 1500)])
+        vine(cv, x, rng.uniform(450, 800), rng.uniform(500, 1200), rng, aerial(C(44, 46, 52), d, HAZE),
+             aerial(C(30, 56, 58), d, HAZE), aerial(C(128, 156, 80), d * 0.7, HAZE), leaf=rng.uniform(8, 12),
+             width=2.0, sun2=SUN2)
     # bare perch branches reaching into the gap
     for (p0, a0, L0) in [((560, 620), -0.55, 420), ((1460, 520), -2.55, 380)]:
         bark = species('camphor', depth=d, haze=HAZE)
@@ -194,23 +276,63 @@ def build(outdir, quick=False):
             stroke(cv, np.array(tw_), taper(5, 1.0, 0.2, 3.2), aerial(C(46, 40, 60), d, HAZE), bristle=0.2,
                    rag=0.2, rng=rng)
     # mid ground: the clearing floor
-    ground(cv, rng, 2545, 2905, -60, 1980, aerial(C(150, 160, 120), 0.45, HAZE_W), C(92, 118, 84),
-           C(44, 64, 78), light=lambda x, y: warmth(x, y) * (1 - smoothstep(2700, 2880, y)),
-           lit_col=C(214, 200, 120), size_far=5, size_near=34)
+    ground(cv, rng, 2545, 2905, -60, 1980, aerial(C(150, 158, 124), 0.55, HAZE_W), C(74, 98, 78),
+           C(34, 48, 70), light=lambda x, y: warmth(x, y) * (1 - smoothstep(2660, 2860, y)) * 0.8,
+           lit_col=C(200, 190, 118), size_far=5, size_near=26)
+    # moss / litter patches (lighter moss, ochre litter, dark hollows)
+    for (c0, n0, a0) in [(C(126, 150, 84), 22, 0.7), (C(150, 118, 92), 30, 0.65), (C(34, 48, 66), 24, 0.75),
+                         (C(98, 84, 96), 14, 0.5)]:
+        px = np.where(rng.random(n0) < 0.6, rng.choice([rng.uniform(0, 520), rng.uniform(1300, 1920)], n0),
+                      rng.uniform(-40, 1960, n0))
+        py = rng.uniform(2570, 2890, n0)
+        sc = 0.4 + (py - 2545) / 360
+        for i in range(n0):
+            m = int(60 * sc[i])
+            xx = px[i] + rng.normal(0, 70 * sc[i], m)
+            yy = py[i] + rng.normal(0, 14 * sc[i], m)
+            cc = jitter(mix(c0, C(88, 116, 82), 0.3), rng, m, dl=0.04, dc=0.15, dh=0.08)
+            dabs(cv, xx, yy, rng.uniform(8, 22, m) * sc[i], cc, aspect=rng.uniform(0.2, 0.45, m),
+                 angle=rng.normal(0, 0.15, m), opacity=a0 * rng.uniform(0.5, 1, m), shape='flat', rag=0.5,
+                 edge=0.3, bristle=0.4, rng=rng)
+    # ferns and grass hugging the trunks' feet at the sides of the clearing
+    for (x, y, s_) in [(330, 2700, 120), (420, 2660, 90), (250, 2640, 80), (1560, 2690, 120), (1470, 2650, 90),
+                       (1650, 2640, 80), (560, 2615, 60), (1360, 2615, 60)]:
+        fern(cv, rng, x, y, s_, depth=0.2, haze=HAZE_W, sun2=SUN2, light=0.9)
+    for x in list(rng.uniform(200, 640, 10)) + list(rng.uniform(1300, 1720, 10)):
+        grass(cv, rng, x, rng.uniform(2600, 2760), rng.uniform(30, 70), light=0.85, sun2=SUN2)
+    # far shrub band softening the floor line
+    b = Blobs()
+    xs_ = np.sort(rng.uniform(-80, 2000, 46))
+    for x in xs_:
+        side = np.clip(np.abs(x - 900) / 800, 0, 1)
+        if side < 0.35 and rng.random() < 0.55:
+            continue
+        hgt = 30 + 150 * side ** 1.5 * rng.uniform(0.5, 1.2)
+        for k in range(int(1 + 3 * side)):
+            r = hgt * rng.uniform(0.45, 0.8)
+            b.add(x + rng.normal(0, 30), 2555 - k * r * 0.6 - rng.uniform(0, 0.3) * hgt, r, r * rng.uniform(0.55, 0.8),
+                  light=rng.uniform(0.8, 1.1), hue=rng.normal(0, 0.05), rng=rng, lumpy=0.24)
+    G = render_gbuffer(cv, b, light3=(L3[0], L3[1], 0.15), wrap=0.5, under=0.4)
+    paint_mass(cv, G, rng, pal_depth(LEAF_NEAR, 0.45, HAZE_W), leaf=6, density=0.9,
+               trans=aerial(TRANS, 0.3, HAZE_W), trans_amt=0.7, rim=aerial(RIM, 0.2, HAZE_W), rim_amt=0.6,
+               sun2=SUN2, vnoise=0.14)
     # cool shadow in front (bottom) and sun patches in the clearing behind the robot
     yy = cv.ys()[:, None]
     shade_k = (smoothstep(2760, 2905, yy) * 0.5 * np.ones((1, cv.shape[1]))).astype(np.float32)
     cv.lock_tint(C(38, 50, 78), shade_k)
-    xs = rng.uniform(300, 1500, 26)
-    ys = rng.uniform(2560, 2720, 26)
-    dapple(cv, rng, xs, ys, rng.uniform(18, 46, 26) * (0.5 + (ys - 2545) / 360), C(236, 222, 140), flatten=0.25,
-           opacity=(0.35, 0.75), cluster=6, mode='lock')
+    surface_roots(cv, rng, [((300, 2612), (520, 2680), 26), ((330, 2620), (190, 2700), 22),
+                            ((1500, 2628), (1680, 2700), 28), ((1480, 2632), (1360, 2690), 20),
+                            ((560, 2590), (660, 2625), 14)], L3, d=0.3, haze=HAZE_W)
+    xs = np.concatenate([rng.uniform(250, 700, 9), rng.uniform(1380, 1700, 8), rng.uniform(700, 1400, 7)])
+    ys = rng.uniform(2575, 2840, len(xs))
+    dapple(cv, rng, xs, ys, rng.uniform(50, 100, len(xs)) * (0.5 + (ys - 2545) / 360), C(214, 204, 116),
+           flatten=0.24, opacity=(0.3, 0.6), cluster=6, mode='lock')
     # ferns, grass, stones at the sides of the clearing (keep robot zone clear)
     for (x, y, s) in [(140, 2700, 130), (300, 2660, 100), (420, 2610, 70), (1420, 2640, 90),
                       (1560, 2690, 120), (1720, 2650, 100), (230, 2600, 70), (1300, 2585, 55)]:
         fern(cv, rng, x, y, s, depth=0.25, haze=HAZE_W, sun2=SUN2, light=0.9)
-    for (x, y, r) in [(1380, 2700, 34), (470, 2655, 26), (1240, 2620, 18)]:
-        stone(cv, rng, x, y, r, sun2=SUN2)
+    for (x, y, r) in [(1400, 2705, 30), (480, 2660, 22)]:
+        stone(cv, rng, x, y, r, sun2=SUN2, moss=1.4)
     fx = rng.uniform(380, 1450, 90)
     fy = rng.uniform(2570, 2700, 90)
     flowers(cv, rng, fx, fy, 2.5 + (fy - 2545) / 60)
@@ -220,6 +342,9 @@ def build(outdir, quick=False):
     cv = P.layer('mist_mid', 0.55)
     mist(cv, rng, -100, 2020, 2300, 2760, HAZE_W, HAZE_C, light=warmth, density=1.0, opacity=(0.04, 0.12),
          size=(140, 420), aspect=(0.1, 0.24), profile='bottom')
+    # low ground mist hugging the far floor
+    mist(cv, rng, -100, 2020, 2520, 2680, HAZE_W, HAZE_C, light=warmth, density=1.2, opacity=(0.05, 0.13),
+         size=(120, 380), aspect=(0.08, 0.16), profile='mid')
     mist(cv, rng, -100, 2020, 1100, 2300, HAZE_W, HAZE_C, light=warmth, density=0.35, opacity=(0.02, 0.06),
          size=(220, 640), aspect=(0.1, 0.22), profile='flat')
     glow(cv, 880, 2380, 520, C(255, 238, 204), 0.22, squash=0.7)
@@ -228,8 +353,8 @@ def build(outdir, quick=False):
     # ------------------------------------------------------------------ beams
     cv = P.layer('beams', 0.6)
     angs = np.radians([97, 101.5, 105, 109.5, 113, 118])
-    beams(cv, rng, SUN, angs, 2900, [70, 120, 60, 150, 80, 60], C(255, 236, 186), opacity=0.16,
-          spread_w=1.8, streak=0.65)
+    beams(cv, rng, SUN, angs, 2900, [80, 140, 70, 170, 90, 70], C(255, 238, 190), opacity=0.42,
+          spread_w=1.8, streak=0.6)
     P.add('beams', 0.6, cv, 'sunbeams through the gap (could be animated: opacity shimmer)')
 
     # ------------------------------------------------------------------ near
@@ -237,9 +362,9 @@ def build(outdir, quick=False):
     d = 0.0
     # left giant camphor (twisting, buttressed, ivy) and right giant beech
     giants = [dict(sp='camphor', base=(150, 2915), top=(330, -70), wb=500, wt=280, flare=0.55, tw=0.22,
-                   roots=6, ivy=0.9, moss=1.3),
+                   roots=6, ivy=0.6, moss=1.3),
               dict(sp='beech', base=(1765, 2915), top=(1640, -70), wb=430, wt=270, flare=0.45, tw=0.0,
-                   roots=5, ivy=0.3, moss=1.0)]
+                   roots=5, ivy=0.12, moss=1.0)]
     bark_near = {}
     for g in giants:
         pts, ww = trunk_path(rng, g['base'], g['top'], g['wb'], g['wt'], sway=0.025, bulge=0.08,
@@ -247,7 +372,7 @@ def build(outdir, quick=False):
         bark = species(g['sp'])
         if g['sp'] == 'beech':
             bark.blotch = C(96, 122, 92)
-            bark.lichen = 0.6
+            bark.lichen = 0.2
         bark_near[g['sp']] = bark
         sp_ = catmull(pts, spacing=3.0)
         fr = Frame(sp_, np.interp(np.linspace(0, 1, len(sp_)), np.linspace(0, 1, len(ww)), ww))
@@ -257,16 +382,37 @@ def build(outdir, quick=False):
             if np.any((rp[:, 0] > ROBOT[0] + 40) & (rp[:, 0] < ROBOT[2] - 40)):
                 continue
             paint_tube(cv, rp, rw, rng, bark, L3, moss=1.6, detail=0.8, start_fade=0.25)
-        paint_tube(cv, pts, ww, rng, bark, L3, moss=g['moss'], ivy=g['ivy'], twist=g['tw'], flecks=0.7,
+        paint_tube(cv, pts, ww, rng, bark, L3, moss=g['moss'], ivy=g['ivy'], twist=g['tw'], flecks=0.3,
                    detail=1.0, moss_base=0.5, sky_side=0.3)
     # near crowns at the top corners with big limbs reaching over the gap
-    anchors = [(330, 120, [-2.5, -1.7, -0.75, -0.25], [560, 420, 520, 640], 70),
-               (1640, 140, [-2.9, -2.35, -1.5, -0.8], [640, 560, 420, 380], 66)]
-    crown_layer(cv, rng, anchors, 0.0, leaf=15, rad=78, gap_k=1.0, levels=2, density=0.9,
-                trans_amt=0.6, rim_amt=0.8)
+    anchors = [(300, 720, [-0.35, -0.8], [640, 520], 64), (320, 400, [-0.15, -0.55, -1.25], [600, 620, 380], 56),
+               (330, 80, [-0.3, 0.12, -2.6], [520, 440, 300], 48),
+               (1665, 650, [np.pi + 0.35, np.pi + 0.8], [580, 480], 60),
+               (1652, 330, [np.pi + 0.2, np.pi + 0.6, np.pi + 1.3], [600, 560, 360], 52),
+               (1645, 50, [np.pi + 0.3, np.pi - 0.1, -0.4], [520, 420, 300], 44)]
+    limbs = [((300, 760), (700, 330), 64), ((320, 420), (640, 120), 52), ((300, 240), (60, -60), 40),
+             ((1665, 700), (1320, 330), 60), ((1652, 380), (1380, 90), 52), ((1650, 200), (1900, -40), 40)]
+    top = Blobs()
+    for x in np.linspace(300, 1700, 16):
+        if rng.random() < 0.25:
+            continue
+        yb = rng.uniform(-40, 90) - 60 * np.exp(-((x - SUN[0]) / 160) ** 2)
+        for k in range(int(rng.integers(2, 4))):
+            r = rng.uniform(50, 95)
+            top.add(x + rng.normal(0, 50), yb - k * 50 + rng.normal(0, 20), r, r * 0.75, light=rng.uniform(0.75, 1.1),
+                    hue=rng.normal(0, 0.05), val=rng.normal(0, 0.05), rng=rng, lumpy=0.18)
+    canopy_ring(cv, rng, 0.0, 80, 15, 1.35, 3.5, lambda x: 520 + 900 * np.clip(np.abs(x - 1000) / 900, 0, 1) ** 1.5,
+                420, density=0.9, limbs=limbs, trans_amt=0.6, rim_amt=0.8, rag_amp=0.16, extra_blobs=top)
+    # surface roots snaking over the floor from the giants (outside the robot zone)
+    for (p0, p1, w0) in [((330, 2840), (560, 2900), 46), ((380, 2800), (470, 2760), 30),
+                         ((1560, 2850), (1380, 2905), 44), ((1600, 2790), (1470, 2740), 28)]:
+        mid_ = ((p0[0] + p1[0]) / 2 + rng.normal(0, 20), (p0[1] + p1[1]) / 2 + rng.normal(0, 10))
+        pts = catmull(np.array([p0, mid_, p1], np.float32), n=20)
+        paint_tube(cv, pts, np.linspace(w0, w0 * 0.3, 20), rng, species('camphor'), L3, moss=2.0, detail=0.7,
+                   start_fade=0.2)
     # stones and a fallen log at the sides of the clearing floor
-    for (x, y, r) in [(330, 2860, 70), (1540, 2875, 60), (470, 2890, 40)]:
-        stone(cv, rng, x, y, r, sun2=SUN2, moss=0.9)
+    for (x, y, r) in [(360, 2885, 52)]:
+        stone(cv, rng, x, y, r, sun2=SUN2, moss=1.6)
     P.add('near', 0.8, cv, 'giant framing trunks (camphor left, beech right), roots, near crowns at the top')
 
     # ------------------------------------------------------------------ fg
@@ -275,8 +421,8 @@ def build(outdir, quick=False):
     for i in range(16):
         x = rng.choice([rng.uniform(-60, 520), rng.uniform(1400, 1980)])
         a = np.pi / 2 + rng.normal(0, 0.5)
-        spray(cv, x, rng.uniform(-60, 40), a, rng.uniform(160, 320), rng.uniform(26, 40), C(22, 34, 46),
-              C(120, 128, 66), rng, stem_col=C(30, 28, 40), droop=0.6, sun2=SUN2)
+        spray(cv, x, rng.uniform(-60, 40), a, rng.uniform(160, 320), rng.uniform(26, 40), C(20, 30, 44),
+              C(90, 104, 60), rng, stem_col=C(30, 28, 40), droop=0.6, sun2=SUN2, rim=C(255, 214, 140))
     # hanging vines down the sides
     for i in range(9):
         x = rng.choice([rng.uniform(150, 520), rng.uniform(1380, 1720)])

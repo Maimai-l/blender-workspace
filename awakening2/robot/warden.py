@@ -367,6 +367,11 @@ def panel_thigh(o):
     return (o[:, 1] > 0.5).astype(np.int32)
 
 
+def panel_lid(o):
+    # an eyelid crease across the shutter (reads as a closed eye, not a goggle)
+    return (o[:, 2] > 0.33).astype(np.int32)
+
+
 def panel_forearm(o):
     ang = np.arctan2(o[:, 0], o[:, 1])
     return (np.floor((ang + np.pi) / (2 * np.pi / 5))).astype(np.int32) * (o[:, 2] < -1.75) * (o[:, 2] > -2.9)
@@ -383,6 +388,7 @@ def style_fns(rig):
         pf[P['shin_' + side].index] = panel_shin
         pf[P['thigh_' + side].index] = panel_thigh
         pf[P['forearm_' + side].index] = panel_forearm
+        pf[P['lid_' + side].index] = panel_lid
     return mf, pf
 
 

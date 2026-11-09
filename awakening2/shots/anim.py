@@ -12,6 +12,10 @@ import shotdefs as SD
 def _pose_of(k):
     name = k[1]
     kw = k[2] if len(k) > 2 else {}
+    if 'M' in kw:                     # explicit world matrix (flight)
+        p = dict(getattr(SD.PZ, name) if isinstance(name, str) else name)
+        p['_root'] = np.asarray(kw['M'], np.float32)
+        return p
     lift = kw.get('lift', 0.0)
     p = SD.posed(name, x=kw.get('x', 0.0), y=kw.get('y', 0.0)) if isinstance(name, str) else SD.PZ.grounded(SD.rig(), name)
     if lift:
@@ -43,7 +47,9 @@ def lerp_pose(pa, pb, s):
     Ra, Rb = pa['_root'], pb['_root']
     root = np.eye(4, dtype=np.float32)
     root[:3, 3] = Ra[:3, 3] + (Rb[:3, 3] - Ra[:3, 3]) * s
-    root[:3, :3] = Ra[:3, :3]     # yaw/pitch keys are rare; keep the first
+    R = Ra[:3, :3] + (Rb[:3, :3] - Ra[:3, :3]) * s
+    u, _, vt = np.linalg.svd(R)        # re-orthonormalise the blended rotation
+    root[:3, :3] = (u @ vt).astype(np.float32)
     out['_root'] = root
     return out
 

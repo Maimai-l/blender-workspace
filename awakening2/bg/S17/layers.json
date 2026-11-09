@@ -1,0 +1,163 @@
+{
+  "painting": "S17",
+  "size": [
+    1920,
+    1040
+  ],
+  "margin": 48,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "dawn sky through the canopy gap; opaque"
+    },
+    {
+      "name": "far",
+      "file": "01_far.png",
+      "depth": 0.15,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.303,
+      "note": "far crowns around the gap, pale far trunks, far understorey in mist"
+    },
+    {
+      "name": "mist_far",
+      "file": "02_mist_far.png",
+      "depth": 0.25,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.987,
+      "note": "mist between far and mid trees; glow behind the robot"
+    },
+    {
+      "name": "mid",
+      "file": "03_mid.png",
+      "depth": 0.45,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.724,
+      "note": "mid trunks + crowns rimming the gap, perch branches, clearing floor (robot kneels on it) + the mound with the knee/hand imprints, flowers, broken vines"
+    },
+    {
+      "name": "mist_mid",
+      "file": "04_mist_mid.png",
+      "depth": 0.55,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.892,
+      "note": "warm glowing mist behind the robot; the robot goes above this layer"
+    },
+    {
+      "name": "beams",
+      "file": "05_beams.png",
+      "depth": 0.6,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.733,
+      "note": "stronger sunbeams through the gap onto the empty clearing"
+    },
+    {
+      "name": "near",
+      "file": "06_near.png",
+      "depth": 0.8,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.397,
+      "note": "giant framing trunks (camphor left, beech right), roots, near crowns at the top"
+    },
+    {
+      "name": "fg",
+      "file": "07_fg.png",
+      "depth": 1.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.028,
+      "note": "foreground: overhanging leaves at the top, vines, ferns in the bottom corners"
+    }
+  ],
+  "seconds": 8.9,
+  "layer_seconds": {
+    "sky": 0.8,
+    "far": 1.0,
+    "mist_far": 0.9,
+    "mid": 1.4,
+    "mist_mid": 1.1,
+    "beams": 1.2,
+    "near": 1.0,
+    "fg": 0.9
+  },
+  "source": "S01 end frame (rows 1860-2900)",
+  "sun": [
+    1330.0,
+    -1685.0
+  ],
+  "knee": [
+    1090.0,
+    935.0
+  ],
+  "hand": [
+    790.0,
+    852.0
+  ]
+}

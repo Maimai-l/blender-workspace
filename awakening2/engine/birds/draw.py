@@ -97,6 +97,14 @@ def contour_ink(buf, mask_ss, ss, wbase, L, wmin=0.55, sigma=1.3, min_area=0.6):
             continue
         heavy = _smoothstep(-0.55, 0.85, n @ hd)
         w = wbase * (wmin + (1.22 - wmin) * heavy)
+        # ink pooling at concave corners (where shapes tuck under each other)
+        tu = R.turning(p) * (1.0 if area > 0 else -1.0)      # > 0 convex, < 0 concave
+        k = max(1, int(round(4.0 / 0.5)))
+        if len(tu) > 2 * k + 2:
+            ker = np.hanning(2 * k + 3)[1:-1]
+            ker /= ker.sum()
+            conc = np.convolve(np.concatenate([tu[-k:], tu, tu[:k]]), ker, mode='same')[k:-k]
+            w = w * (1.0 + 0.35 * np.clip(-conc / 0.10, 0.0, 1.0))
         R.stroke_poly(buf, p[:, 0].copy(), p[:, 1].copy(), (w * 0.5).astype(np.float64), True)
 
 
@@ -204,9 +212,18 @@ def render(pose, scale, facing=1, light=None, ss=None, detail=None, style='cel',
         wg['s_lines'] = [scr(l) for l in wg['lines']]
         pts.append(wg['s_outline'][:, :2])
     tail = rig.tail
-    t_prof = scr(catmull(tail['profile'], 4, closed=True))
-    t_fan = scr(catmull(tail['fan'], 4, closed=True))
-    pts += [t_prof[:, :2], t_fan[:, :2]]
+    tc = scr(tail['cen'])
+    twv = np.array([camdir(v) * ppc for v in tail['wv']]); twv[:, 1] *= -1
+    thv = np.array([camdir(v) * ppc for v in tail['hv']]); thv[:, 1] *= -1
+    t_corners = []
+    for i in range(len(tc)):
+        c0 = tc[i, :2]
+        t_corners.append(np.array([c0 + twv[i, :2] + thv[i, :2], c0 + twv[i, :2] - thv[i, :2],
+                                   c0 - twv[i, :2] + thv[i, :2], c0 - twv[i, :2] - thv[i, :2]]))
+    t_segs = [hull(np.vstack([t_corners[i], t_corners[i + 1]])) for i in range(len(tc) - 1)]
+    for sgm in t_segs:
+        pts.append(sgm)
+    tail_up_cam = camdir(tail['up'])
     beak = rig.beak
     bu, bl = scr(beak['upper']), scr(beak['lower'])
     pts += [bu[:, :2], bl[:, :2]]
@@ -221,6 +238,19 @@ def render(pose, scale, facing=1, light=None, ss=None, detail=None, style='cel',
         pts.append(d['tarsus'][0][:, :2])
         for tp, _ in d['toes']:
             pts.append(tp[:, :2])
+    smear_polys = []
+    if P.get('smear_from') and not rig.folded and detail in ('full', 'mid') and not sil:
+        from .poses import WINGS
+        from .model import flight_wing
+        src = WINGS[P['smear_from']]
+        for t in (0.15, 0.35, 0.55, 0.75):
+            Pq = dict(P)
+            for k_ in ('el', 'sw', 'tw', 'ext', 'hel', 'hsw', 'fan'):
+                a_ = src['n_' + k_]; b_ = P['n_' + k_]
+                Pq['n_' + k_] = a_ + (b_ - a_) * t
+            wq = flight_wing(Pq, 'n_', 1, rig.Rb, rig.bc)
+            smear_polys.append(scr(catmull(wq['outline'], 3, closed=True))[:, :2])
+        pts += smear_polys
     allp = np.vstack(pts)
     margin = 2.0 * wbase + 3.0
     x_min = np.floor(allp[:, 0].min() + subpx[0] - margin)
@@ -282,16 +312,16 @@ def render(pose, scale, facing=1, light=None, ss=None, detail=None, style='cel',
 
     def do_tail():
         m = np.zeros((HS, WS), np.uint8)
-        R.fill_polys(m, [f2(t_prof), f2(t_fan)], ss)
+        R.fill_polys(m, [s + np.array([offx, offy]) for s in t_segs], ss)
         mb = m > 0
         size = 0.6 * ppc
-        flat_layer(mb, 'tail', size)
+        zt = 'tail_under' if tail_up_cam[2] < -0.3 else 'tail'
+        flat_layer(mb, zt, size)
         li = np.zeros((h, w), np.float32)
-        if not sil or detail != 'tiny':
-            contour_ink(li, m, ss, wbase, L)
+        contour_ink(li, m, ss, wbase, L)
         if detail == 'full':
             for l3 in tail['lines']:
-                open_stroke(li, f2(scr(l3)), wint * 0.8, 0.25, 0.35, clip=mb, ss=ss)
+                open_stroke(li, f2(scr(l3)), wint * 0.75, 0.25, 0.35, clip=mb, ss=ss)
         push_ink(m, li)
     order.append((2.5 if tail_after else 0.5, do_tail))
 
@@ -354,20 +384,40 @@ def render(pose, scale, facing=1, light=None, ss=None, detail=None, style='cel',
         sz = S[:, 2] * ss
         R.zbuf_spheres(sx.astype(np.float64), sy.astype(np.float64), sz.astype(np.float64),
                        (srad * ss).astype(np.float64), depth, idx)
+        nrm = np.zeros((HSS, WSS, 3), np.float32)
+        R.smooth_normals(sx.astype(np.float64), sy.astype(np.float64), sz.astype(np.float64),
+                         (srad * ss).astype(np.float64), depth, nrm, float(0.035 * ppc * ss))
         cid = np.zeros((HSS, WSS), np.uint8)
         tag = np.zeros((HSS, WSS), np.uint8)
         tex = wing_texture(fw) if rig.folded else np.zeros((2, 2, 6), np.float32)
         ed = EYE_DIR / np.linalg.norm(EYE_DIR)
-        shade_core(depth, idx, sx.astype(np.float64), sy.astype(np.float64), sz.astype(np.float64),
-                   (srad * ss).astype(np.float64), mir, Rg.T.copy(),
+        shade_core(depth, idx, nrm, float(ss), float(offx), float(offy), float(ppc), mir, Rg.T.copy(),
                    rig.sph_c.astype(np.float64), rig.sph_r.astype(np.float64), rig.sph_region.astype(np.int32),
                    rig.sph_s.astype(np.float64), rig.sph_tan.astype(np.float64), rig.sph_up.astype(np.float64),
                    float(rig.spine_len), rig.hc.astype(np.float64), rig.Rh.T.copy(), bc.astype(np.float64),
                    rig.Rb.T.copy(), bool(rig.folded), tex, TEX_X0, TEX_Y1, 1.0 / TEX_RES,
                    ed, EYE_A, RING_A, float(P['blink']), L.astype(np.float64), float(light.bias),
                    bool(light.rim), float(light.rim_width), bool(light.highlight and detail == 'full'),
-                   bool(sil), cid, tag)
+                   False, cid, tag)
         core = idx >= 0
+        # designed cast shadows: head onto breast/neck, folded near wing onto the flank
+        if not sil and L[2] > -0.12:
+            regm = np.where(core, rig.sph_region[np.maximum(idx, 0)], -1)
+            lit_px = core & ((cid & 3) == 0)
+            away = np.array([-L[0], L[1]])
+            nrm2 = np.linalg.norm(away) + 1e-9
+            away = away / nrm2
+            dd = 0.20 * ppc * ss
+            hm = regm == 2
+            front = np.isin(cid >> 2, [Z['yellow'], Z['white'], Z['buff']])
+            cast = np.zeros_like(hm)
+            if rig.folded:
+                wt = 2 if camdir(rig.Rb @ np.array([0, 0, 1.0]))[2] >= 0 else 3
+                wm = tag == wt
+                dw = 0.11 * ppc * ss
+                cast |= R.shift_mask(wm, int(round(away[0] * dw)), int(round(away[1] * dw + 0.05 * ppc * ss))) & ~wm & lit_px & (regm == 0)
+            keep = ((cid >> 2) == Z['eye']) | ((cid >> 2) == Z['ring'])
+            cid[cast & ~keep] += 1
         ids[core] = cid[core]
         core_holder.update(core=core, tag=tag, depth=depth)
         li = np.zeros((h, w), np.float32)
@@ -548,6 +598,15 @@ def render(pose, scale, facing=1, light=None, ss=None, detail=None, style='cel',
             m = (m > 0) & (((ids >> 2) == Z['eye']))
             ids[m] = Z['catch'] * 4
 
+    # ------------------------------------------------------------------ silhouette remap (flocks)
+    if sil:
+        zz = ids >> 2
+        tt = ids & 3
+        lightz = np.isin(zz, [Z['uw_cov'], Z['uw_flight'], Z['sil_lit']])
+        new = np.where(tt == 2, Z['sil'] * 4 + 2,
+                       np.where(lightz | (tt == 0) | (tt == 3), Z['sil_lit'] * 4, Z['sil'] * 4))
+        ids = np.where(ids > 0, new, 0).astype(np.uint8)
+
     # ------------------------------------------------------------------ resolve
     paint = np.zeros((h, w, 4), np.float32)
     R.resolve_ids(ids, pal, ss, paint)
@@ -558,6 +617,13 @@ def render(pose, scale, facing=1, light=None, ss=None, detail=None, style='cel',
     out = np.empty_like(paint)
     out[..., :3] = ic[None, None] * a + paint[..., :3] * (1 - a)
     out[..., 3:] = a + paint[..., 3:] * (1 - a)
+    if smear_polys:
+        ms = np.zeros((HS, WS), np.uint8)
+        R.fill_polys(ms, [f2(sp_) for sp_ in smear_polys], ss)
+        sa = (R.coverage(ms, ss) * 0.42)[..., None]
+        scol = pal[Z['uw_cov'] * 4 + (1 if L[2] < -0.12 else 0), :3][None, None]
+        out[..., :3] = out[..., :3] + scol * sa * (1 - out[..., 3:])
+        out[..., 3:] = out[..., 3:] + sa * (1 - out[..., 3:])
     al = out[..., 3:]
     out[..., :3] = np.where(al > 1e-6, out[..., :3] / np.maximum(al, 1e-6), 0)
     return Sprite(out, int(ox), int(oy), dict(scale=scale, ss=ss, detail=detail))
@@ -583,9 +649,33 @@ def composite(canvas, rgba, x0, y0, opacity=1.0):
     return canvas
 
 
-def draw(canvas, pose, x, y, scale, facing=1, light=None, **kw):
-    """Render `pose` with its root (feet contact point) at canvas pixel (x, y) and composite."""
+_CACHE = {}
+_CACHE_ORDER = []
+
+
+def _ckey(pose, x, y, scale, facing, light, kw):
+    try:
+        pk = tuple(sorted((k, round(v, 5) if isinstance(v, float) else v) for k, v in pose.items()))
+        kk = tuple(sorted((k, v if not isinstance(v, (list, np.ndarray)) else tuple(np.ravel(v)))
+                          for k, v in kw.items()))
+        return (pk, round(x % 1.0, 4), round(y % 1.0, 4), round(float(scale), 4), facing,
+                (light or DEFAULT_LIGHT).key(), kk)
+    except TypeError:
+        return None
+
+
+def draw(canvas, pose, x, y, scale, facing=1, light=None, cache=True, **kw):
+    """Render `pose` with its root (feet contact point) at canvas pixel (x, y) and composite.
+    Identical drawings (e.g. the second frame of a drawing on 2s) are served from a small cache."""
     fx, fy = np.floor(x), np.floor(y)
-    sp = render(pose, scale, facing, light, subpx=(x - fx, y - fy), **kw)
-    composite(canvas, sp.rgba, int(fx) - sp.ox, int(fy) - sp.oy, kw.get('opacity', 1.0) if False else 1.0)
+    key = _ckey(pose, x, y, scale, facing, light, kw) if cache else None
+    sp = _CACHE.get(key) if key is not None else None
+    if sp is None:
+        sp = render(pose, scale, facing, light, subpx=(x - fx, y - fy), **kw)
+        if key is not None:
+            _CACHE[key] = sp
+            _CACHE_ORDER.append(key)
+            if len(_CACHE_ORDER) > 16:
+                _CACHE.pop(_CACHE_ORDER.pop(0), None)
+    composite(canvas, sp.rgba, int(fx) - sp.ox, int(fy) - sp.oy)
     return sp

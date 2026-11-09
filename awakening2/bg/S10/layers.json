@@ -1,0 +1,106 @@
+{
+  "painting": "S10",
+  "size": [
+    1920,
+    1600
+  ],
+  "margin": 48,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2016,
+        1696
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "golden sky in the gap above the robot; opaque"
+    },
+    {
+      "name": "far",
+      "file": "01_far.png",
+      "depth": 0.25,
+      "size": [
+        2016,
+        1696
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.504,
+      "note": "far trunks converging up into the high canopy around the gap"
+    },
+    {
+      "name": "canopy",
+      "file": "02_canopy.png",
+      "depth": 0.6,
+      "size": [
+        2016,
+        1696
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.465,
+      "note": "giant trunks rising at the sides into the dark canopy around the gap"
+    },
+    {
+      "name": "beams",
+      "file": "03_beams.png",
+      "depth": 0.75,
+      "size": [
+        2016,
+        1696
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.165,
+      "note": "sunbeams down through the gap onto the face (robot goes above or below: above for silhouette, below for light on the face)"
+    }
+  ],
+  "seconds": 20.9,
+  "layer_seconds": {
+    "sky": 2.3,
+    "far": 11.4,
+    "canopy": 5.1,
+    "beams": 1.3
+  },
+  "sun": [
+    980.0,
+    210.0
+  ],
+  "frames": {
+    "start": [
+      0,
+      560,
+      1920,
+      1040
+    ],
+    "end": [
+      0,
+      0,
+      1920,
+      1040
+    ]
+  },
+  "gap": [
+    780.0,
+    330.0,
+    560.0,
+    300.0
+  ]
+}

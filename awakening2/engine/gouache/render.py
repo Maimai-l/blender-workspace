@@ -11,13 +11,26 @@ from concurrent.futures import ProcessPoolExecutor
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 BG = os.path.join(ROOT, 'bg')
-SHOTS = {'S01': 's01', 'S11': 's11', 'S16': 's16'}
+SHOTS = {'S01': 's01', 'S11': 's11', 'S16': 's16', 'S08': 's08', 'S03': 's03', 'S02': 's02', 'S12': 's12',
+         'S13': 's13', 'S09': 's09', 'S05': 's05', 'S17': 's17', 'S06': 's06', 'S10': 's10', 'S04': 's04'}
 
 
 def run(shot):
+    """Render into bg/.tmp_<shot>/ and then move the files into bg/<shot>/ one by one
+    (os.replace is atomic per file; layers.json goes last), so a consumer never reads
+    a half-written layer."""
+    import shutil
     t = time.time()
     mod = importlib.import_module(f'gouache.shots.{SHOTS[shot]}')
-    mod.build(os.path.join(BG, shot))
+    tmp = os.path.join(BG, f'.tmp_{shot}')
+    dst = os.path.join(BG, shot)
+    shutil.rmtree(tmp, ignore_errors=True)
+    mod.build(tmp)
+    os.makedirs(dst, exist_ok=True)
+    names = sorted(os.listdir(tmp), key=lambda n: n == 'layers.json')
+    for n in names:
+        os.replace(os.path.join(tmp, n), os.path.join(dst, n))
+    shutil.rmtree(tmp, ignore_errors=True)
     return shot, round(time.time() - t, 1)
 
 

@@ -180,6 +180,29 @@ BODY = {   # (freq, gain dB, Q): air mode, wood modes, bridge hill, top roll-off
 }
 
 
+BODY_RANGE = {"vln": (190.0, 7000.0), "vla": (150.0, 5500.0), "vc": (65.0, 3500.0), "cb": (40.0, 2200.0)}
+_BODY_IR = {}
+
+
+def body_ir(kind):
+    """A synthetic instrument-body impulse response: ~90 damped modes spread over the body's
+    range (dense, jagged response like real wood).  Fixed per section, so a section keeps one
+    timbre all film long."""
+    if kind not in _BODY_IR:
+        from aw2_core import rng_for
+        r = rng_for("body", kind)
+        lo, hi = BODY_RANGE[kind]
+        nm_ = 90
+        f = np.exp(r.uniform(math.log(lo), math.log(hi), nm_))
+        a = r.uniform(0.25, 1.0, nm_) * (lo / f) ** 0.25
+        tau = r.uniform(0.004, 0.02, nm_) * (500.0 / f) ** 0.25
+        ir = np.zeros(sec(0.06))
+        add_modes(ir, 0, f, a, tau, r.uniform(0, TWO_PI, nm_), 3)
+        ir /= np.sqrt(np.sum(ir ** 2))
+        _BODY_IR[kind] = ir
+    return _BODY_IR[kind]
+
+
 def strings(lines, section, rng, art="sus", attack=0.35, release=0.6, players=None, trem_rate=13.0,
             spread=1.0, bright=0.0, detune_cents=7.0, timing_ms=14.0):
     """A string section.  lines: list of note lists (each a monophonic line; chords =
@@ -237,6 +260,10 @@ def strings(lines, section, rng, art="sus", attack=0.35, release=0.6, players=No
             out[:, ch] = svf_tv(y, fc * 1.3, 0.55, 0)
         for f0, g, q in BODY[P["body"]]:
             out = peq(out, f0, g, q)
+        ir = body_ir(P["body"])
+        wet = np.stack([signal.oaconvolve(out[:, ch], ir)[: len(out)] for ch in range(2)], 1)
+        wet *= (np.sqrt(np.mean(out ** 2)) + 1e-12) / (np.sqrt(np.mean(wet ** 2)) + 1e-12)
+        out = 0.55 * out + 0.45 * wet
         # bow noise: band-passed noise following the dynamics
         nz = rng.standard_normal((n, 2))
         bn = bp(nz, 1800, 6500, 2) * (lv * (0.012 if art != "trem" else 0.03))[:, None]

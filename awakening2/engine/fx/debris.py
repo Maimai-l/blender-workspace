@@ -9,8 +9,8 @@ import math
 import numpy as np
 
 from . import core, palettes, shapes
-from .core import Layer, PolyBatch, held, smoothstep
-from .dust import BillowSet, paint_groups, paint_rows, puff_trail_rows
+from .core import PolyBatch, held, smoothstep
+from .dust import BillowSet, paint_groups
 
 DEFAULT_MIX = {'clod': 0.35, 'crumb': 0.25, 'pebble': 0.12, 'moss': 0.12, 'root': 0.08,
                'vine': 0.04, 'bark': 0.04}
@@ -151,7 +151,9 @@ class DebrisBurst:
             return canvas
         H, W = canvas.shape[:2]
         batch = PolyBatch()
-        trail_pts, trail_b = [], []
+        trails = PolyBatch()
+        l = core.unit(light)
+        dpal = self.trail_palette
         order = np.argsort(self.z)
         for i in order:
             t = age - self.delay[i]
@@ -160,19 +162,24 @@ class DebrisBurst:
             p, a = self._state(i, t)
             if p[1] > H + 60 or p[0] < -80 or p[0] > W + 80:
                 continue
-            if self.trail[i] and t > 0:
-                for tb in range(max(0, int(t) - 9), int(t), 4):
-                    q, _ = self._state(i, tb)
-                    trail_pts.append(q + self.size[i] * 0.4 * np.array([math.sin(tb * 2.1 + i), math.cos(tb * 1.7 + i)]))
-                    trail_b.append(self.frame0 + self.delay[i] + tb)
+            if self.trail[i] and t > 1:
+                # a short dust streak dragged along the path: tapered, breaking up with age
+                n = 7
+                ts = np.linspace(max(0.0, t - 8.0), t, n)
+                pts = np.array([self._state(i, tt)[0] for tt in ts])
+                seg = np.linalg.norm(pts[-1] - pts[0])
+                if seg > self.size[i] * 1.5:
+                    q = np.linspace(0, 1, n)
+                    wid = self.size[i] * 1.1 * q ** 1.3
+                    fade = max(0.0, 1 - t / 30.0)
+                    if fade > 0.05:
+                        trails.add(core.stroke_poly(pts, wid), dpal[1], alpha=0.85 * fade)
+                        nrm, _ = core.polyline_normals(pts)
+                        side = np.sign(np.sum(nrm * l[None, :], 1, keepdims=True))
+                        trails.add(core.stroke_poly(pts + nrm * side * wid[:, None] * 0.22, wid * 0.45),
+                                   dpal[2], alpha=0.85 * fade)
             add_piece(batch, self.kind[i], self.parts[i], p, a, self.size[i], light, self.ink)
-        if trail_pts:
-            rows, holes = puff_trail_rows(trail_pts, trail_b, frame, size=float(np.median(self.size)) * 0.9,
-                                          life=9, name=self.name + '_trail', on=self.on, rise=0.8, grow=1.3)
-            if rows:
-                C = np.mean(np.array(trail_pts), 0)
-                paint_rows(canvas, rows, holes, self.trail_palette, light, C,
-                           float(np.median(self.size)) * 6, line=0, opacity=0.95)
+        trails.draw(canvas)
         batch.draw(canvas)
         return canvas
 

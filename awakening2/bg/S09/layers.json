@@ -1,0 +1,108 @@
+{
+  "painting": "S09",
+  "size": [
+    1920,
+    1040
+  ],
+  "margin": 48,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "dawn sky (patch visible at the top) and glowing horizon mist; opaque"
+    },
+    {
+      "name": "far",
+      "file": "01_far.png",
+      "depth": 0.25,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.703,
+      "note": "far trunks rising from the low horizon into mist; hazy canopy"
+    },
+    {
+      "name": "mid",
+      "file": "02_mid.png",
+      "depth": 0.5,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.371,
+      "note": "mid trunks, canopy and vines at the top, beams (robot goes above this layer)"
+    },
+    {
+      "name": "near",
+      "file": "03_near.png",
+      "depth": 0.8,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.212,
+      "note": "huge trunks rising up both frame edges"
+    },
+    {
+      "name": "fg",
+      "file": "04_fg.png",
+      "depth": 1.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.085,
+      "note": "extreme foreground ferns and grass along the bottom"
+    }
+  ],
+  "seconds": 35.8,
+  "layer_seconds": {
+    "sky": 1.5,
+    "far": 28.4,
+    "mid": 2.8,
+    "near": 1.7,
+    "fg": 0.9
+  },
+  "sun": [
+    1500.0,
+    120.0
+  ],
+  "horizon_y": 990.0,
+  "robot_between": [
+    "mid",
+    "near"
+  ]
+}

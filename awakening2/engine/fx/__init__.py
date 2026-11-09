@@ -5,3 +5,9 @@ from . import palettes
 from .dust import DustPuff, GroundDust, paint_groups, paint_rows, puff_trail_rows
 from . import shapes
 from .debris import DebrisBurst, SoilPour, add_piece
+from .leaves import LeafBurst, LeafFall, add_leaf
+from .wind import WindRing
+from .flame import EngineFlame
+from .launch import impact_frame, smear_multi, smear_stretch, speed_lines, streak_lines
+from .trail import LightTrail
+from .light import Motes, bloom, glow, lens_flare, sunbeams

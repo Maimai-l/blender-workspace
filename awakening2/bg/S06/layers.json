@@ -1,0 +1,75 @@
+{
+  "painting": "S06",
+  "size": [
+    1920,
+    1040
+  ],
+  "margin": 48,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.0,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "peach-gold dawn sky; upper middle kept open for the flock; opaque"
+    },
+    {
+      "name": "canopy_far",
+      "file": "01_canopy_far.png",
+      "depth": 0.4,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.201,
+      "note": "distant crowns along the bottom, glowing edges"
+    },
+    {
+      "name": "canopy",
+      "file": "02_canopy.png",
+      "depth": 0.85,
+      "size": [
+        2016,
+        1136
+      ],
+      "offset": [
+        -48,
+        -48
+      ],
+      "blend": "normal",
+      "coverage": 0.349,
+      "note": "near canopy: readable leaf clumps with warm rims, branches reaching into the sky"
+    }
+  ],
+  "seconds": 13.0,
+  "layer_seconds": {
+    "sky": 1.6,
+    "canopy_far": 1.4,
+    "canopy": 9.6
+  },
+  "sun": [
+    1180.0,
+    760.0
+  ],
+  "open_sky": [
+    960.0,
+    300.0,
+    640.0,
+    260.0
+  ]
+}

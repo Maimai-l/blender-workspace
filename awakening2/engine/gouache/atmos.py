@@ -72,16 +72,18 @@ def glow(cv, x, y, r, col, strength=0.5, squash=1.0):
 
 
 def dapple(cv, rng, xs, ys, size, col, flatten=0.35, opacity=(0.5, 0.9), cluster=5, angle=0.0,
-           mode='over', edge=0.45):
+           mode='over', edge=0.6):
     """Sun patches: clusters of soft ellipses flattened by perspective."""
     xs = np.asarray(xs, np.float32)
     ys = np.asarray(ys, np.float32)
     size = np.broadcast_to(np.asarray(size, np.float32), xs.shape)
+    cluster = cluster * 2
     m = len(xs) * cluster
     rep = np.repeat(np.arange(len(xs)), cluster)
-    px = xs[rep] + rng.normal(0, 0.6, m) * size[rep]
-    py = ys[rep] + rng.normal(0, 0.6, m) * size[rep] * flatten
-    sz = size[rep] * rng.uniform(0.35, 1.0, m)
+    px = xs[rep] + rng.normal(0, 0.45, m) * size[rep]
+    py = ys[rep] + rng.normal(0, 0.45, m) * size[rep] * flatten
+    sz = size[rep] * rng.uniform(0.45, 0.95, m)
+    edge = max(edge, 0.75)
     cols = jitter(np.broadcast_to(col, (m, 3)), rng, dl=0.03, dc=0.1, dh=0.04)
     dabs(cv, px, py, sz, cols, aspect=flatten * rng.uniform(0.8, 1.3, m), angle=angle + rng.normal(0, 0.1, m),
          opacity=rng.uniform(*opacity, m), edge=edge, rag=0.6, bristle=0.2, rng=rng, mode=mode)

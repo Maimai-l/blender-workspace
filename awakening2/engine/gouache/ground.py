@@ -126,9 +126,11 @@ def stone(cv, rng, x, y, r, col_dark=C(58, 60, 84), col_mid=C(112, 110, 122), co
     cy = y - r * flatten * 0.8
     b.add(x, cy, r, r * flatten, rot=rng.normal(0, 0.1), light=1.0, rng=rng, lumpy=0.06)
     G = render_gbuffer(cv, b, light3=(sun2[0], sun2[1], 0.5), wrap=0.3, under=0.6)
-    paint_mass(cv, G, rng, [col_dark, col_mid, col_lit], leaf=max(r * 0.18, 3), density=0.8,
-               shape='flat', aspect=0.6, edge_leaves=0.2, droop=0.0, vnoise=0.08, bristle=0.4,
-               edge=0.3, split=0.0, opacity=opacity, orient='tangent', fringe=0.1)
+    small = r < 34
+    paint_mass(cv, G, rng, [col_dark, col_mid, col_lit], leaf=max(r * 0.18, 3), density=0.5 if small else 0.8,
+               shape='flat', aspect=0.6, edge_leaves=0.0 if small else 0.2, droop=0.0, vnoise=0.08,
+               bristle=0.3, rag=0.1 if small else 0.3, edge=0.3, split=0.0, opacity=opacity, orient='tangent',
+               fringe=0.1)
     if moss > 0:
         mp = moss_pal or MOSS
         m = int(r * r * 0.12 * moss) + 10

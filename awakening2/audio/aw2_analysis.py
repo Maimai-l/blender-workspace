@@ -133,6 +133,36 @@ def event_onset(times, flux, te, before=0.06, after=0.15):
     return times[i] - te, flux[i] / med
 
 
+def discontinuity_scan(x, z_thresh=12.0, win_ms=2.0, floor_rel=3e-4):
+    """Digital clicks: samples whose 2nd difference stands z_thresh times above the RMS
+    2nd difference of the surrounding +-win_ms (centre excluded).  Smooth tones, noise and
+    shaped transients score ~1-4; a waveform step or spike scores far higher.  Steps
+    smaller than floor_rel x the stem's peak (-70 dB) are ignored.  Returns
+    [(time, z, step dBFS)]."""
+    from scipy.ndimage import uniform_filter1d
+    out = []
+    pk = np.abs(x).max() + 1e-12
+    chans = [x[:, 0], x[:, 1]] if x.ndim == 2 else [x]
+    hits = []
+    for m in chans:
+        d2 = np.zeros_like(m)
+        d2[1:-1] = m[2:] - 2 * m[1:-1] + m[:-2]
+        e = d2 ** 2
+        w = sec(win_ms / 1000)
+        tot = uniform_filter1d(e, 2 * w + 1, mode="nearest") * (2 * w + 1)
+        cen = uniform_filter1d(e, 5, mode="nearest") * 5
+        local = np.maximum(tot - cen, 0) / (2 * w - 4)
+        z = np.abs(d2) / np.sqrt(local + (floor_rel * pk) ** 2)
+        idx = np.nonzero(z > z_thresh)[0]
+        hits += [(i, z[i], abs(d2[i])) for i in idx]
+    hits.sort()
+    for i, z, a in hits:
+        t = i / SR
+        if not out or t - out[-1][0] > 0.005:
+            out.append((t, z, to_db(a)))
+    return out
+
+
 def click_scan(x, known, thresh_db=18.0, floor_db=-66.0, guard=0.05):
     """Find impulsive HF bursts not explained by a placed sound: 1 ms frames of >6 kHz
     energy that stand thresh_db above their +-40 ms median.  `known` = onset times of

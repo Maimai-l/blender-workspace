@@ -1,0 +1,131 @@
+# gouache — painted backgrounds for Awakening II
+
+A procedural gouache painting engine (numpy + numba + OpenCV, no image models, no
+photos, no downloaded assets) and the per-shot background paintings built with it.
+Every painting is composed in screen space, layer by layer, from the storyboard
+layouts; there is no 3D ground plane and no stamped/repeated tree.
+
+## Render
+
+    cd awakening2/engine
+    python3 -m gouache.render S01 S16 S11            # Phase 1 shots
+    python3 -m gouache.render S08 S03 S02 -j 2       # any shots, 2 worker processes
+    python3 -m gouache.render                         # all shots (S17 last: it reads S01)
+
+Output per shot in `awakening2/bg/<shot>/` (rendered into `bg/.tmp_<shot>/` first, then
+moved file by file with `layers.json` last, so a consumer never reads a half-written layer):
+
+| file | content |
+|---|---|
+| `NN_<layer>.png` | straight-alpha RGBA layer, far → near, colour bled under transparent pixels |
+| `flat.png` | all layers composited (normal blending), painting size |
+| `preview.jpg` | 960-px preview |
+| `layers.json` | painting size, `margin`, per layer: `file`, `depth` (parallax 0 = sky … 1 = nearest), `size`, `offset`, `blend`, `coverage`, `note`; plus shot data (sun position, horizon, robot zone, frames for tilts, pebble/dew/fern positions, render seconds) |
+
+Layer PNGs include an overscan margin (40–48 px) on every side: a layer file is
+`(W+2m) × (H+2m)` and its top-left sits at `offset = (-m, -m)` in painting
+coordinates, so layers can be shifted for parallax or shake without showing an edge.
+Everything is deterministic: each shot seeds from `zlib.crc32(shot_name)`.
+
+Contact sheets: `bg/contact_phase1.jpg` (S01, S16, S11), `bg/contact_phase2.jpg` (all others).
+
+## Timings (this sandbox, 1 process per shot)
+
+| shot | size | layers | seconds |
+|---|---|---|---|
+| S01 | 1920×2900 | 8 | ~90 |
+| S02 | 1920×1040 | 3 | ~51 |
+| S03/S07 | 2100×1140 | 5 | ~18 |
+| S04 | 1920×1040 | 2 | ~17 |
+| S05 | 1920×1040 | 5 (far, mid, ground, pebbles, dew) | ~15 |
+| S06 | 1920×1040 | 3 | ~13 |
+| S08 (S14) | 1920×1040 | 8 | ~45 |
+| S09 | 1920×1040 | 5 | ~36 |
+| S10 | 1920×1600 | 4 | ~21 |
+| S11 (S15) | 1920×1040 | 6 | ~12 |
+| S12 | 1920×1040 | 5 | ~18 |
+| S13 | 2200×1200 | 4 | ~31 |
+| S16 | 2400×1040 | 7 | ~11 |
+| S17 | 1920×1040 | 8 | ~9 (re-uses the rendered S01 layers) |
+
+All 14 shots: about 3.5 minutes with `-j 2`. First run adds ~20 s of numba
+compilation (cached in `__pycache__` afterwards).
+
+## Engine modules
+
+- `kernels.py` — numba rasterisers on premultiplied float RGBA:
+  - `k_dabs`: thousands of dabs per call (~400k leaf dabs/s). Shapes: round, leaf
+    (pointed), flat (square-ish flat brush), petal. Per dab: ragged edge, bristle
+    streaks along the drag direction, wet-edge pigment pooling (`pool`), dry brush
+    that only catches the paper tooth (`dry`), two-tone loaded brush (`split`).
+  - `k_stroke`: one continuous stroke along a polyline (nearest-segment sweep):
+    width/opacity/colour along the stroke, bristle streaks, a second colour loaded on
+    one side (`color2`, `load2`), dry-brush tail (paint running out), pooling.
+  - `k_sweep`: form fields of a tube (across −1..1, along 0..1, open flat ends) used
+    to shade trunks/limbs/roots; `k_blobs`: the cluster G-buffer (coverage, dome
+    shading toward a 3-D sun vector, cluster id, radius).
+  - composite modes: over, alpha-lock (paint only on existing paint), erase, behind.
+- `canvas.py` — `Canvas` (flat coordinates + overscan margin), `dabs()`, `stroke()`,
+  `tube_fields()`, `catmull`, `wobble`, `taper`, paper texture (`PAPER`, tileable
+  cold-press tooth + fibres, used by dry brush and `grain()`), saving with colour bleed.
+- `color.py` — Oklab conversions, `mix`, `ramp`, `shade`, `jitter` (per-dab Oklab
+  variation), `aerial` (aerial perspective toward a haze colour), dawn palette `DAWN`.
+- `foliage.py` — `Blobs` + `render_gbuffer` + `paint_mass`: foliage masses painted
+  like a gouache painter: block-in of 3 value shapes, leaf dabs sorted dark → light
+  (lit cluster tops end up as crisp shapes of small leaves), broken leafy edges that
+  stick out of the silhouette, translucent sun-through leaves and warm rims on the
+  sun side, highlight tips. Also `spray` (irregular leafy twigs with rims) and `vine`.
+- `trees.py` — `paint_tube`: banded value shapes with a meandering terminator, warm
+  rim, cool reflected light, bark strokes that follow the form (with twist), fissures,
+  beech eye marks and lichen, moss patches (solid under-layer + texture), clumpy ivy,
+  dappled light flecks, ground-mist fade. `trunk_path` (lean, sway, bulges, buttress
+  flare), `buttress_roots`, `limb_fan`, `crown_blobs`; species presets `camphor`
+  (twisting, furrowed), `beech` (smooth grey), `cedar` (red-brown fibrous strips).
+- `forest.py` — the forest-interior kit used by most shots: `forest_row` (a row of
+  varied trunks with a hanging canopy underside, occasional high side branches with
+  layered leaf masses, bushy saplings, vines), `layered_mass` (irregular foliage mass:
+  many mixed clusters, ragged drooping lower edge, satellites), `broadleaf` (mid tree
+  with forked limbs and layered crown masses), `far_trunks`, `giant` (huge trunk with
+  buttress roots), `floor` (forest floor with litter, roots, dapples, flowers),
+  `undergrowth`, `surface_roots`.
+- `ground.py` — `ground` (perspective floor dabs), `fern`, `grass`, `stone`, `flowers`.
+- `sky.py` — `sky` (Oklab gradient + sun glow, brushed over with broad tilted strokes
+  that sample it with colour jitter), `sculpted_cloud` (flat base, a few big crown
+  lobes, satellites; lit crowns, violet undersides), `cumulus_blobs`, `paint_clouds`,
+  `sun_disc`.
+- `atmos.py` — `mist` (banks of soft low-opacity horizontal strokes, warm where lit,
+  lilac in shade), `beams` (streaky soft shafts), `glow`, `dapple`, `haze_pass`.
+- `layers.py` — `Painting`: per-layer grain, PNG + running flat composite + json.
+- `shots/sNN.py` — one composition per shot (`build(outdir)`).
+
+## Writing a new shot
+
+```python
+from ..layers import Painting
+from ..noise import rng_for
+from ..forest import forest_row, giant, floor
+P = Painting('S99', 1920, 1040, 48, outdir); rng = rng_for('S99')
+cv = P.layer('far', 0.2)
+forest_row(cv, rng, -80, 2000, 760, -120, 14, 0.75, HAZE, L3, SUN2, mist_col=HAZE_W, mist_band=(500, 770))
+P.add('far', 0.2, cv, 'note')
+...
+P.save(sun=[x, y])
+```
+
+Conventions: `L3 = (sx, sy, z)` points toward the sun in image space (x right, y down;
+z < 0 = backlit rims, z > 0 = front light); `SUN2` is its 2-D part; `HAZE`/`HAZE_W`
+are the aerial-perspective colours; depth `d` 0..1 drives aerial perspective.
+
+## Known weaknesses (honest)
+
+- Foliage is the strongest element; it can still read as clustered "broccoli" in
+  large dark masses (S11 ceiling, S01 crowns) — the cluster lobes are similar in size.
+- Clouds are painterly but the dab texture is busy at full resolution (S16 sea);
+  Ghibli clouds have larger flat value areas.
+- Floors in the backlit/flat views (S12, S08 centre) are mostly texture + light
+  patches; they lack designed shapes (puddles, paths, root systems).
+- Trunk bark is convincing at mid scale; at full scale on the near giants the
+  stroke texture is uniform and the ivy is a dense, even net in places.
+- S13 (top-down) trunk bases leaning toward camera read only weakly as trunks.
+- Everything is hand-tuned per shot; the kit has no automatic composition checks
+  (value/contrast maps), only my visual review at full resolution.

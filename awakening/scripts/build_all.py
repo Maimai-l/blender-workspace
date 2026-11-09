@@ -60,8 +60,8 @@ FX.flock(treetops)
 torso = bpy.data.objects['RB_torso']
 flames = FX.engine_flames(torso)
 FX.animate_flames(flames)
-ring = FX.wind_ring('FX_ring1'); FX.animate_ring(ring, 44.6, 47.2, r0=3, r1=80, z=1.2, alpha=0.9)
-ring2 = FX.wind_ring('FX_ring2'); FX.animate_ring(ring2, 47.4, 49.6, r0=4, r1=140, z=1.6, alpha=0.95)
+ring = FX.wind_ring('FX_ring1'); FX.animate_ring(ring, 44.6, 46.3, r0=3, r1=40, z=0.9, alpha=0.75)
+ring2 = FX.wind_ring('FX_ring2'); FX.animate_ring(ring2, 47.4, 49.2, r0=4, r1=130, z=0.9, alpha=0.8)
 TRAIL_PTS = [(0, 0.6, 5.0), (0.8, 1.6, 13.0), (4.5, 5.5, 41.0), (16.0, 17.0, 115.0), (62.0, 52.0, 425.0)]
 TRAIL_KEYS = [(47.4, 0.01), (47.45, 0.02), (48.0, 0.12), (49.0, 0.32), (50.5, 0.62), (56.0, 1.0)]
 trail = FX.trail(TRAIL_PTS, 'FX_trail', depth=1.1, color=(1.0, 0.9, 0.6), strength=3.0)
@@ -85,10 +85,9 @@ for ob in bpy.data.objects:
     for ps in ob.particle_systems:
         scope(ps, fields_none)
 # leaves blown by the ignition wind: a ground disc emitter
-bpy.ops.mesh.primitive_circle_add(vertices=48, radius=45, fill_type='NGON', location=(0, 0.6, 0.6))
-disc = bpy.context.active_object; disc.name = 'FX_leafdisc'; C.link(disc, C.coll('FX'))
-FX.hide_emitter(disc)
-ps_wind = FX.particles(disc, 'windleaves', src, 44.6, 46.8, 500, life=3.0, vel_normal=0.2, vel_rand=0.3, size=0.6, size_rand=0.4, gravity=0.35, drag=0.15, seed=9)
+disc = FX.disc_emitter('FX_leafdisc', 45, (0, 0.6, 0.6), n=1200)
+ps_wind = FX.particles(disc, 'windleaves', src, 44.6, 46.8, 500, life=3.0, vel_normal=0.0, vel_rand=0.3, size=0.6, size_rand=0.4, gravity=0.35, drag=0.15, seed=9, emit_from='VERT')
+ps_wind.settings.object_align_factor = (0, 0, 1.2)
 scope(ps_wind, fields_wind)
 wind = FX.force_field('FX_wind', 'FORCE', (0, 0.6, 2), 0.0, falloff_type='SPHERE', falloff_power=1.0)
 C.link(wind, fields_wind)
@@ -98,9 +97,8 @@ wind.field.strength = 60; wind.keyframe_insert('field.strength', frame=A.F(47.0)
 wind.field.strength = 260; wind.keyframe_insert('field.strength', frame=A.F(47.6))
 wind.field.strength = 0; wind.keyframe_insert('field.strength', frame=A.F(49.0))
 # leaves spiralling down through the sunbeams in the last shot
-bpy.ops.mesh.primitive_circle_add(vertices=32, radius=26, fill_type='NGON', location=(-4, -6, 34))
-top = bpy.context.active_object; top.name = 'FX_leaftop'; C.link(top, C.coll('FX')); FX.hide_emitter(top)
-ps_fall = FX.particles(top, 'fallleaves', src, 47.8, 54.5, 150, life=9.0, vel_normal=0.0, vel_rand=0.8, size=0.7, size_rand=0.4, gravity=0.06, drag=0.25, seed=5, lifetime_rand=0.1)
+top = FX.disc_emitter('FX_leaftop', 26, (-4, -6, 34), n=600)
+ps_fall = FX.particles(top, 'fallleaves', src, 47.8, 54.5, 150, life=9.0, vel_normal=0.0, vel_rand=0.8, size=0.7, size_rand=0.4, gravity=0.06, drag=0.25, seed=5, lifetime_rand=0.1, emit_from='VERT')
 scope(ps_fall, fields_sky)
 vortex = FX.force_field('FX_vortex', 'VORTEX', (0, 0.6, 15), 1.6, falloff_type='SPHERE', falloff_power=0.5)
 turb = FX.force_field('FX_turb', 'TURBULENCE', (0, 0, 20), 2.5, size=6.0, flow=0.3)
@@ -109,13 +107,23 @@ C.link(vortex, fields_sky); C.link(turb, fields_sky)
 ring_small = FX.ring_emitter('FX_dustring', 4.5, 9.5, z=2.3)
 scope(FX.dust_particles(ring_small, 'tremordust', 24.0, 27.6, 70, 3.0, life=2.6, vel=0.9, seed=4), fields_none)
 ring_big = FX.ring_emitter('FX_dustring2', 3.0, 14.0, z=2.6)
-scope(FX.dust_particles(ring_big, 'launchdust', 47.35, 48.4, 160, 9.0, life=3.5, vel=3.0, gravity=-0.02, seed=5), fields_wind)
-scope(FX.dust_particles(ring_big, 'ignitedust', 44.6, 47.3, 90, 5.0, life=2.8, vel=1.5, gravity=-0.03, seed=6), fields_wind)
+scope(FX.dust_particles(ring_big, 'launchdust', 47.35, 48.1, 140, 8.0, life=1.25, vel=3.5, gravity=-0.02, seed=5), fields_wind)
+scope(FX.dust_particles(ring_big, 'ignitedust', 44.6, 47.0, 90, 5.0, life=2.0, vel=1.5, gravity=-0.03, seed=6), fields_wind)
 # ---- ink and post
 vb, vi = S.setup_layers(sc)
 S.setup_freestyle(sc, (('Robot', 1.3), ('Birds', 0.75)), vl=vi)
 bird_names = [o.name for o in bpy.data.collections['Birds'].objects if o.parent is None]
 ng = COMP.setup(sc, w=960, mattes=['J_root'] + bird_names)
 COMP.fades(ng, [(1, 0.0), (A.F(1.2), 1.0), (A.F(54.6), 1.0), (A.F(56.0) - 1, 0.0)])
+sc.frame_set(1)
+# particle caches on disk, so background renders (which start mid-way) see the same simulation
+for ob in bpy.data.objects:
+    for ps in ob.particle_systems:
+        pc = ps.point_cache
+        pc.use_disk_cache = True
+        pc.frame_start = 1; pc.frame_end = sc.frame_end
+if bpy.data.filepath:
+    bpy.ops.ptcache.free_bake_all()
+    bpy.ops.ptcache.bake_all(bake=True)
 sc.frame_set(1)
 print('BUILT in %.1fs; objects %d' % (time.time() - T0, len(bpy.data.objects)))

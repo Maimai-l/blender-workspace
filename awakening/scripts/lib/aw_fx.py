@@ -205,7 +205,7 @@ def wind_ring(name='FX_ring', segs=96, rsegs=12, seed=None):
         for j in range(rsegs):
             b = 2 * math.pi * j / rsegs
             rr = 1.0 + 0.11 * lump * math.cos(b)          # horizontal tube radius 0.11 of the ring radius
-            z = 1.6 * math.sin(b) * (0.75 + 0.25 * math.sin(a * 5 + 1.0))   # vertical half-thickness ~1.6 m
+            z = 0.45 * math.sin(b) * (0.75 + 0.25 * math.sin(a * 5 + 1.0))   # vertical half-thickness ~0.45 m: a low skirt
             verts.append(bm.verts.new((math.cos(a) * rr, math.sin(a) * rr, z)))
     for i in range(segs):
         for j in range(rsegs):
@@ -216,7 +216,7 @@ def wind_ring(name='FX_ring', segs=96, rsegs=12, seed=None):
     g = S.group_node(mat)
     g.inputs['Shadow Mul'].default_value = (0.80, 0.78, 0.84, 1)
     g.inputs['Deep Mul'].default_value = (0.70, 0.68, 0.78, 1)
-    g.inputs['Alpha'].default_value = 0.9
+    g.inputs['Alpha'].default_value = 0.75
     mat.surface_render_method = 'BLENDED'
     ob = M.finish(bm, name, [mat], coll)
     ob.visible_shadow = False
@@ -425,20 +425,38 @@ def dust_collection():
             C.link(ob, coll)
     return coll
 
-def ring_emitter(name, r0, r1, z=0.4, segs=48):
-    """A flat ring mesh around the robot, used as a particle emitter (not rendered)."""
-    bm = M.new_bm()
-    outer = [bm.verts.new((math.cos(2 * math.pi * i / segs) * r1, math.sin(2 * math.pi * i / segs) * r1, 0)) for i in range(segs)]
-    inner = [bm.verts.new((math.cos(2 * math.pi * i / segs) * r0, math.sin(2 * math.pi * i / segs) * r0, 0)) for i in range(segs)]
-    for i in range(segs):
-        bm.faces.new((inner[i], outer[i], outer[(i + 1) % segs], inner[(i + 1) % segs]))
-    ob = M.finish(bm, name, [], fx_coll(), loc=(0, 0.6, z))
-    hide_emitter(ob)
+def vert_emitter(name, points, loc=(0, 0, 0)):
+    """A mesh of loose vertices: a particle emitter with no surface at all, so nothing can render or shadow."""
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(p) for p in points], [], [])
+    me.update()
+    ob = bpy.data.objects.new(name, me)
+    fx_coll().objects.link(ob)
+    ob.location = loc
+    ob.show_instancer_for_render = False
+    ob.show_instancer_for_viewport = False
     return ob
+
+def ring_emitter(name, r0, r1, z=0.4, n=600):
+    """Random points in a flat ring around the robot (vertex-only emitter)."""
+    rnd = C.rng(name)
+    pts = []
+    for i in range(n):
+        r = math.sqrt(rnd.uniform(r0 * r0, r1 * r1)); a = rnd.uniform(0, 2 * math.pi)
+        pts.append((math.cos(a) * r, math.sin(a) * r, 0))
+    return vert_emitter(name, pts, loc=(0, 0.6, z))
+
+def disc_emitter(name, radius, loc, n=800):
+    rnd = C.rng(name)
+    pts = []
+    for i in range(n):
+        r = radius * math.sqrt(rnd.random()); a = rnd.uniform(0, 2 * math.pi)
+        pts.append((math.cos(a) * r, math.sin(a) * r, 0))
+    return vert_emitter(name, pts, loc=loc)
 
 def dust_particles(emitter, name, t0, t1, count, size, life=2.2, vel=1.2, gravity=-0.05, seed=3):
     ps = particles(emitter, name, dust_collection(), t0, t1, count, life=life, vel_normal=vel, vel_rand=0.5, size=size, size_rand=0.4,
-                   gravity=gravity, rot=False, drag=0.6, seed=seed, lifetime_rand=0.35)
+                   gravity=gravity, rot=False, drag=0.6, seed=seed, lifetime_rand=0.35, emit_from='VERT')
     st = ps.settings
     st.use_rotations = False          # instances keep the card's own orientation (facing -Y)
     st.use_rotation_instance = False

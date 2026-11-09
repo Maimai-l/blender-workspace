@@ -15,7 +15,7 @@ from ..foliage import Blobs
 from ..atmos import mist, dapple, glow
 from ..trees import species, paint_tube, trunk_path
 from ..forest import leafy_mass, surface_roots, giant
-from ..ground import fern, grass, stone, flowers
+from ..ground import fern, grass, stone, flowers, FERN_KINDS
 
 W, H, M = 2200, 1200, 40
 L3 = (0.15, 0.6, 0.55)          # sun toward the bottom of the frame, raised
@@ -101,9 +101,15 @@ def build(outdir, quick=False):
         if np.hypot((x - CENTRE[0]) / 520, (y - CENTRE[1]) / 400) < 1.0:
             continue
         pts.append((x, y))
+    kinds = []
     for (x, y) in pts:
-        s_ = rng.uniform(70, 150)
-        fern(cv, rng, x, y, s_, sun2=SUN2, light=0.95, spread=2.5, n_fronds=int(rng.integers(8, 13)), droop=0.4)
+        kind = str(rng.choice(FERN_KINDS, p=[0.3, 0.25, 0.2, 0.15, 0.1]))
+        s_ = {'sword': rng.uniform(80, 160), 'lady': rng.uniform(70, 140), 'bracken': rng.uniform(110, 190),
+              'hart': rng.uniform(50, 100), 'maidenhair': rng.uniform(45, 85)}[kind]
+        nf = None if kind != 'sword' else int(rng.integers(7, 13))
+        fern(cv, rng, x, y, s_, sun2=SUN2, light=rng.uniform(0.85, 1.05), spread=2.5, n_fronds=nf,
+             droop=rng.uniform(0.3, 0.6), kind=kind, lean=rng.uniform(-0.6, 0.6))
+        kinds.append(kind)
     P.add('ferns', 0.6, cv, 'fern rosettes (centres listed in layers.json: flatten radially from the robot)')
 
     # ---------------------------------------------------------------- trunks leaning toward the camera
@@ -115,5 +121,6 @@ def build(outdir, quick=False):
                    twist=0.1, flecks=0.2)
     P.add('trunks', 1.0, cv, 'giant trunk bases leaning out of frame toward the camera')
 
-    P.save(robot_centre=list(CENTRE), fern_centres=[list(map(float, p)) for p in pts], light_dir=list(L3))
+    P.save(robot_centre=list(CENTRE), fern_centres=[list(map(float, p)) for p in pts], fern_kinds=kinds,
+           light_dir=list(L3))
     return P

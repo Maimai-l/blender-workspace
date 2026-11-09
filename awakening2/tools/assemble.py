@@ -101,9 +101,17 @@ def qa(version, mp4):
         cs.paste(r, (0, 134 * k))
     cs.save(os.path.join(qd, 'shots_contact.jpg'), quality=86)
     # side by side with the benchmark at matching beats (ours t, theirs t)
-    beats = [('dawn wide', 7.6, 3.0), ('bird on the shoulder', 11.0, 15.0), ('face close-up', 16.5, 21.5),
-             ('chest light', 23.6, 28.0), ('rise', 40.5, 45.0), ('launch', 55.6, 62.0), ('sky + trail', 63.0, 66.0),
-             ('ending', 71.0, 74.0)]
+    # beats: (name, our shot, fraction of that shot, benchmark time)
+    tm = {sid: (a_, b_) for sid, a_, b_ in shot_list()}
+    beat_spec = [('dawn wide', 'S00', 0.7, 3.0), ('dawn wide 2', 'S01', 0.97, 9.0), ('bird on the shoulder', 'S02', 0.55, 15.0),
+                 ('face close-up', 'S03', 0.85, 21.5), ('chest light', 'S04', 0.8, 28.0), ('rise', 'S09', 0.45, 45.0),
+                 ('launch', 'S14', 0.45, 62.0), ('flight', 'S16A', 0.5, 66.0), ('sky + trail', 'S16B', 0.75, 68.0),
+                 ('ending', 'S17', 0.55, 74.0)]
+    beats = []
+    for name, sid, fr, tb in beat_spec:
+        if sid in tm:
+            a_, b_ = tm[sid]
+            beats.append((name, round(a_ + (b_ - a_) * fr, 2), tb))
     rows = []
     for name, t_ours, t_bench in beats:
         a_ = grab(mp4, t_ours); b_ = grab(BENCH, t_bench)

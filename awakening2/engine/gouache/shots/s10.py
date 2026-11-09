@@ -9,12 +9,12 @@ from ..noise import rng_for
 from ..canvas import stroke, taper
 from ..layers import Painting
 from ..foliage import Blobs, vine
-from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud
+from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud, plane_cloud
 from ..atmos import beams, glow, mist
 from ..trees import species, paint_tube, trunk_path
 from ..forest import leafy_mass, far_trunks, forest_row, layered_mass
 
-W, H, M = 1920, 1600, 48
+W, H, M = 1920, 1600, 160
 GAP = (780.0, 330.0, 560.0, 300.0)      # above the robot's head (robot ~x 0.12-0.62)
 SUN = (980.0, 210.0)
 L3 = (0.3, -0.85, -0.4)
@@ -79,9 +79,9 @@ def build(outdir, quick=False):
     cv = P.layer('sky', 0.0)
     stops = [C(250, 222, 170), C(255, 214, 150), C(250, 200, 160), C(236, 214, 200), C(226, 214, 214)]
     sky(cv, rng, stops, [0, 0.15, 0.35, 0.65, 1.0], sun=SUN, glow=(700, C(255, 244, 210), 1.0), n_strokes=0.7)
-    sculpted_cloud(cv, rng, 620, 380, 560, 140, [C(186, 140, 160), C(232, 176, 160), C(255, 212, 160),
-                                                 C(255, 236, 196), C(255, 248, 224)], kind='cumulus',
-                   light3=(0.4, -0.6, 0.1), rim=C(255, 242, 210), rim_amt=0.8)
+    plane_cloud(cv, rng, 620, 380, 560, 140, (C(186, 140, 160), C(242, 190, 162), C(255, 224, 180),
+                                              C(255, 248, 224)), kind='cumulus', light3=(0.4, -0.75, 0.3),
+                rim=C(255, 246, 218), wisps=0.4)
     glow(cv, SUN[0], SUN[1], 150, C(255, 252, 236), 0.85)
     P.add('sky', 0.0, cv, 'golden sky in the gap above the robot; opaque')
 

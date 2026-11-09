@@ -27,14 +27,18 @@ HAZE_W = C(255, 234, 200)
 HAZE_C = C(214, 206, 224)
 
 
-def up_trunk(cv, rng, xb, wb, d, sp, moss=0.8, ivy=0.2, yb=None, detail=0.7, flecks=0.3):
+def up_trunk(cv, rng, xb, wb, d, sp, moss=0.8, ivy=0.2, yb=None, detail=0.7, flecks=0.3, traits=None):
     yb = HZ + 20 if yb is None else yb
     vx = 960.0
     t = 0.75
     top = (xb + (vx - xb) * (yb + 150) / (yb - VPY) * 1.0, -150)
     pts, ww = trunk_path(rng, (xb, yb), top, wb, wb * 0.7, sway=0.012, bulge=0.07, flare=0.4, flare_h=0.05)
-    paint_tube(cv, pts, ww, rng, species(sp, depth=d, haze=HAZE), L3, depth=d, haze=HAZE, moss=moss, ivy=ivy,
+    bark = species(sp, depth=d, haze=HAZE)
+    paint_tube(cv, pts, ww, rng, bark, L3, depth=d, haze=HAZE, moss=moss, ivy=ivy,
                detail=detail, twist=0.15 if sp == 'camphor' else 0.0, flecks=flecks, sky_side=0.2)
+    if traits:
+        from ..forest import character
+        character(cv, rng, pts, ww, bark, L3, **traits)
 
 
 def build(outdir, quick=False):
@@ -91,8 +95,10 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- near: trunks rising up the frame edges
     cv = P.layer('near', 0.8)
-    up_trunk(cv, rng, -40, 330, 0.0, 'camphor', moss=1.3, ivy=0.5, yb=H + 80, detail=0.9)
-    up_trunk(cv, rng, 1900, 300, 0.0, 'beech', moss=1.1, ivy=0.1, yb=H + 80, detail=0.9)
+    up_trunk(cv, rng, -40, 330, 0.0, 'camphor', moss=1.1, ivy=0.0, yb=H + 80, detail=0.9,
+             traits=dict(knots=2, fungi=2, ivy_bands=2, moss_cushions=0, side=1.0))
+    up_trunk(cv, rng, 1900, 300, 0.0, 'beech', moss=0.9, ivy=0.0, yb=H + 80, detail=0.9,
+             traits=dict(knots=4, fungi=3, ivy_bands=1, moss_cushions=0, side=-1.0))
     P.add('near', 0.8, cv, 'huge trunks rising up both frame edges')
 
     # ---------------------------------------------------------------- fg: extreme foreground ferns and grass

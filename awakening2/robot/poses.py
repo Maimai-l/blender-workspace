@@ -15,14 +15,15 @@ def P(**kw):
 
 # lids: 0 = open, -66 = closed
 KNEEL_DORMANT = dict(
-    thigh_R=(4, 2, 0), shin_R=(-100, 0, 0), foot_R=(52, 0, 0),
-    thigh_L=(82, -6, 0), shin_L=(-86, 0, 0), foot_L=(4, 0, 0),
-    pelvis=(-6, 0, 0), torso=(-24, 0, -4), head=(-19, 0, 6),
-    upperarm_R=(-4, -8, 0), forearm_R=(16, 0, 0), hand_R=(44, 0, 0),
+    # solved so the right knee and shin rest on the ground and the right hand's knuckles touch it
+    thigh_R=(12, 2, 0), shin_R=(-84, 0, 0), foot_R=(-65, 0, 0),
+    thigh_L=(90, -6, 0), shin_L=(-106, 0, 0), foot_L=(4, 0, 0),
+    pelvis=(-6, 0, 0), torso=(-24, 0, -4), head=(-12, 0, 6),
+    upperarm_R=(16, -6, 0), forearm_R=(0, 0, 0), hand_R=(0, 0, 0),
     upperarm_L=(10, 8, 0), forearm_L=(64, 0, 0), hand_L=(22, 0, 0),
     lid_R=(-55, 0, 6), lid_L=(-55, 0, -6), roof_R=(0, 0, 0))
 
-KNEEL_WAKE = dict(KNEEL_DORMANT, head=(-8, 0, 4), torso=(-21, 0, -3), lid_R=(-36, 0, 4), lid_L=(-36, 0, -4))
+KNEEL_WAKE = dict(KNEEL_DORMANT, head=(0, 0, 4), torso=(-21, 0, -3), lid_R=(-36, 0, 4), lid_L=(-36, 0, -4))
 
 # rise: 1) the right hand plants and pushes, torso pitches forward over it
 RISE_PUSH = dict(KNEEL_DORMANT, torso=(-38, 0, -8), head=(-6, 0, 0), pelvis=(-10, 0, 0),
@@ -100,8 +101,9 @@ def grounded(rig, pose, yaw=0.0, x=0.0, y=0.0, extra_z=0.0, pitch=0.0):
 
 
 # ---- refined rise (v2): anticipation, plant, push with the head lagging, crouch
-KNEEL_SINK = dict(KNEEL_WAKE, pelvis=(-9, 0, 0), torso=(-31, 0, -5), head=(-12, 0, 4),
-                  upperarm_R=(-2, -10, 0), forearm_R=(20, 0, 0), upperarm_L=(14, 10, 0), forearm_L=(66, 0, 0))
+KNEEL_SINK = dict(KNEEL_WAKE, pelvis=(-6, 0, 0), torso=(-31, 0, -5), head=(-12, 0, 4),
+                  thigh_R=(12, 2, 0), upperarm_R=(34, -6, 0), forearm_R=(0, 0, 0), hand_R=(20, 0, 0),
+                  upperarm_L=(14, 10, 0), forearm_L=(66, 0, 0))
 PUSH_PLANT = dict(KNEEL_WAKE, pelvis=(-10, 0, 0), torso=(-36, 0, -9), head=(-14, 0, 2),
                   upperarm_R=(46, -14, 0), forearm_R=(-4, 0, 0), hand_R=(30, 0, 0),
                   upperarm_L=(16, 10, 0), forearm_L=(66, 0, 0), lid_R=(-30, 0, 0), lid_L=(-30, 0, 0))

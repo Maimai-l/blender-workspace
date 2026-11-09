@@ -1,0 +1,85 @@
+{
+  "painting": "S16A",
+  "size": [
+    4096,
+    1040
+  ],
+  "margin": 0,
+  "note": "Straight-alpha RGBA layers, far to near. Each PNG includes the overscan margin; place its top-left at `offset` in painting coordinates. depth: suggested parallax factor (0 = sky ... 1 = nearest). flat.png = all layers composited with normal blending.",
+  "layers": [
+    {
+      "name": "sky",
+      "file": "00_sky.png",
+      "depth": 0.1,
+      "size": [
+        4096,
+        1040
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "blend": "normal",
+      "coverage": 1.0,
+      "note": "gold sky with high clouds; tileable in x (scroll slowest)"
+    },
+    {
+      "name": "cloud_bank",
+      "file": "01_cloud_bank.png",
+      "depth": 0.5,
+      "size": [
+        4096,
+        1040
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "blend": "normal",
+      "coverage": 0.353,
+      "note": "bank of sculpted cumulus along the bottom; tileable in x (scroll medium)"
+    },
+    {
+      "name": "wisps",
+      "file": "02_wisps.png",
+      "depth": 1.0,
+      "size": [
+        4096,
+        1040
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "blend": "normal",
+      "coverage": 0.529,
+      "note": "fast near cloud wisps (speed lines of vapour); tileable in x (scroll fastest)"
+    },
+    {
+      "name": "sun_glow",
+      "file": "03_sun_glow.png",
+      "depth": 0.0,
+      "size": [
+        1920,
+        1040
+      ],
+      "offset": [
+        0,
+        0
+      ],
+      "blend": "screen",
+      "coverage": 1.0,
+      "note": "SCREEN-FIXED overlay (do not scroll): the off-frame sun at the upper right; use screen or add blending"
+    }
+  ],
+  "seconds": 10.0,
+  "layer_seconds": {
+    "sky": 3.0,
+    "cloud_bank": 3.6,
+    "wisps": 2.3
+  },
+  "tileable_x": true,
+  "tile_width": 4096,
+  "scroll_note": "scroll sky slowest, cloud_bank medium, wisps fastest; sun_glow fixed to the camera",
+  "sun": "off-frame upper right"
+}

@@ -36,7 +36,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.742,
+      "coverage": 0.734,
       "note": "far trunks converging upward, high canopy rimming the gap"
     },
     {
@@ -52,7 +52,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.594,
+      "coverage": 0.601,
       "note": "dark mossy trunks converging upward and the near canopy; the face goes above this"
     },
     {
@@ -68,7 +68,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.198,
+      "coverage": 0.202,
       "note": "the first ray: soft warm beam from the upper left (animate: slide/opacity)"
     },
     {
@@ -88,11 +88,11 @@
       "note": "floating dust motes in the beam (drift them slowly)"
     }
   ],
-  "seconds": 18.4,
+  "seconds": 19.1,
   "layer_seconds": {
     "sky": 2.0,
-    "far": 8.9,
-    "mid": 5.1,
+    "far": 9.1,
+    "mid": 5.5,
     "beam": 1.0,
     "motes": 0.8
   },

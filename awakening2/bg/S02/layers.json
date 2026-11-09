@@ -36,8 +36,8 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.878,
-      "note": "three misty rows of forest (trunks, leafy side sprays, vines), hazy canopy, light shafts"
+      "coverage": 0.929,
+      "note": "three misty rows of forest, light shafts; painted soft focus (simplified, dry-brush edges, no blur)"
     },
     {
       "name": "mid",
@@ -52,15 +52,15 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.275,
-      "note": "nearer mossy trunks at the edges, canopy corners, vines; shoulder goes above"
+      "coverage": 0.258,
+      "note": "nearer mossy trunks at the edges, canopy corners, vines; painted soft focus; shoulder goes above"
     }
   ],
-  "seconds": 51.3,
+  "seconds": 21.0,
   "layer_seconds": {
-    "sky": 1.4,
-    "far": 46.2,
-    "mid": 3.3
+    "sky": 1.8,
+    "far": 17.3,
+    "mid": 1.5
   },
   "sun": [
     1500.0,

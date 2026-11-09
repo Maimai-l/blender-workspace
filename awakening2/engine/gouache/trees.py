@@ -105,7 +105,7 @@ def paint_tube(cv, path, widths, rng, bark, light3=(0.6, -0.7, -0.25), depth=0.0
                moss=0.0, ivy=0.0, twist=0.0, detail=1.0, flecks=0.0, fleck_col=None,
                moss_base=0.35, rim_amt=1.0, refl_amt=0.5, ground_y=None, mist_fade=None,
                mist_col=None, opacity=1.0, end_fade=0.0, start_fade=0.0, tex=None,
-               moss_pal=None, ivy_pal=None, sky_side=0.0):
+               moss_pal=None, ivy_pal=None, sky_side=0.0, soft_edge=0.0):
     """Paint one woody tube. path runs from base to tip; widths are full widths.
     light3 = (sx, sy, z) toward the sun: z<0 sun behind (backlit rims), z>0 front-lit.
     mist_fade=(y_top, y_bottom): tint toward mist_col increasing downward (ground mist)."""
@@ -168,7 +168,17 @@ def paint_tube(cv, path, widths, rng, bark, light3=(0.6, -0.7, -0.25), depth=0.0
     if sky_side:
         lab = lab + (oklab(bark.refl) - lab) * (sky_side * smoothstep(0.2, 1.0, -TN * side) * 0.35)[..., None]
     rgb = np.clip(from_oklab(lab), 0, 1)
-    alpha = np.clip((1.0 - R) * HW / 1.1, 0, 1) * opacity
+    if soft_edge > 0:
+        # dry-brush soft edge: a wider ramp broken up by the paper tooth (not a blur)
+        from .canvas import PAPER
+        ph, pw = PAPER.shape
+        yy_ = (np.arange(hh) + y0 - cv.m) % ph
+        xx_ = (np.arange(ww) + x0 - cv.m) % pw
+        pap = PAPER[yy_[:, None], xx_[None, :]]
+        ramp_ = np.clip((1.0 - R) * HW / soft_edge, 0, 1)
+        alpha = np.clip(ramp_ * (1.0 + 0.9 * (pap - 0.5)) * 1.1, 0, 1) * (R < 1.0) * opacity
+    else:
+        alpha = np.clip((1.0 - R) * HW / 1.1, 0, 1) * opacity
     if end_fade > 0:
         alpha *= smoothstep(1.0, 1.0 - end_fade, S)
     if start_fade > 0:

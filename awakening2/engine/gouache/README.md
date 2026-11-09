@@ -27,7 +27,8 @@ Layer PNGs include an overscan margin (40–48 px) on every side: a layer file i
 coordinates, so layers can be shifted for parallax or shake without showing an edge.
 Everything is deterministic: each shot seeds from `zlib.crc32(shot_name)`.
 
-Contact sheets: `bg/contact_phase1.jpg` (S01, S16, S11), `bg/contact_phase2.jpg` (all others).
+Contact sheets: `bg/contact_phase1.jpg` (S01, S16, S11), `bg/contact_phase2.jpg` (S02-S13, S17),
+`bg/contact_round4.jpg` (S00, S16, S16A, S12, S13).
 
 ## Timings (this sandbox, 1 process per shot)
 
@@ -41,11 +42,13 @@ Contact sheets: `bg/contact_phase1.jpg` (S01, S16, S11), `bg/contact_phase2.jpg`
 | S06 | 1920×1040 | 3 | ~13 |
 | S08 (S14) | 1920×1040 | 8 | ~45 |
 | S09 | 1920×1040 | 5 | ~36 |
-| S10 | 1920×1600 | 4 | ~21 |
+| S10 | 1920×1600 (160 px overscan) | 4 | ~29 |
 | S11 (S15) | 1920×1040 | 6 | ~12 |
 | S12 | 1920×1040 | 5 | ~18 |
 | S13 | 2200×1200 | 4 | ~31 |
-| S16 | 2400×1040 | 7 | ~11 |
+| S16 | 2400×1040 (160 px overscan) | 7 | ~15 |
+| S00 | 2200×1040 (64 px overscan) | 5 | ~11 |
+| S16A | 4096×1040, tileable in x | 3 + screen-fixed `sun_glow` | ~10 |
 | S17 | 1920×1040 | 8 | ~9 (re-uses the rendered S01 layers) |
 
 All 14 shots: about 3.5 minutes with `-j 2`. First run adds ~20 s of numba
@@ -88,15 +91,38 @@ compilation (cached in `__pycache__` afterwards).
   with forked limbs and layered crown masses), `far_trunks`, `giant` (huge trunk with
   buttress roots), `floor` (forest floor with litter, roots, dapples, flowers),
   `undergrowth`, `surface_roots`.
-- `ground.py` — `ground` (perspective floor dabs), `fern`, `grass`, `stone`, `flowers`.
+- `ground.py` — `ground` (perspective floor dabs), `fern` with `kind` = sword, lady
+  (lacy, twice-divided), bracken (triangular, divided pinnae), hart (undivided strap
+  fronds), maidenhair (round leaflets on dark stems); `grass`, `stone`, `flowers`.
 - `sky.py` — `sky` (Oklab gradient + sun glow, brushed over with broad tilted strokes
-  that sample it with colour jitter), `sculpted_cloud` (flat base, a few big crown
-  lobes, satellites; lit crowns, violet undersides), `cumulus_blobs`, `paint_clouds`,
-  `sun_disc`.
+  that sample it with colour jitter), `paint_planes` / `plane_cloud` (round 4: Ghibli
+  cumulus painted as big flat value planes, not dabs: whole-form + per-lobe shading cut
+  into shadow / mid / lit / crown planes with meandering hard-ish terminators, a crisp
+  silhouette, a thin sun-side rim, a few broad form-following strokes and soft wisps;
+  also used for distant forest canopies with `leafy_edge` and `leaf_px`),
+  `sculpted_blobs` (flat base, big crown lobes, satellites), older dab-based
+  `sculpted_cloud` / `paint_clouds`, `sun_disc`.
 - `atmos.py` — `mist` (banks of soft low-opacity horizontal strokes, warm where lit,
   lilac in shade), `beams` (streaky soft shafts), `glow`, `dapple`, `haze_pass`.
+- `soft.py` — painted soft focus helpers (`mist_strokes`: mist as broad bristle strokes).
+  Soft focus itself is a mode of the painters, not a filter: `forest_row(..., soft=px)` and
+  `paint_tube(..., soft_edge=px)` paint simplified trunks (few long bark strokes, no moss
+  specks, dry-brush edges broken up by the paper tooth) and two-plane foliage masses with
+  bristly edges (`paint_planes(..., brush_edge=1)`). Used for S02 and S04 (round 5).
+  (`repaint()` and the `soft_*` shape helpers are kept but unused: they looked like an
+  impressionist filter / too schematic.)
+- `forest.character()` — individual features for near trunks: knot holes with lit lips,
+  bracket fungi, a hollow between buttress roots, ivy in distinct climbing bands, moss
+  cushions on the root flare (`giant(..., traits=dict(...))`; S08, S09).
 - `layers.py` — `Painting`: per-layer grain, PNG + running flat composite + json.
 - `shots/sNN.py` — one composition per shot (`build(outdir)`).
+
+## Tileable layers (S16A)
+
+`shots/s16a.py` paints every element (stroke, cloud, wisp) once on its own small canvas
+and pastes it at x and x ± W, so each layer wraps exactly (the wrap-edge difference
+equals a normal neighbouring-column difference). Scroll `sky` slowest, `cloud_bank`
+medium, `wisps` fastest; `sun_glow` is a 1920×1040 overlay fixed to the camera.
 
 ## Writing a new shot
 
@@ -119,9 +145,13 @@ are the aerial-perspective colours; depth `d` 0..1 drives aerial perspective.
 ## Known weaknesses (honest)
 
 - Foliage is the strongest element; it can still read as clustered "broccoli" in
-  large dark masses (S11 ceiling, S01 crowns) — the cluster lobes are similar in size.
-- Clouds are painterly but the dab texture is busy at full resolution (S16 sea);
-  Ghibli clouds have larger flat value areas.
+  large dark masses (S01 crowns). S11 was repainted in round 5 with flat-plane masses lit
+  toward the gap (radial light via `paint_planes(G=..., glob=0, rim_point=...)`).
+- Bracket fungi (S08/S09) are simple stacked ellipses; knot holes read slightly cartoonish.
+- Round 4 replaced every dab-built cloud with flat value planes (`plane_cloud`):
+  S00, S01, S03, S06, S10, S16, S16A. The old dab painter is kept only for reference.
+- The plane-painted canopies (S00 mid/near, S16 fg) are clean but simple: no inner
+  branch gaps or individual crown structure.
 - Floors in the backlit/flat views (S12, S08 centre) are mostly texture + light
   patches; they lack designed shapes (puddles, paths, root systems).
 - Trunk bark is convincing at mid scale; at full scale on the near giants the

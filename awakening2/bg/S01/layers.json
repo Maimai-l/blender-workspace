@@ -36,7 +36,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.27,
+      "coverage": 0.319,
       "note": "far crowns around the gap, pale far trunks, far understorey in mist"
     },
     {
@@ -52,7 +52,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.446,
+      "coverage": 0.415,
       "note": "mist between far and mid trees; glow behind the robot"
     },
     {
@@ -68,7 +68,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.54,
+      "coverage": 0.534,
       "note": "mid trunks + crowns rimming the gap, perch branches, clearing floor (robot kneels on it)"
     },
     {
@@ -84,7 +84,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.37,
+      "coverage": 0.371,
       "note": "warm glowing mist behind the robot; the robot goes above this layer"
     },
     {
@@ -100,7 +100,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.224,
+      "coverage": 0.246,
       "note": "sunbeams through the gap (could be animated: opacity shimmer)"
     },
     {
@@ -116,7 +116,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.456,
+      "coverage": 0.476,
       "note": "giant framing trunks (camphor left, beech right), roots, near crowns at the top"
     },
     {
@@ -132,20 +132,20 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.037,
+      "coverage": 0.039,
       "note": "foreground: overhanging leaves at the top, vines, ferns in the bottom corners"
     }
   ],
-  "seconds": 91.6,
+  "seconds": 86.9,
   "layer_seconds": {
-    "sky": 4.2,
-    "far": 29.3,
-    "mist_far": 2.8,
-    "mid": 32.1,
-    "mist_mid": 2.7,
-    "beams": 2.5,
-    "near": 14.2,
-    "fg": 2.4
+    "sky": 4.8,
+    "far": 26.6,
+    "mist_far": 2.7,
+    "mid": 29.7,
+    "mist_mid": 2.8,
+    "beams": 2.6,
+    "near": 14.3,
+    "fg": 2.1
   },
   "sun": [
     1330.0,

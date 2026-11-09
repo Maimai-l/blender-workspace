@@ -170,7 +170,8 @@ def sculpted_cloud(cv, rng, cx, base_y, w, h, stops, pos=None, kind='cumulus', l
 def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, under=0.6, th=(0.3, 0.52, 0.8),
                  soft=0.035, noise_amt=0.1, rag=0.6, strokes=1.0, stroke_size=None, rim=None, rim_amt=1.0,
                  wisps=0.0, wisp_col=None, opacity=1.0, edge_px=1.2, sun2=None, leafy_edge=0.0, leaf_cols=None,
-                 soft_base=0.0, region=None):
+                 soft_base=0.0, region=None, leaf_px=None, G=None, glob=0.55, rim_point=None,
+                 brush_edge=0.0):
     """Ghibli-style masses painted as big flat value planes (not dabs): the dome shading of
     the blobs is cut into 3-4 planes with hard-ish, noise-meandering terminators (shadow ->
     mid -> lit -> crown highlight), the silhouette is a crisp painted edge, a few broad
@@ -178,7 +179,8 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
     and optional soft wisps trail off. cols = (shadow, mid, lit, highlight)."""
     from .color import oklab, from_oklab
     import cv2 as _cv2
-    G = render_gbuffer(cv, blobs, light3=light3, wrap=wrap, under=under)
+    if G is None:
+        G = render_gbuffer(cv, blobs, light3=light3, wrap=wrap, under=under)
     cov, sh, cid = G['cov'], G['shade'], G['cid']
     ys, xs = np.nonzero(cov > 0.02)
     if len(xs) == 0:
@@ -195,14 +197,25 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
     # so lobes read as bumps on one form rather than separate boulders
     yy = (np.arange(hh, dtype=np.float32)[:, None] + 0.5)
     xx = (np.arange(ww, dtype=np.float32)[None, :] + 0.5)
-    colsum = np.maximum((c > 0.5).sum(0, keepdims=True), 1)
-    ytop = np.argmax(c > 0.5, axis=0)[None, :].astype(np.float32)
-    ybot = (hh - np.argmax((c > 0.5)[::-1], axis=0))[None, :].astype(np.float32)
+    from scipy.ndimage import gaussian_filter1d
+    inside_ = c > 0.5
+    has = inside_.any(0)
+    ytop = np.argmax(inside_, axis=0).astype(np.float32)
+    ybot = (hh - np.argmax(inside_[::-1], axis=0)).astype(np.float32)
+    if has.any():
+        cols_ = np.arange(ww)
+        ytop = np.interp(cols_, cols_[has], ytop[has]).astype(np.float32)
+        ybot = np.interp(cols_, cols_[has], ybot[has]).astype(np.float32)
+        sig = max(size * 0.08, 6.0)
+        ytop = gaussian_filter1d(ytop, sig, mode='nearest')
+        ybot = gaussian_filter1d(ybot, sig, mode='nearest')
+    ytop = ytop[None, :]
+    ybot = ybot[None, :]
     gv = np.clip((ybot - yy) / np.maximum(ybot - ytop, 1), 0, 1)          # 1 at the top .. 0 at the base
     s2x = light3[0] / (np.hypot(light3[0], light3[1]) + 1e-6)
     gx = (xx / ww - 0.5) * s2x
     vglob = np.clip(0.15 + 0.85 * gv ** 0.8 + 0.25 * gx, 0, 1)
-    v = np.clip(0.45 * sh[y0:y1, x0:x1] + 0.55 * vglob + noise_amt * n1 + noise_amt * 0.4 * n2, 0, 1)
+    v = np.clip((1 - glob) * sh[y0:y1, x0:x1] + glob * vglob + noise_amt * n1 + noise_amt * 0.4 * n2, 0, 1)
     L = [oklab(np.asarray(k, np.float32)) for k in cols]
     m1 = smoothstep(th[0] - soft, th[0] + soft, v)
     m2 = smoothstep(th[1] - soft, th[1] + soft, v)
@@ -243,7 +256,7 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
     # leafy edge (for foliage masses painted in planes): sparse leaf marks along the silhouette
     if leafy_edge > 0:
         band = (cr > 0.25) & (cr < 0.7)
-        ne = int(leafy_edge * band.sum() / 6)
+        ne = int(leafy_edge * band.sum() / (6 if leaf_px is None else max(leaf_px * 0.6, 3)))
         if ne > 0:
             sel = np.flatnonzero(band.ravel())
             pick = rng.choice(sel, min(ne, len(sel)), replace=False)
@@ -255,10 +268,27 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
             ang = np.arctan2(ny / nn, nx / nn) + rng.normal(0, 0.6, len(px))
             lc = leaf_cols if leaf_cols is not None else cols[:3]
             colp = jitter(ramp(lc, np.clip(v[py, px] + rng.normal(0, 0.1, len(px)), 0, 1)), rng, dl=0.03)
-            L_ = max(size * 0.03, 6)
+            L_ = leaf_px if leaf_px is not None else max(size * 0.03, 6)
             dabs(cv, px + x0 - cv.m + nx / nn * L_ * 0.3, py + y0 - cv.m + ny / nn * L_ * 0.3,
                  L_ * rng.uniform(0.7, 1.3, len(px)), colp, aspect=0.45, angle=ang, shape='leaf', edge=0.25,
                  rag=0.2, bristle=0.2, split=0.1, opacity=opacity, rng=rng)
+    # brushy soft edge (painted soft focus): flat bristle dabs across the silhouette
+    if brush_edge > 0:
+        band = (cr > 0.15) & (cr < 0.85)
+        nb_ = int(brush_edge * band.sum() / 40)
+        if nb_ > 0:
+            sel = np.flatnonzero(band.ravel())
+            pick = rng.choice(sel, min(nb_, len(sel)), replace=False)
+            py, px = np.unravel_index(pick, c.shape)
+            gx_ = _cv2.Sobel(cr, _cv2.CV_32F, 1, 0, ksize=3)
+            gy_ = _cv2.Sobel(cr, _cv2.CV_32F, 0, 1, ksize=3)
+            ang = np.arctan2(gy_[py, px], gx_[py, px]) + np.pi / 2 + rng.normal(0, 0.35, len(px))
+            ix = np.clip(px - (gx_[py, px] < 0) * 3 + (gx_[py, px] > 0) * 3, 0, ww - 1)
+            colp = jitter(rgb[np.clip(py, 0, hh - 1), ix], rng, dl=0.02, dc=0.06, dh=0.03)
+            bs = max(size * 0.05, 14)
+            dabs(cv, px + x0 - cv.m, py + y0 - cv.m, bs * rng.uniform(0.6, 1.4, len(px)), colp,
+                 aspect=rng.uniform(0.25, 0.45, len(px)), angle=ang, shape='flat', edge=0.5, rag=0.5, bristle=0.7,
+                 opacity=rng.uniform(0.35, 0.7, len(px)) * opacity, rng=rng)
     # thin bright rim along the sun-facing edge
     if rim is not None and rim_amt > 0:
         s2 = sun2 if sun2 is not None else (light3[0], light3[1])
@@ -267,7 +297,14 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
         gy = _cv2.Sobel(cr, _cv2.CV_32F, 0, 1, ksize=3)
         gn = np.hypot(gx, gy) + 1e-6
         nx, ny = -gx / gn, -gy / gn
-        face = nx * s2[0] + ny * s2[1]
+        if rim_point is not None:
+            XX = np.arange(ww, dtype=np.float32)[None, :] + x0 - cv.m
+            YY = np.arange(hh, dtype=np.float32)[:, None] + y0 - cv.m
+            rx_, ry_ = rim_point[0] - XX, rim_point[1] - YY
+            rn_ = np.hypot(rx_, ry_) + 1e-6
+            face = nx * rx_ / rn_ + ny * ry_ / rn_
+        else:
+            face = nx * s2[0] + ny * s2[1]
         band = (cr > 0.45) & (cr < 0.85) & (face > 0.25)
         nr = int(rim_amt * band.sum() / 3)
         if nr > 0:

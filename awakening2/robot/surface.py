@@ -18,7 +18,7 @@ import warden as WD
 MOSS, SOIL, WOOD = R.MOSS, R.SOIL, R.WOOD
 FOLIAGE = 13
 CACHE = os.environ.get('AW2_MESH_CACHE', '/home/user/aw2_cache/meshes')
-SURF_VERSION = '7'
+SURF_VERSION = '8'
 
 
 def rng_for(name):

@@ -48,10 +48,18 @@ def ground(cv, rng, y_h, y_b, x0, x1, col_far, col_mid, col_near, light=None, li
              bristle=0.4, shape='flat', rng=rng)
 
 
+FERN_KINDS = ('sword', 'lady', 'bracken', 'hart', 'maidenhair')
+
+
 def fern(cv, rng, x, y, size, pal=None, sun2=(0.6, -0.8), n_fronds=None, spread=1.0, lean=0.0,
-         light=1.0, depth=0.0, haze=None, opacity=1.0, droop=1.0, up=1.0):
-    """Fern plant rooted at (x, y), frond length ~size."""
+         light=1.0, depth=0.0, haze=None, opacity=1.0, droop=1.0, up=1.0, kind='sword'):
+    """Fern plant rooted at (x, y), frond length ~size. kind: sword (narrow alternate
+    pinnae), lady (lacy, pinnae of tiny leaflets), bracken (triangular, divided pinnae),
+    hart (undivided strap fronds), maidenhair (fans of round leaflets on dark stems)."""
     pal = pal or FERN
+    if kind != 'sword':
+        return fern_kind(cv, rng, x, y, size, kind, pal=pal, sun2=sun2, n_fronds=n_fronds, spread=spread,
+                         lean=lean, light=light, depth=depth, haze=haze, opacity=opacity, droop=droop)
     if depth > 0 and haze is not None:
         pal = {k: aerial(v, depth, haze) for k, v in pal.items()}
     nf = n_fronds or int(rng.integers(6, 11))
@@ -94,6 +102,95 @@ def fern(cv, rng, x, y, size, pal=None, sun2=(0.6, -0.8), n_fronds=None, spread=
             cols = jitter(cols, rng, dl=0.025, dc=0.08, dh=0.05)
             dabs(cv, cx, cy, pl, cols, aspect=0.3, angle=la, shape='leaf', edge=0.25, rag=0.15,
                  bristle=0.15, split=0.1, opacity=opacity, rng=rng)
+
+
+def fern_kind(cv, rng, x, y, size, kind, pal=None, sun2=(0.6, -0.8), n_fronds=None, spread=1.0, lean=0.0,
+              light=1.0, depth=0.0, haze=None, opacity=1.0, droop=1.0):
+    pal = dict(pal or FERN)
+    shift = {'lady': (0.04, 1.1, -0.12), 'bracken': (-0.01, 0.95, 0.1), 'hart': (-0.02, 1.15, 0.05),
+             'maidenhair': (0.03, 1.05, -0.05)}[kind]
+    pal = {k: shade(v, dl=shift[0], dc=shift[1], dh=shift[2]) for k, v in pal.items()}
+    if depth > 0 and haze is not None:
+        pal = {k: aerial(v, depth, haze) for k, v in pal.items()}
+    ramp4 = [pal['dark'], pal['mid'], pal['lit'], pal['tip']]
+    nf = n_fronds or {'lady': int(rng.integers(7, 12)), 'bracken': int(rng.integers(3, 6)),
+                      'hart': int(rng.integers(6, 12)), 'maidenhair': int(rng.integers(5, 9))}[kind]
+    angs = -np.pi / 2 + lean + np.linspace(-1.25, 1.25, nf) * spread + rng.normal(0, 0.15, nf)
+    order = np.argsort(np.abs(angs + np.pi / 2))[::-1]
+    sx, sy = sun2
+    for j in order:
+        a0 = angs[j]
+        L = size * rng.uniform(0.6, 1.15)
+        k = 12
+        pts = [np.array([x, y], np.float32)]
+        a = a0
+        side = np.sign(np.cos(a0)) or 1.0
+        arch = {'lady': 0.07, 'bracken': 0.05, 'hart': 0.12, 'maidenhair': 0.1}[kind] * droop
+        for i in range(k):
+            a += side * arch * (i / k) * (1 + abs(np.cos(a0))) + rng.normal(0, 0.035)
+            pts.append(pts[-1] + L / k * np.array([np.cos(a), np.sin(a)], np.float32))
+        P = catmull(np.array(pts), n=60)
+        tang = np.gradient(P, axis=0)
+        ta = np.arctan2(tang[:, 1], tang[:, 0])
+        lit_frond = np.clip(0.5 + 0.5 * (np.cos(a0) * sx + np.sin(a0) * sy) * 0.6, 0, 1) * light
+        if kind == 'hart':
+            # one long undivided tongue per frond, wavy edge, a midrib
+            n = 9
+            t = np.linspace(0.08, 1.0, n)
+            idx = np.clip((t * 59).astype(int), 0, 59)
+            w = size * 0.11 * np.sin(np.pi * np.clip(t * 0.95 + 0.05, 0, 1)) ** 0.6 + 2
+            v = np.clip(0.3 + 0.45 * lit_frond + 0.2 * t + rng.normal(0, 0.06, n), 0, 1)
+            cols = jitter(ramp(ramp4, v, [0, 0.4, 0.8, 1.0]), rng, dl=0.02, dc=0.06)
+            stroke(cv, P[idx], w, cols, opacity=opacity, edge=0.25, rag=0.25, bristle=0.25, rng=rng,
+                   color2=pal['lit'], load2=0.35)
+            stroke(cv, P[idx], np.maximum(w * 0.08, 1.0), pal['dark'], opacity=0.6 * opacity, bristle=0.2, rng=rng)
+            continue
+        stem_c = pal['dark'] if kind == 'maidenhair' else mix(pal['dark'], pal['mid'], 0.35 + 0.3 * lit_frond)
+        stroke(cv, P, taper(len(P), 1.0, 0.2, max(size * (0.008 if kind == 'maidenhair' else 0.012), 1.0)), stem_c,
+               bristle=0.2, rag=0.1, opacity=opacity, rng=rng)
+        if kind == 'maidenhair':
+            npn = int(np.clip(L / max(size * 0.06, 3), 6, 22))
+            t = np.linspace(0.12, 1.0, npn)
+            idx = np.clip((t * 59).astype(int), 0, 59)
+            for sgn in (-1.0, 1.0):
+                la = ta[idx] + sgn * rng.uniform(0.9, 1.4, npn)
+                r = size * 0.05 * (1.1 - 0.5 * t) * rng.uniform(0.8, 1.2, npn) + 2
+                cx = P[idx, 0] + np.cos(la) * r * 0.8
+                cy = P[idx, 1] + np.sin(la) * r * 0.8
+                v = np.clip(0.35 + 0.4 * lit_frond + 0.2 * (np.cos(la) * sx + np.sin(la) * sy) + rng.normal(0, 0.1, npn), 0, 1)
+                cols = jitter(ramp(ramp4, v, [0, 0.4, 0.8, 1.0]), rng, dl=0.03, dc=0.08)
+                dabs(cv, cx, cy, r * 2, cols, aspect=0.85, angle=la, shape='petal', edge=0.25, rag=0.25,
+                     bristle=0.1, split=0.12, opacity=opacity, rng=rng)
+            continue
+        if kind == 'bracken':
+            npn = int(np.clip(L / max(size * 0.09, 3), 5, 14))
+            t = np.linspace(0.15, 0.95, npn)
+            plen = size * 0.42 * (1.05 - t) * rng.uniform(0.85, 1.1, npn)   # triangular frond
+            leaflet = size * 0.065
+        else:   # lady: lanceolate, widest in the middle, lacy
+            npn = int(np.clip(L / max(size * 0.05, 3), 8, 26))
+            t = np.linspace(0.08, 0.97, npn)
+            plen = size * 0.2 * np.sin(np.pi * np.clip(t * 0.95 + 0.05, 0, 1)) ** 0.9 * rng.uniform(0.85, 1.15, npn)
+            leaflet = size * 0.036
+        idx = np.clip((t * 59).astype(int), 0, 59)
+        for sgn in (-1.0, 1.0):
+            la = ta[idx] + sgn * rng.uniform(0.95, 1.3, npn)
+            la = la + 0.2 * np.angle(np.exp(1j * (np.pi / 2 - la)))
+            for i in range(npn):
+                # each pinna is itself divided: a short rib with tiny leaflets
+                n2 = max(3, int(plen[i] / max(leaflet * 0.9, 1.5)))
+                u = np.linspace(0.15, 1.0, n2)
+                bx = P[idx[i], 0] + np.cos(la[i]) * plen[i] * u
+                by = P[idx[i], 1] + np.sin(la[i]) * plen[i] * u
+                v0 = 0.3 + 0.45 * lit_frond + 0.2 * (np.cos(la[i]) * sx + np.sin(la[i]) * sy) + 0.2 * t[i]
+                for s2 in (-1.0, 1.0):
+                    a2 = la[i] + s2 * rng.uniform(0.7, 1.1, n2)
+                    sz = leaflet * (1.15 - 0.6 * u) * rng.uniform(0.8, 1.2, n2) + 1.0
+                    v = np.clip(v0 + rng.normal(0, 0.08, n2) + 0.1 * u, 0, 1) * light
+                    cols = jitter(ramp(ramp4, v, [0, 0.4, 0.8, 1.0]), rng, dl=0.025, dc=0.08, dh=0.04)
+                    dabs(cv, bx + np.cos(a2) * sz * 0.45, by + np.sin(a2) * sz * 0.45, sz, cols,
+                         aspect=0.5 if kind == 'lady' else 0.55, angle=a2, shape='leaf', edge=0.25, rag=0.2,
+                         bristle=0.1, split=0.1, opacity=opacity, rng=rng)
 
 
 def grass(cv, rng, x, y, h, pal=None, n=None, spread=0.5, sun2=(0.6, -0.8), light=1.0, opacity=1.0,

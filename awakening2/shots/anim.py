@@ -59,8 +59,27 @@ def lerp_pose(pa, pb, s):
 _cache = {}
 
 
+# overlapping action: parts further from the body's mass lag behind it (seconds)
+LAG = {'head': 0.13, 'lid_R': 0.13, 'lid_L': 0.13, 'roof_R': 0.09, 'roof_L': 0.09,
+       'upperarm_R': 0.05, 'upperarm_L': 0.05, 'forearm_R': 0.09, 'forearm_L': 0.09,
+       'hand_R': 0.13, 'hand_L': 0.13, 'pelvis': -0.03}
+
+
+def _blend_at(shot, poses, keys, t, kind):
+    if t <= keys[0][0] or len(keys) == 1:
+        return poses[0]
+    if t >= keys[-1][0]:
+        return poses[-1]
+    for i in range(len(keys) - 1):
+        if keys[i][0] <= t <= keys[i + 1][0]:
+            u = (t - keys[i][0]) / max(keys[i + 1][0] - keys[i][0], 1e-6)
+            return lerp_pose(poses[i], poses[i + 1], spacing(u, kind))
+    return poses[-1]
+
+
 def pose_at(shot, t, kind='heavy'):
-    """Pose at shot-local time t, quantised to the shot's drawing step."""
+    """Pose at shot-local time t, quantised to the shot's drawing step. Parts in LAG follow the
+    body a few frames late (overlap and follow-through), unless the shot sets lag=False."""
     kind = shot.get('spacing', kind)
     keys = shot['pose']
     if not keys:
@@ -78,15 +97,14 @@ def pose_at(shot, t, kind='heavy'):
         if kk not in _cache:
             _cache[kk] = _pose_of(k)
         poses.append(_cache[kk])
-    if tq <= keys[0][0] or len(keys) == 1:
-        p = poses[0]
-    elif tq >= keys[-1][0]:
-        p = poses[-1]
-    else:
-        for i in range(len(keys) - 1):
-            if keys[i][0] <= tq <= keys[i + 1][0]:
-                u = (tq - keys[i][0]) / max(keys[i + 1][0] - keys[i][0], 1e-6)
-                p = lerp_pose(poses[i], poses[i + 1], spacing(u, kind))
-                break
+    p = _blend_at(shot, poses, keys, tq, kind)
+    if shot.get('lag', True) and len(keys) > 1:
+        p = dict(p)
+        for part, lag in LAG.items():
+            pl = _blend_at(shot, poses, keys, tq - lag, kind)
+            if part in pl:
+                p[part] = pl[part]
+            elif part in p:
+                p[part] = (0.0, 0.0, 0.0)
     _cache[ck] = p
     return p

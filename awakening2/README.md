@@ -59,7 +59,33 @@ and layouts: `board/`, style frame: `style/`, QA sheets: `qa/<version>/`.
   a shaft from the canopy above: the robot's bowed face points down, so only a low sun can light
   the face itself — and at sunrise that is what the sun does.
 
-## Self-assessment and version history
+## Self-assessment (updated every version)
+
+Where it beats The Moss Keeper (judged on the side-by-side sheets in `qa/<version>/` and an
+independent review, `notes/review_v1.md`):
+- **Backgrounds and air.** Painted per shot in screen space, unique trees, layered mist, golden
+  light shafts, plane-painted clouds; the benchmark reuses one forest set and stamps its cloud
+  bands and conifers.
+- **A designed robot with a readable face.** A distinctive shrine-roof silhouette, lidded lamp
+  eyes that carry the waking (dormant → ember → gold), a furnace grille; weathered paint,
+  rust runs, lichen, moss with fringed colour-traced lines, grass and flowers growing out of it.
+- **Line.** Lines traced from the passes sit exactly on the fills, with a weight hierarchy
+  (heavy silhouette, light interior, colour-trace on moss) and pressure; the benchmark has thin
+  uniform lines and mesh edges cutting across forms.
+- **The story beats, in order:** a vista, the reveal, the bird landing, the first ray across the
+  shut eyes, the chest furnace waking, the tremor, the flock, the eyes opening, a three-shot rise,
+  the head lifting to the gap, the engines, the ring of wind, the launch (anticipation, smears,
+  impact frames, blast), the climb through the canopy, the tracking flight and the trail to the sun.
+
+Where it still falls short:
+- The robot is a rigid-part machine; its poses are clean but the motion between keys is
+  interpolated rather than hand-drawn breakdowns (overlap from lagging parts, vines and debris
+  helps).
+- Painted clouds, ferns and canopies still repeat a few brush shapes in places.
+- Effects are drawn shapes in 2–3 tones but share one billow vocabulary.
+- Sound is synthesized; the strings and horns are good synths, not an orchestra.
+
+## Version history
 
 ### v1 (12:25) — first complete film
 All 17 shots, the full soundtrack. Built with the first versions of every system; the shots
@@ -94,3 +120,22 @@ vines yet; the rise is a simple blend between three poses.
   when the sun is behind the subject, an S-curve grade with more saturation.
 - The climax: the robot faces three-quarters toward the camera as it climbs, with engine flames.
 - (The session was paused 13:00–14:36 by a usage limit; the PC finished rendering v3 meanwhile.)
+
+### v4 (15:40)
+- **Restructured to 79.5 s** (cue sheet v2; picture and sound both read it): an establishing vista
+  over the misty forest at sunrise opens the film; the sky shot became two shots — a tracking
+  shot where the robot fills the frame, debris, leaves and vines streaming off it against a
+  tilted, scrolling flight painting, then the wide where it rises from the cloud sea along a
+  curving trail of light and mist and becomes a spark crossing the sun.
+- **Robot surface:** faded paint, lichen, longer rust runs from the chips, warmer shadows on
+  the red, heavier silhouette line and a lighter interior line, colour-traced and fringed lines
+  on the moss and leaves, eyes that stay lit after the robot wakes.
+- **Launch and flight:** a flame column under the robot as it rockets out, the canopy burst
+  from below (S15), a slower, larger ring of wind with flames and leaves (S13).
+- **Effects (helper round 2):** dust with one dominant mass, hooked curls and flat bases (no
+  more "popcorn"), soil that falls as clumps and crumbs (no more "planks"), clean smears and
+  impact frames, more leaf shapes with curl and veins.
+- **Photography:** camera shake moves the whole frame, the robot gets aerial haze by distance,
+  no lens-flare starbursts, less grain and bloom; S04's furnace core glows in designed bands.
+- **Staging:** S08 seen three-quarters so the kneel reads, S09 framed to keep the head in, S10 lit
+  from the canopy gap above, S12's crouch snaps down instead of easing.

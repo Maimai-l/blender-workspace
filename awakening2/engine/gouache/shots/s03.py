@@ -11,7 +11,7 @@ from ..noise import rng_for
 from ..canvas import dabs, stroke, catmull, taper
 from ..layers import Painting
 from ..foliage import Blobs, vine, spray
-from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud
+from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud, plane_cloud
 from ..atmos import mist, beams, glow
 from ..trees import species, paint_tube, trunk_path
 from ..forest import leafy_mass, layered_mass
@@ -73,9 +73,9 @@ def build(outdir, quick=False):
     pos = [0.0, 0.2, 0.42, 0.7, 1.0]
     sky(cv, rng, stops, pos, sun=SUN, glow=(760, C(255, 242, 206), 1.0), tilt=0.25, n_strokes=0.7,
         stroke_w=(24, 80), stroke_len=(200, 600), angle=0.2)
-    sculpted_cloud(cv, rng, 860, 330, 680, 120, [C(176, 140, 180), C(222, 172, 176), C(255, 210, 170),
-                                                 C(255, 234, 198), C(255, 248, 226)], kind='strato',
-                   light3=(-0.6, -0.5, 0.1), rim=C(255, 240, 204), rim_amt=0.8)
+    plane_cloud(cv, rng, 860, 330, 680, 120, (C(176, 140, 180), C(234, 182, 174), C(255, 222, 182),
+                                              C(255, 246, 222)), kind='strato', light3=(-0.6, -0.7, 0.3),
+                rim=C(255, 246, 218), wisps=0.4)
     glow(cv, SUN[0], SUN[1], 150, C(255, 250, 232), 0.85)
     P.add('sky', 0.0, cv, 'dawn sky; the gap is upper left, sun near the top-left corner; opaque')
 

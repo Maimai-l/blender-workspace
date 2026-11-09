@@ -92,71 +92,90 @@ def _flat_colour(cel):
     return c[lum <= np.median(lum)].mean(0).astype(np.float32)
 
 
-def smear_stretch(cel, motion, stretch=0.35, tail=1.4, name='smear', frame=0, flatten=0.55,
-                  flat=None, ss=2, density=1.0):
-    """Stretched smear: the cel is stretched along `motion` (dx, dy px, the direction of
-    travel), anchored at its leading edge, and its trailing edge is pulled into streaks of
-    varied length (tail * |motion| px).  Returns a new straight RGBA image."""
+def _sample(img, pts):
+    """Bilinear sample an (h, w, c) image at float points (n, 2) -> (n, c)."""
+    h, w = img.shape[:2]
+    x = np.clip(pts[:, 0] - 0.5, 0, w - 1.001)
+    y = np.clip(pts[:, 1] - 0.5, 0, h - 1.001)
+    x0 = np.floor(x).astype(int)
+    y0 = np.floor(y).astype(int)
+    fx_ = (x - x0)[:, None]
+    fy_ = (y - y0)[:, None]
+    return (img[y0, x0] * (1 - fx_) * (1 - fy_) + img[y0, x0 + 1] * fx_ * (1 - fy_)
+            + img[y0 + 1, x0] * (1 - fx_) * fy_ + img[y0 + 1, x0 + 1] * fx_ * fy_)
+
+
+def smear_stretch(cel, motion, stretch=0.35, tail=1.4, name='smear', frame=0, flatten=0.25,
+                  flat=None, ss=2, density=1.0, streaks=True):
+    """Stretched smear: the cel is stretched along `motion` (dx, dy px, the direction of travel)
+    from its leading edge, keeping its own colours, and tapered speed streaks in the robot's
+    colours trail from its trailing edge for up to tail * |motion| px, thinning and fading.
+    Returns a new straight RGBA image of the same size."""
     H0, W0 = cel.shape[:2]
     mv = np.asarray(motion, np.float64)
     mag = float(np.linalg.norm(mv))
-    if mag < 1e-6:
+    if mag < 1e-6 or not (cel[..., 3] > 0.5).any():
         return cel.copy()
-    ys, xs = np.nonzero(cel[..., 3] > 0.02)
-    if len(xs) == 0:
-        return cel.copy()
-    ext = max(xs.max() - xs.min(), ys.max() - ys.min())
-    P = tail * mag * 1.15 + stretch * ext + 16
-    tr = -mv / mag                                     # streaks and stretch go behind the motion
-    bx0 = int(max(0, xs.min() - 16 - P * max(0.0, -tr[0])))
-    bx1 = int(min(W0, xs.max() + 17 + P * max(0.0, tr[0])))
-    by0 = int(max(0, ys.min() - 16 - P * max(0.0, -tr[1])))
-    by1 = int(min(H0, ys.max() + 17 + P * max(0.0, tr[1])))
-    if math.hypot(bx1 - bx0, by1 - by0) * ss > 3600:
-        ss = 1
-    full = np.zeros_like(cel)
-    full[by0:by1, bx0:bx1] = _smear_crop(cel[by0:by1, bx0:bx1], mv, mag, stretch, tail, name, frame,
-                                          flatten, flat if flat is not None else _flat_colour(cel), ss, density)
-    return full
-
-
-def _smear_crop(cel, mv, mag, stretch, tail, name, frame, flatten, flat, ss, density):
-    h, w = cel.shape[:2]
-    ang = math.degrees(math.atan2(mv[1], mv[0]))
-    D = int(math.ceil(math.hypot(h, w))) + 8
-    big = D * ss
-    # rotate so the motion is +x, supersampled
-    M = cv2.getRotationMatrix2D((w / 2, h / 2), ang, 1.0)
-    M[:, 2] += (D - w) / 2, (D - h) / 2
-    S = np.array([[ss, 0, 0], [0, ss, 0]], np.float64)
-    M3 = np.vstack([M, [0, 0, 1]])
-    Mf = S @ M3
+    d = mv / mag
+    n = np.array([-d[1], d[0]])
+    ys, xs = np.nonzero(cel[..., 3] > 0.5)
+    P = np.stack([xs + 0.5, ys + 0.5], 1)
+    along = P @ d
+    across = P @ n
+    s_lead = float(along.max())
+    ext_d = float(along.max() - along.min())
+    # 1) stretch behind the leading edge (inverse map, premultiplied to keep clean edges)
+    k = stretch / (1 + stretch)
+    A = np.eye(2) - k * np.outer(d, d)
+    off = d * s_lead * k
+    M = np.hstack([A, off[:, None]]).astype(np.float64)
     pm = cel.copy()
     pm[..., :3] *= pm[..., 3:4]
-    rot = cv2.warpAffine(pm, Mf, (big, big), flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
-    a = rot[..., 3:4]
-    rot[..., :3] = np.where(a > 1e-6, rot[..., :3] / np.maximum(a, 1e-6), 0)
-    # stretch along x about the leading edge
-    cols = np.nonzero((rot[..., 3] > 0.5).any(0))[0]
-    if len(cols) == 0:
-        return cel.copy()
-    xl = float(cols.max())
-    k = 1 + stretch
-    Mst = np.array([[1 / k, 0, xl * (1 - 1 / k)], [0, 1, 0]], np.float64)
-    rot = cv2.warpAffine(rot, Mst, (big, big), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
-                         borderValue=(0, 0, 0, 0))
-    L = _streak_profile(big, name, frame, tail * mag, density, ss)
-    flatc = np.asarray(flat, np.float32)
-    out = np.zeros_like(rot)
-    _row_smear(np.ascontiguousarray(rot, dtype=np.float32), L, flatc, float(flatten), out)
-    out[..., :3] *= out[..., 3:4]
-    if ss > 1:
-        out = cv2.resize(out, (big // ss, big // ss), interpolation=cv2.INTER_AREA)
-    back = cv2.warpAffine(out, cv2.invertAffineTransform(M), (w, h), flags=cv2.INTER_LINEAR,
-                          borderValue=(0, 0, 0, 0))
-    a = back[..., 3:4]
-    back[..., :3] = np.where(a > 1e-6, back[..., :3] / np.maximum(a, 1e-6), 0)
-    return np.clip(back, 0, 1).astype(np.float32)
+    st = cv2.warpAffine(pm, M, (W0, H0), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                        borderValue=(0, 0, 0, 0))
+    a = st[..., 3:4]
+    st[..., :3] = np.where(a > 1e-6, st[..., :3] / np.maximum(a, 1e-6), 0)
+    out = np.zeros_like(cel)
+    if streaks:
+        # 2) speed streaks from the trailing edge, in the colours found there
+        g = core.rng('smear', name, frame)
+        body = cel[..., :3][cel[..., 3] > 0.5]
+        lum = body @ np.array([0.3, 0.59, 0.11], np.float32)
+        meanc = body[lum >= np.quantile(lum, 0.3)].mean(0).astype(np.float32)   # body colour, no ink
+        flatc = meanc if flat is None else np.asarray(flat, np.float32)
+        a_lo, a_hi = float(across.min()), float(across.max())
+        N = int(max(6, (a_hi - a_lo) / 9.0 * density))
+        N = min(N, 60)
+        offs = np.sort(g.uniform(a_lo + 2, a_hi - 2, N))
+        s_back = s_lead - ext_d * (1 + stretch) - 4
+        steps = np.arange(s_back, s_lead + 2, 2.0)
+        b = PolyBatch()
+        wmax = max(2.0, (a_hi - a_lo) * 0.045)
+        for o in offs:
+            line = (n * o)[None, :] + d[None, :] * steps[:, None]
+            al = _sample(st[..., 3:4], line)[:, 0]
+            inside = np.nonzero(al > 0.5)[0]
+            if len(inside) == 0:
+                continue
+            i0 = inside[0]                                   # trailing-most body pixel on the line
+            pt = line[i0]
+            depth_in = min(ext_d * 0.12 + 6.0, 40.0)
+            col = _sample(st[..., :3], (pt + d * depth_in)[None, :])[0]
+            if float(col @ np.array([0.3, 0.59, 0.11])) < 0.6 * float(meanc @ np.array([0.3, 0.59, 0.11])):
+                col = meanc                                   # landed on ink / a crevice: use the body
+            col = col * (1 - flatten) + flatc * flatten
+            L = tail * mag * g.uniform(0.3, 1.0) * (0.6 + 0.4 * math.sin(o * 0.05 + frame))
+            wd = wmax * g.uniform(0.35, 1.0)
+            # three pieces of decreasing opacity -> a fading, tapering streak
+            for j, (s0, s1, alp) in enumerate(((0.0, 0.42, 0.95), (0.42, 0.75, 0.65), (0.75, 1.0, 0.35))):
+                q = np.linspace(s0, s1, 4)
+                pts = pt[None, :] + d[None, :] * 6.0 - d[None, :] * (q[:, None] * (L + 6.0))
+                wid = wd * (1 - q) ** 1.1 + 0.3
+                b.add(core.stroke_poly(pts, wid), col, alpha=alp)
+        if len(b):
+            b.draw(out)
+    core.over(out, st)
+    return np.clip(out, 0, 1).astype(np.float32)
 
 
 def smear_multi(cel, motion, n=3, spacing=1.0, flat=None, ghost_alpha=(0.55, 0.85), tail=0.5,
@@ -259,8 +278,37 @@ def streak_lines(canvas, direction, frame, n=40, length=(200.0, 700.0), width=(1
     return canvas
 
 
+def clean_shape(mask, close=6.0, min_area=900.0, hole_area=2500.0, smooth=2.0, keep=None):
+    """A designed silhouette from a raw mask: close small gaps, fill small holes, drop specks,
+    smooth the outline; keep only the `keep` largest pieces if given.  Returns bool."""
+    m = mask.astype(np.uint8)
+    r = int(round(close))
+    if r > 0:
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2))
+    # fill holes below hole_area
+    inv = (1 - m).astype(np.uint8)
+    nl, lab, stats, _ = cv2.connectedComponentsWithStats(inv, connectivity=4)
+    h, w = m.shape
+    for i in range(1, nl):
+        x, y, bw, bh, area = stats[i]
+        touches = x == 0 or y == 0 or x + bw >= w or y + bh >= h
+        if area < hole_area and not touches:
+            m[lab == i] = 1
+    # drop specks below min_area, keep the largest pieces
+    nl, lab, stats, _ = cv2.connectedComponentsWithStats(m, connectivity=8)
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    order = np.argsort(-areas) + 1
+    good = [i for i in order if stats[i, cv2.CC_STAT_AREA] >= min_area]
+    if keep is not None:
+        good = good[:keep]
+    m = np.isin(lab, good).astype(np.float32) if good else np.zeros_like(m, np.float32)
+    if smooth > 0:
+        m = cv2.GaussianBlur(m, (0, 0), smooth)
+    return m > 0.5
+
+
 def impact_frame(h, w, cel=None, centre=None, mode='black_gold', frame=0, n_lines=120,
-                 inner=(0.18, 0.42), halo=None, detail=0.5, name='impact', burst=True):
+                 inner=(0.18, 0.42), halo=None, detail=0.5, name='impact', burst=True, max_open=6):
     """A 2-tone graphic impact frame (opaque RGBA).
 
     mode: 'black_gold' (gold field, black lines and figure), 'gold_black', 'inverted'
@@ -299,28 +347,27 @@ def impact_frame(h, w, cel=None, centre=None, mode='black_gold', frame=0, n_line
     a = lines[..., 3:4]
     out[..., :3] = out[..., :3] * (1 - a) + lines[..., :3] * a
     if cel is not None:
-        sil = (cel[..., 3] > 0.5).astype(np.uint8)
+        sil = clean_shape(cel[..., 3] > 0.5, close=6 * k, min_area=900 * k * k, hole_area=2500 * k * k,
+                          smooth=2.2 * k)
         if sil.any():
             rr = max(1, int(round(halo)))
             ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rr + 1, 2 * rr + 1))
-            hal = cv2.dilate(sil, ker)
-            hal_s = cv2.GaussianBlur(hal.astype(np.float32), (0, 0), 0.8)
+            hal = cv2.dilate(sil.astype(np.uint8), ker)
+            hal_s = cv2.GaussianBlur(hal.astype(np.float32), (0, 0), 1.0)
             out[..., :3] = out[..., :3] * (1 - hal_s[..., None]) + field * hal_s[..., None]
+            # open-ups: only the brightest few shapes (eyes, core, a lit rim), cleaned and smoothed
             lum = cel[..., :3] @ np.array([0.3, 0.59, 0.11], np.float32)
-            inside = sil > 0
-            lo, hi = np.quantile(lum[inside], 0.05), np.quantile(lum[inside], 0.98)
-            thr = max(np.quantile(lum[inside], 0.6 + 0.3 * (1 - detail)), lo + 0.55 * (hi - lo) + 0.03)
-            dark = (lum <= thr) & inside
-            # clean the posterized shapes (designed, no speckle)
-            dark = cv2.morphologyEx(dark.astype(np.uint8), cv2.MORPH_OPEN,
-                                    cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
-            fig = cv2.GaussianBlur(cel[..., 3].astype(np.float32), (0, 0), 0.6)
-            body = np.clip(fig, 0, 1)
-            # figure: silhouette in the figure colour, lit (light) parts in the field colour
-            # inset from the outline so the outline holds the shape
-            er = cv2.erode(sil, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * max(1, int(3 * k)) + 1,) * 2))
-            light_parts = (er > 0) & (dark == 0)
-            lp = cv2.GaussianBlur(light_parts.astype(np.float32), (0, 0), 0.7)
+            inside = sil & (cel[..., 3] > 0.5)
+            opens = np.zeros_like(sil)
+            if inside.any():
+                thr = max(np.quantile(lum[inside], 0.97 - 0.06 * detail), 0.55)
+                er = cv2.erode(sil.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(8 * k) | 1,) * 2)) > 0
+                cand = (lum > thr) & er
+                cand = clean_shape(cand, close=3 * k, min_area=250 * k * k, hole_area=400 * k * k,
+                                   smooth=1.5 * k, keep=max_open)
+                opens = cand & er
+            fig = cv2.GaussianBlur(sil.astype(np.float32), (0, 0), 0.7)
+            lp = cv2.GaussianBlur(opens.astype(np.float32), (0, 0), 0.7)
             col = figure[None, None, :] * (1 - lp[..., None]) + field[None, None, :] * lp[..., None]
-            out[..., :3] = out[..., :3] * (1 - body[..., None]) + col * body[..., None]
+            out[..., :3] = out[..., :3] * (1 - fig[..., None]) + col * fig[..., None]
     return out

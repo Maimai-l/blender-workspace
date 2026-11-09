@@ -12,10 +12,10 @@ from ..noise import rng_for, fbm, noise1d
 from ..canvas import dabs, stroke, catmull, taper
 from ..layers import Painting
 from ..foliage import Blobs, render_gbuffer, paint_mass
-from ..sky import sky, cumulus_blobs, paint_clouds, sun_disc, sculpted_blobs, sculpted_cloud
+from ..sky import sky, cumulus_blobs, paint_clouds, sun_disc, sculpted_blobs, sculpted_cloud, plane_cloud, paint_planes
 from ..atmos import mist, glow
 
-W, H, M = 2400, 1040, 40
+W, H, M = 2400, 1040, 160
 SUN = (2010.0, 205.0)
 SUN2 = (0.75, -0.66)
 TRAIL = ((140.0, 1010.0), (2080.0, 160.0))     # calm diagonal (lower-left -> upper-right)
@@ -41,6 +41,13 @@ def below_trail(x, y):
 
 def cloud_pal(d):
     return [aerial(c, d, HAZE) for c in CLOUD]
+
+
+PLANES = (C(150, 112, 162), C(238, 168, 132), C(255, 214, 148), C(255, 244, 212))
+
+
+def planes(d):
+    return tuple(aerial(c, d, HAZE) for c in PLANES)
 
 
 def build(outdir, quick=False):
@@ -103,8 +110,8 @@ def build(outdir, quick=False):
     # a few large sculpted forms above the diagonal (flat bases, lit crowns)
     for (cx, by, w_, h_, kind) in [(420, 360, 900, 170, 'strato'), (980, 220, 520, 120, 'cumulus'),
                                    (120, 170, 420, 90, 'strato')]:
-        sculpted_cloud(cv, rng, cx, by, w_, h_, cloud_pal(0.2), CLOUD_POS, kind=kind, light3=(0.75, -0.5, 0.12),
-                       rim=C(255, 236, 190), rim_amt=0.8, tip=C(255, 248, 220))
+        plane_cloud(cv, rng, cx, by, w_, h_, planes(0.2), kind=kind, light3=(0.7, -0.6, 0.3), rim=C(255, 246, 214),
+                    wisps=0.5)
     P.add('high_clouds', 0.08, cv, 'large sculpted cloud forms + soft lenses, upper left (clear of the trail)')
 
     # ---------------------------------------------------------------- far ridge
@@ -115,27 +122,39 @@ def build(outdir, quick=False):
     ridge += 60 * smoothstep(1300, 1060, xs)
     col_sh = C(150, 138, 186)
     col_lit = C(246, 196, 170)
-    # block-in below the crest line, then strokes that follow the slopes (lit right-facing slopes)
+    # broad planes: a flat lilac body, lit facets on the sun-facing slopes cut by gullies, a crisp crest
     X, Y = cv.coords()
-    rx = np.interp(X[0], xs, ridge, left=900, right=900)
-    inside = (Y >= rx[None, :]) & (Y < 720) & (X >= xs[0])
-    a_ = np.clip((Y - rx[None, :]) / 2.0, 0, 1) * inside
-    tt = np.clip((Y - rx[None, :]) / 150, 0, 1)
-    cv.over(mix(col_sh, HAZE, (tt * 0.5)[..., None]), a_)
-    slope = np.gradient(ridge)
-    for i in range(0, 300, 1):
-        x = xs[i]
-        top = ridge[i]
-        lit = float(np.clip(slope[i] / 4.0, 0, 1))
-        ang = float(np.arctan2(slope[i], xs[1] - xs[0]))
-        n = int(rng.integers(3, 7))
-        dy = rng.uniform(4, 120, n) ** 1.0
-        t = np.clip(dy / 150, 0, 1)
-        c = mix(mix(col_sh, col_lit, lit * (1 - t)[:, None] * 0.9), HAZE, (t * 0.5)[:, None])
-        c = jitter(c, rng, dl=0.015, dc=0.08, dh=0.04)
-        dabs(cv, x + rng.normal(0, 3, n), top + dy, rng.uniform(16, 34, n), c, aspect=0.28,
-             angle=ang + np.pi / 2 * 0 + rng.normal(0, 0.15, n) + (np.pi / 2 if rng.random() < 0.3 else 0.0),
-             edge=0.35, rag=0.35, bristle=0.5, shape='flat', rng=rng, mode='lock')
+    rx = np.interp(X[0], xs, ridge, left=900, right=900)[None, :]
+    inside = (Y >= rx) & (Y < 760) & (X >= xs[0])
+    a_ = np.clip((Y - rx) / 1.2, 0, 1) * inside
+    tt = np.clip((Y - rx) / 170, 0, 1)
+    body = aerial(col_sh, 0.1, HAZE)
+    cv.over(mix(body, HAZE, (tt * 0.55)[..., None]), a_)
+    slope = np.gradient(np.convolve(ridge, np.ones(9) / 9, mode='same'))
+    face = np.clip(slope / 2.0, 0, 1)                                   # right-facing slopes face the sun
+    depth = (60 + 140 * noise1d(300, 9, rng)) * face
+    dx = np.interp(X[0], xs, depth, left=0, right=0)[None, :]
+    # facet edges run diagonally down-left (gullies): shear the facet depth with height
+    shear = (noise1d(300, 5, rng) - 0.5) * 80
+    sx = np.interp(X[0], xs, shear, left=0, right=0)[None, :]
+    lit = (Y - rx) < (dx + sx * (Y - rx) / 200.0)
+    litc = mix(aerial(col_lit, 0.05, HAZE), HAZE, (tt * 0.35)[..., None])
+    cv.over(litc, (a_ * lit * (dx > 8)).astype(np.float32) * 0.92)
+    # a few broad strokes along the fall lines, and dark gully strokes
+    for i in range(0, 300, 6):
+        if face[i] < 0.2:
+            continue
+        x0, y0 = xs[i], ridge[i] + 6
+        L = depth[i] * rng.uniform(0.6, 1.1)
+        stroke(cv, [[x0, y0], [x0 - L * 0.35, y0 + L * 0.5], [x0 - L * 0.6, y0 + L]], rng.uniform(10, 22),
+               jitter(mix(litc[0, 0], body, rng.uniform(0.0, 0.5)), rng, 1, dl=0.02)[0], opacity=rng.uniform(0.25, 0.5),
+               edge=0.4, bristle=0.5, rag=0.3, mode='lock', rng=rng)
+    for i in range(10, 290, 37):
+        x0, y0 = xs[i], ridge[i] + 4
+        L = rng.uniform(60, 160)
+        stroke(cv, [[x0, y0], [x0 - L * 0.4 + rng.normal(0, 8), y0 + L * 0.55], [x0 - L * 0.7, y0 + L]],
+               taper(3, 1.0, 0.2, rng.uniform(4, 8)), aerial(C(120, 104, 160), 0.1, HAZE), opacity=0.6, bristle=0.3,
+               rag=0.4, mode='lock', rng=rng)
     # warm rim along the sunlit crest
     crest = np.stack([xs, ridge + 2], 1)
     seg = np.arange(0, 300, 2)
@@ -161,8 +180,8 @@ def build(outdir, quick=False):
                 b.add(x, y + rng.normal(0, r * 0.2), r * rng.uniform(1.2, 2.2), r * rng.uniform(0.42, 0.62),
                       rot=rng.normal(0, 0.05), light=rng.uniform(0.8, 1.05), val=rng.normal(0, 0.05), rng=rng,
                       lumpy=0.12)
-        paint_clouds(cv, rng, b, cloud_pal(dd), CLOUD_POS, light3=(0.7, -0.6, 0.25), leaf=lf, density=0.4,
-                     rim=C(255, 236, 196), rim_amt=0.6, edge=0.5, bands=5)
+        paint_planes(cv, rng, b, planes(dd), light3=(0.6, -0.75, 0.3), th=(0.32, 0.52, 0.8), rim=C(255, 246, 214),
+                     rim_amt=0.6, strokes=0.35, noise_amt=0.08)
     yy = cv.ys()[:, None]
     cv.lock_tint(HAZE, (smoothstep(760, 600, yy) * 0.45 * np.ones((1, cv.shape[1]))).astype(np.float32))
     P.add('cloud_sea', 0.3, cv, 'the far sea of clouds')
@@ -171,16 +190,16 @@ def build(outdir, quick=False):
     cv = P.layer('clouds_mid', 0.5)
     for (cx, by, w_, h_, kind) in [(1300, 830, 520, 170, 'cumulus'), (2120, 800, 640, 200, 'cumulus'),
                                    (850, 880, 520, 90, 'strato')]:
-        sculpted_cloud(cv, rng, cx, by, w_, h_, cloud_pal(0.1), CLOUD_POS, kind=kind, light3=(0.7, -0.6, 0.15),
-                       rim=C(255, 238, 200), rim_amt=0.9, tip=C(255, 248, 224))
+        plane_cloud(cv, rng, cx, by, w_, h_, planes(0.1), kind=kind, light3=(0.65, -0.7, 0.3), rim=C(255, 246, 214),
+                    wisps=0.4)
     P.add('clouds_mid', 0.5, cv, 'sculpted cumulus banks rising from the sea (right half)')
 
     # ---------------------------------------------------------------- near cumulus (bottom right)
     cv = P.layer('clouds_near', 0.75)
     for (cx, by, w_, h_, kind) in [(1760, 1120, 900, 330, 'cumulus'), (2330, 1080, 520, 360, 'cumulus'),
                                    (1120, 1110, 520, 170, 'strato')]:
-        sculpted_cloud(cv, rng, cx, by, w_, h_, cloud_pal(0.0), CLOUD_POS, kind=kind, light3=(0.7, -0.6, 0.18),
-                       rim=C(255, 240, 204), rim_amt=1.0, tip=C(255, 250, 230))
+        plane_cloud(cv, rng, cx, by, w_, h_, planes(0.0), kind=kind, light3=(0.65, -0.7, 0.3), rim=C(255, 248, 222),
+                    wisps=0.5)
     P.add('clouds_near', 0.75, cv, 'big near cumulus at the bottom right')
 
     # ---------------------------------------------------------------- canopy tops (bottom left)
@@ -192,10 +211,10 @@ def build(outdir, quick=False):
             r = rng.uniform(55, 110) * (1.2 - 0.4 * x / 760)
             b.add(x + rng.normal(0, 40), yb + k * 55 + rng.normal(0, 15), r, r * 0.72, light=rng.uniform(0.85, 1.1),
                   hue=rng.normal(0, 0.06), val=rng.normal(0, 0.04), rng=rng, lumpy=0.2)
-    G = render_gbuffer(cv, b, light3=(0.75, -0.55, 0.35), wrap=0.4, under=0.45)
-    stops = [C(60, 40, 76), C(78, 66, 92), C(106, 108, 80), C(196, 170, 80), C(252, 210, 112)]
-    paint_mass(cv, G, rng, stops, leaf=13, density=1.0, trans=C(230, 206, 96), trans_amt=0.4,
-               rim=C(255, 214, 130), rim_amt=1.0, tip=C(255, 230, 150), tip_amt=0.25, sun2=SUN2, droop=0.3)
+    paint_planes(cv, rng, b, (C(58, 42, 78), C(84, 92, 82), C(184, 166, 84), C(255, 222, 130)),
+                 light3=(0.75, -0.55, 0.3), th=(0.4, 0.62, 0.86), strokes=0.4, rim=C(255, 226, 150), rim_amt=1.2,
+                 sun2=SUN2, leafy_edge=0.7, leaf_cols=[C(58, 42, 78), C(110, 110, 76), C(230, 200, 110)],
+                 noise_amt=0.08)
     mist(cv, rng, -60, 900, 940, 1080, C(255, 230, 196), C(214, 196, 214), density=0.8, opacity=(0.05, 0.14),
          size=(120, 360), aspect=(0.12, 0.25), profile='bottom')
     P.add('fg', 1.0, cv, 'forest canopy tops at the bottom-left edge (the launch point of the trail)')

@@ -1,109 +1,121 @@
 {
-  "version": 1,
+  "version": 2,
   "fps": 24,
-  "duration": 75.0,
-  "note": "Draft timing from notes/shotlist.md. Times in seconds. The generator must read everything from this file so the film can be retimed by editing it.",
+  "duration": 79.5,
+  "note": "Draft timing from notes/shotlist.md. Times in seconds. The generator must read everything from this file so the film can be retimed by editing it. v2: S00 vista added at the start (+4.5 s); S16 split into S16A (tracking) and S16B (wide).",
   "shots": [
     {
-      "id": "S01",
+      "id": "S00",
       "in": 0.0,
-      "out": 8.0,
+      "out": 4.5,
+      "desc": "establishing vista: sunrise over the misty forest; a gap in the canopy where mist rises"
+    },
+    {
+      "id": "S01",
+      "in": 4.5,
+      "out": 12.5,
       "desc": "fade in; tilt down from canopy to the kneeling robot in mist"
     },
     {
       "id": "S02",
-      "in": 8.0,
-      "out": 13.5,
+      "in": 12.5,
+      "out": 18.0,
       "desc": "shoulder close; small bird lands"
     },
     {
       "id": "S03",
-      "in": 13.5,
-      "out": 20.0,
+      "in": 18.0,
+      "out": 24.5,
       "desc": "face close-up; first ray of sun slides across"
     },
     {
       "id": "S04",
-      "in": 20.0,
-      "out": 25.0,
+      "in": 24.5,
+      "out": 29.5,
       "desc": "chest grille; light flickers on, heartbeat glow"
     },
     {
       "id": "S05",
-      "in": 25.0,
-      "out": 27.5,
+      "in": 29.5,
+      "out": 32.0,
       "desc": "ground close-up; tremor, pebbles jump"
     },
     {
       "id": "S06",
-      "in": 27.5,
-      "out": 30.5,
+      "in": 32.0,
+      "out": 35.0,
       "desc": "treetops; birds burst from the canopy"
     },
     {
       "id": "S07",
-      "in": 30.5,
-      "out": 34.0,
+      "in": 35.0,
+      "out": 38.5,
       "desc": "face; eyes flicker alive; small bird flies off"
     },
     {
       "id": "S08",
-      "in": 34.0,
-      "out": 38.5,
+      "in": 38.5,
+      "out": 43.0,
       "desc": "rise A low angle; hand presses earth; soil, roots, vines pour"
     },
     {
       "id": "S09",
-      "in": 38.5,
-      "out": 43.0,
+      "in": 43.0,
+      "out": 47.5,
       "desc": "rise B wide; rises to standing; soil curtains"
     },
     {
       "id": "S10",
-      "in": 43.0,
-      "out": 46.5,
+      "in": 47.5,
+      "out": 51.0,
       "desc": "rise C; head lifts toward the canopy gap"
     },
     {
       "id": "S11",
-      "in": 46.5,
-      "out": 48.5,
+      "in": 51.0,
+      "out": 53.0,
       "desc": "POV up at the canopy gap"
     },
     {
       "id": "S12",
-      "in": 48.5,
-      "out": 52.0,
+      "in": 53.0,
+      "out": 56.5,
       "desc": "back view; engines open, crouch, sputter, ignite"
     },
     {
       "id": "S13",
-      "in": 52.0,
-      "out": 55.0,
+      "in": 56.5,
+      "out": 59.5,
       "desc": "high wide; ring of wind across the forest"
     },
     {
       "id": "S14",
-      "in": 55.0,
-      "out": 56.5,
+      "in": 59.5,
+      "out": 61.0,
       "desc": "launch; smears, impact frame"
     },
     {
       "id": "S15",
-      "in": 56.5,
-      "out": 59.5,
+      "in": 61.0,
+      "out": 64.0,
       "desc": "from below; tears through the canopy"
     },
     {
-      "id": "S16",
-      "in": 59.5,
-      "out": 67.5,
-      "desc": "golden sky; curving trail of light and mist"
+      "id": "S16A",
+      "in": 64.0,
+      "out": 67.0,
+      "desc": "tracking beside the robot as it climbs; moss and soil stream off; engines roar"
+    },
+    {
+      "id": "S16B",
+      "in": 67.0,
+      "out": 72.0,
+      "desc": "wide golden sky: the curving trail of light and mist; the robot becomes a spark crossing the sun"
     },
     {
       "id": "S17",
-      "in": 67.5,
-      "out": 75.0,
+      "in": 72.0,
+      "out": 79.5,
       "desc": "ending; leaves spiral through sunbeams; bird returns; fade out"
     }
   ],
@@ -113,151 +125,155 @@
       "name": "fade_in_start"
     },
     {
-      "t": 6.8,
+      "t": 2.0,
       "name": "bird_crosses_far"
     },
     {
-      "t": 9.6,
+      "t": 11.3,
+      "name": "bird_crosses_far"
+    },
+    {
+      "t": 14.1,
       "name": "bird_wings_flare"
     },
     {
-      "t": 10.1,
+      "t": 14.6,
       "name": "bird_touchdown"
     },
     {
-      "t": 10.9,
+      "t": 15.4,
       "name": "bird_hop"
     },
     {
-      "t": 12.2,
+      "t": 16.7,
       "name": "bird_chirp"
     },
     {
-      "t": 15.0,
+      "t": 19.5,
       "name": "sun_ray_reaches_face"
     },
     {
-      "t": 21.0,
+      "t": 25.5,
       "name": "core_flicker_1"
     },
     {
-      "t": 21.5,
+      "t": 26.0,
       "name": "core_flicker_2"
     },
     {
-      "t": 22.4,
+      "t": 26.9,
       "name": "core_glow_steady"
     },
     {
-      "t": 23.4,
+      "t": 27.9,
       "name": "core_heartbeat"
     },
     {
-      "t": 24.4,
+      "t": 28.9,
       "name": "core_heartbeat"
     },
     {
-      "t": 25.0,
+      "t": 29.5,
       "name": "tremor_start"
     },
     {
-      "t": 27.5,
+      "t": 32.0,
       "name": "birds_burst"
     },
     {
-      "t": 31.2,
+      "t": 35.7,
       "name": "eye_lids_open"
     },
     {
-      "t": 31.8,
+      "t": 36.3,
       "name": "eyes_ignite"
     },
     {
-      "t": 32.6,
+      "t": 37.1,
       "name": "small_bird_flees"
     },
     {
-      "t": 35.6,
-      "name": "hand_presses_ground"
-    },
-    {
-      "t": 34.9,
+      "t": 39.4,
       "name": "rise_groan_1"
     },
     {
-      "t": 36.5,
+      "t": 40.1,
+      "name": "hand_presses_ground"
+    },
+    {
+      "t": 41.0,
       "name": "roots_tear"
     },
     {
-      "t": 39.0,
+      "t": 43.5,
       "name": "rise_groan_2"
     },
     {
-      "t": 40.0,
+      "t": 44.5,
       "name": "soil_curtain"
     },
     {
-      "t": 41.1,
+      "t": 45.6,
       "name": "stands_full_thud"
     },
     {
-      "t": 43.5,
+      "t": 48.0,
       "name": "head_lift_creak"
     },
     {
-      "t": 45.2,
+      "t": 49.7,
       "name": "eyes_resolve"
     },
     {
-      "t": 49.2,
+      "t": 53.7,
       "name": "back_plates_open"
     },
     {
-      "t": 50.4,
+      "t": 54.9,
       "name": "crouch_anticipation"
     },
     {
-      "t": 50.9,
+      "t": 55.4,
       "name": "engine_sputter"
     },
     {
-      "t": 51.5,
+      "t": 56.0,
       "name": "engine_ignite"
     },
     {
-      "t": 52.0,
+      "t": 56.5,
       "name": "wind_ring"
     },
     {
-      "t": 55.2,
+      "t": 59.7,
       "name": "launch_smear"
     },
     {
-      "t": 55.4,
+      "t": 59.9,
       "name": "impact_frame"
     },
     {
-      "t": 56.9,
+      "t": 61.4,
       "name": "canopy_burst"
     },
     {
-      "t": 59.5,
+      "t": 64.0,
       "name": "sky_reveal"
     },
     {
-      "t": 66.0,
+      "t": 70.5,
       "name": "trail_fades"
     },
     {
-      "t": 70.5,
+      "t": 75.0,
       "name": "bird_returns"
     },
     {
-      "t": 72.5,
+      "t": 77.0,
       "name": "fade_out_start"
     },
     {
-      "t": 75.0,
+      "t": 79.5,
       "name": "end"
     }
   ],
@@ -266,37 +282,37 @@
       {
         "name": "dawn",
         "in": 0.0,
-        "out": 25.0,
+        "out": 29.5,
         "mood": "still, nostalgic, sparse; solo melody over a soft pad"
       },
       {
         "name": "tremor",
-        "in": 25.0,
-        "out": 34.0,
+        "in": 29.5,
+        "out": 38.5,
         "mood": "tension; low pulse, rising"
       },
       {
         "name": "rise",
-        "in": 34.0,
-        "out": 48.5,
+        "in": 38.5,
+        "out": 53.0,
         "mood": "slow, heavy, building; strings swell, the melody returns in the low register"
       },
       {
         "name": "ignition",
-        "in": 48.5,
-        "out": 55.4,
+        "in": 53.0,
+        "out": 59.9,
         "mood": "held breath, then a crescendo into the launch"
       },
       {
         "name": "flight",
-        "in": 55.4,
-        "out": 67.5,
+        "in": 59.9,
+        "out": 72.0,
         "mood": "soaring climax; full melody, wide and bright"
       },
       {
         "name": "coda",
-        "in": 67.5,
-        "out": 75.0,
+        "in": 72.0,
+        "out": 79.5,
         "mood": "resolution; the solo melody alone, fading"
       }
     ]

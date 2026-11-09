@@ -115,6 +115,8 @@ KINDS = {'clod': clod, 'crumb': crumb, 'pebble': pebble, 'moss': moss_chunk, 'ro
 
 # --------------------------------------------------------------------------- leaves
 def leaf_outline(kind, g, n=24):
+    if kind in ('serrate', 'lobed', 'birch'):
+        n = 40
     """Leaf outline, tip at +x, stem end at -x, length 2 (x in -1..1)."""
     t = np.linspace(0, math.pi, n)
     x = -np.cos(t)
@@ -126,7 +128,17 @@ def leaf_outline(kind, g, n=24):
         wd = np.sin(t) ** 0.7 * 0.6
     elif kind == 'serrate':
         wd = np.sin(t) ** 0.9 * (1 - 0.2 * x) * 0.45
-        wd = wd * (1 + 0.12 * (np.arange(n) % 2) * (np.sin(t) > 0.25))
+        wd = wd * (1 + 0.2 * (np.arange(n) % 2) * (np.sin(t) > 0.2))
+    elif kind == 'willow':
+        wd = np.sin(t) ** 1.3 * (1 - 0.3 * x) * 0.17
+    elif kind == 'birch':
+        wd = np.sin(t) ** 0.75 * (1 - 0.35 * x) * 0.62
+        wd = wd * (1 + 0.1 * (np.arange(n) % 2) * (np.sin(t) > 0.3))
+    elif kind == 'heart':
+        wd = np.sin(t) ** 0.6 * (1 - 0.45 * x) * 0.55 + 0.12 * np.exp(-((x + 0.85) / 0.12) ** 2)
+    elif kind == 'lobed':
+        wd = np.sin(t) ** 0.8 * (1 - 0.15 * x) * 0.46
+        wd = wd * (0.74 + 0.26 * np.abs(np.sin((x + 1) * math.pi * 2.6)))
     else:
         wd = np.sin(t) * 0.45
     wd = wd * g.uniform(0.9, 1.1)
@@ -137,28 +149,19 @@ def leaf_outline(kind, g, n=24):
 
 
 def maple_outline(g, n_lobes=5):
-    """Palmate (maple-like) leaf, tip at +x."""
-    pts = []
-    lobes = np.array([-0.95, -0.5, 0.0, 0.5, 0.95])[:n_lobes] * 1.35
-    lens = np.array([0.55, 0.85, 1.0, 0.85, 0.55])[:n_lobes]
-    for k, (a, L) in enumerate(zip(lobes, lens)):
-        ca, sa = math.cos(a), math.sin(a)
-        # notch between lobes
-        if k > 0:
-            am = 0.5 * (a + lobes[k - 1])
-            pts.append((math.cos(am) * 0.35, math.sin(am) * 0.35))
-        side = 0.16 * L
-        pts.append((ca * L * 0.55 - sa * side, sa * L * 0.55 + ca * side))
-        pts.append((ca * L, sa * L))
-        pts.append((ca * L * 0.55 + sa * side, sa * L * 0.55 - ca * side))
-    pts.append((-0.25, 0.12))
-    pts.append((-0.25, -0.12))
-    p = np.array(pts)
-    p[:, 0] -= 0.3
-    return p * g.uniform(0.9, 1.05)
+    """Palmate (maple-like) leaf from a polar profile: 5 pointed lobes, toothed, tip at +x."""
+    th = np.linspace(-math.pi, math.pi, 120, endpoint=False)
+    lobes = [(0.0, 1.0), (0.95, 0.82), (-0.95, 0.82), (1.85, 0.55), (-1.85, 0.55)][:n_lobes]
+    r = np.full_like(th, 0.3)
+    for ang, L in lobes:
+        dlt = np.abs((th - ang + math.pi) % (2 * math.pi) - math.pi)
+        r = np.maximum(r, 0.3 + (L - 0.3) * np.clip(1 - dlt / 0.42, 0, 1) ** 1.5)
+    r = r * (1 + 0.06 * np.abs(np.sin(th * 13))) * g.uniform(0.95, 1.05)
+    p = np.stack([np.cos(th) * r, np.sin(th) * r], 1)
+    return p
 
 
-LEAF_KINDS = ('ovate', 'lance', 'round', 'serrate', 'maple')
+LEAF_KINDS = ('ovate', 'lance', 'round', 'serrate', 'maple', 'willow', 'birch', 'heart', 'lobed')
 
 
 def leaf(kind, g):

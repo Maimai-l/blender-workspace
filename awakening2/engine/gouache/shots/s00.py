@@ -80,7 +80,7 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- far ridges (4 layers of aerial perspective)
     cv = P.layer('far', 0.15)
-    specs = [(430, 120, 0.86, 7), (470, 150, 0.72, 9), (520, 140, 0.56, 11), (565, 110, 0.42, 13)]
+    specs = [(430, 120, 0.84, 13), (470, 150, 0.68, 16), (520, 140, 0.52, 19), (565, 110, 0.38, 23)]
     for i, (base, amp, d, br) in enumerate(specs):
         xs, ys = ridge_profile(rng, base, amp, 4, rough=0.08)
         body = aerial(C(60, 76, 104), d, HAZE)
@@ -136,7 +136,7 @@ def build(outdir, quick=False):
     ccols = (aerial(C(34, 46, 70), d, HAZE), aerial(C(52, 80, 80), d, HAZE), aerial(C(120, 140, 96), d * 0.6, HAZE),
              aerial(C(236, 210, 140), d * 0.3, HAZE))
     paint_planes(cv, rng, b, ccols, light3=(0.8, -0.5, 0.15), th=(0.42, 0.64, 0.86), strokes=0.3,
-                 rim=C(255, 222, 156), rim_amt=1.0, sun2=(0.85, -0.5), leafy_edge=0.35, noise_amt=0.08)
+                 rim=C(255, 222, 156), rim_amt=1.0, sun2=(0.85, -0.5), leafy_edge=0.35, noise_amt=0.08, leaf_px=8)
     # thin mist pockets between the crown rows (cool left, warm right)
     for yb in (650, 720, 800):
         mist(cv, rng, -100, W + 100, yb - 20, yb + 25, MIST_LIT, MIST_SH,
@@ -166,7 +166,7 @@ def build(outdir, quick=False):
                   hue=rng.normal(0, 0.05), rng=rng, lumpy=0.22)
     ncols = (C(26, 30, 50), C(38, 52, 64), C(70, 92, 74), C(220, 190, 120))
     paint_planes(cv, rng, b, ncols, light3=(0.7, -0.6, -0.3), th=(0.5, 0.72, 0.9), strokes=0.3,
-                 rim=C(255, 214, 140), rim_amt=1.2, sun2=(0.8, -0.6), leafy_edge=0.6, noise_amt=0.06)
+                 rim=C(255, 214, 140), rim_amt=1.2, sun2=(0.8, -0.6), leafy_edge=0.6, noise_amt=0.06, leaf_px=18)
     P.add('near', 0.85, cv, 'dark backlit treetops along the bottom edge with warm rims')
 
     P.save(sun=list(SUN), gap=list(GAP), camera='slow pan left -> right over 4.5 s (any 1920-wide window)')

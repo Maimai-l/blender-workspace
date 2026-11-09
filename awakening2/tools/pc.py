@@ -30,6 +30,11 @@ def sh(cmd, timeout_ms=85000):
     return pcx.bash(ENV + cmd, timeout_ms=timeout_ms)
 
 
+def kill_workers():
+    """Stop every render worker and background painter on the PC (by command line)."""
+    print(sh('powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:/Users/blender/Documents/awakening2/killw.ps1'))
+
+
 def sync():
     tgz = os.path.join(SCRATCH, 'aw2code.tgz')
     def filt(ti):
@@ -88,6 +93,25 @@ def pipeline(name, bg_shots, workers=5, chunk=48, shots=None, fdir=None):
     json.dump(jobs, open(path, 'w'))
     pcx.put(path, PCROOT + f'\\jobs\\{name}.json')
     print(sh(f'(nohup bash {U}/code/tools/pc_pipeline.sh {name} {workers} {" ".join(bg_shots)} > {U}/pipeline_{name}.out 2>&1 &); echo started'))
+
+
+def steal(name, fdir, shots, workers=4, chunk=12):
+    """Help a running job: extra workers render the given shots from their END backwards,
+    skipping frames that already exist (into the same frames folder)."""
+    cues = json.load(open(os.path.join(ROOT, 'audio', 'cues.json')))
+    chunks = []
+    for s in cues['shots']:
+        if s['id'] not in shots:
+            continue
+        n = int(round((s['out'] - s['in']) * 24))
+        cs = [[s['id'], a, min(n, a + chunk)] for a in range(0, n, chunk)]
+        chunks += cs[::-1]
+    jobs = dict(chunks=chunks, ss=2, out=f'C:/Users/blender/Documents/awakening2/{fdir}', contiguous=False,
+                skip_existing=True)
+    path = os.path.join(SCRATCH, f'{name}.json')
+    json.dump(jobs, open(path, 'w'))
+    pcx.put(path, PCROOT + f'\\jobs\\{name}.json')
+    print(sh(f'(nohup bash {U}/code/tools/pc_pipeline.sh {name} {workers} > {U}/pipeline_{name}.out 2>&1 &); echo started'))
 
 
 def status(name):
@@ -177,3 +201,8 @@ if __name__ == '__main__':
         fetch(a[1], fr, fd)
     elif a[0] == 'sh':
         print(sh(a[1]))
+    elif a[0] == 'steal':
+        # pc.py steal NAME FRAMESDIR WORKERS S09 S12 ...
+        steal(a[1], a[2], a[4:], workers=int(a[3]))
+    elif a[0] == 'kill':
+        kill_workers()

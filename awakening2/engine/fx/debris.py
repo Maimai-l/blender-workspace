@@ -236,6 +236,7 @@ class SoilPour:
         g = core.rng('pour', name)
         self.su = np.sort(g.uniform(0.08, 0.92, strands))
         self.sw = g.uniform(strand_width[0], strand_width[1], strands)
+        self.clump_rate = 0.42
         self.sbreak = g.uniform(6, 11, strands)
         self.sphase = g.uniform(0, 100, strands)
         self.sflow0 = g.uniform(0, 2 * math.pi, strands)
@@ -318,38 +319,66 @@ class SoilPour:
                              max(float(np.ptp(PY)), self.veil_size * 3), line=0, opacity=self.veil_opacity,
                              vert=0.15)
         batch = PolyBatch()
-        sheets = PolyBatch()
-        # ---- sheets: continuous at the edge, tearing into clumps ------------------------
+        streaks = PolyBatch()
         land = []
+        puffs = []
+        cpal = palettes.DEBRIS['clod']
+        # ---- clumps: tear off each spill point, fall, split, shed crumbs and powder ----------
         for s, u in enumerate(self.su):
-            pts, ages, fl = [], [], []
             for b in range(bmin, bmax + 1):
-                t = fh - b
-                p = self._fall(b, u, t)
-                pts.append(p)
-                ages.append(t)
-                fl.append(self.flow(s, b))
-                if self.ground is not None and p[1] >= self.ground and t > 0:
-                    land.append((s, b, p[0]))
-            if len(pts) < 2:
-                continue
-            pts = np.array(pts)[::-1]          # youngest first (at the edge)
-            ages = np.array(ages)[::-1]
-            fl = np.array(fl)[::-1]
-            run = []
-            for k in range(len(pts)):
-                bb = fh - ages[k]
-                gap_p = smoothstep(self.sbreak[s] * 0.5, self.sbreak[s] * 2.0, ages[k])
-                hsh = (math.sin(bb * 12.9898 + self.sphase[s]) * 43758.5453) % 1.0
-                below = self.ground is not None and pts[k][1] > self.ground
-                if fl[k] < 0.15 or hsh < gap_p * 0.9 or pts[k][1] > H + 40 or below:
-                    if len(run) >= 2:
-                        self._sheet(sheets, np.array(run), s, l)
-                    run = []
+                g = core.rng('pour_clump', self.name, s, b)
+                fl = self.flow(s, b)
+                if g.random() > fl * self.clump_rate:
                     continue
-                run.append((pts[k][0], pts[k][1], ages[k], fl[k]))
-            if len(run) >= 2:
-                self._sheet(sheets, np.array(run), s, l)
+                t = fh - b
+                pos0, v0 = self._emit(b, float(np.clip(u + g.normal(0, 0.03), 0, 1)))
+                v0 = v0 + np.array([g.normal(0, 0.45), g.uniform(0.0, 1.0)])
+                csz = self.sw[s] * g.uniform(0.32, 0.55) * (0.65 + 0.5 * fl)
+                tb = g.uniform(4.0, 10.0)
+                shape = shapes.KINDS['clod'](core.rng('pour_clump_shape', self.name, s, b))
+                a0, w0 = g.uniform(0, 2 * math.pi), g.uniform(-0.25, 0.25)
+                if self.ground is not None:
+                    dy = self.ground - pos0[1]
+                    if dy > 0:
+                        tl = (-v0[1] + math.sqrt(max(v0[1] ** 2 + 2 * self.g * dy, 0))) / self.g
+                        land.append((s, b, pos0[0] + v0[0] * tl, tl))
+                if t < tb:
+                    p = pos0 + v0 * t + np.array([0, 0.5 * self.g * t * t])
+                    if self.ground is not None and p[1] > self.ground:
+                        continue
+                    v = v0 + np.array([0, self.g * t])
+                    self._streak(streaks, p, v, csz, cpal)
+                    add_piece(batch, 'clod', shape, p, a0 + w0 * t, csz * (1 - 0.12 * t / tb), light, 0.9)
+                    continue
+                # split: 3-5 pieces drift apart, each sheds a column of crumbs and powder
+                pb = pos0 + v0 * tb + np.array([0, 0.5 * self.g * tb * tb])
+                vb = v0 + np.array([0, self.g * tb])
+                tt = t - tb
+                if tt < 10:
+                    puffs.append((s, b, pb, tt, csz))
+                npc = int(g.integers(3, 6))
+                for k in range(npc):
+                    ang = g.uniform(0, 2 * math.pi)
+                    dv = np.array([math.cos(ang), math.sin(ang) * 0.6]) * g.uniform(0.4, 1.6)
+                    pk = pb + (vb + dv) * tt + np.array([0, 0.5 * self.g * tt * tt])
+                    if (self.ground is not None and pk[1] > self.ground) or pk[1] > H + 30:
+                        continue
+                    sz = csz * g.uniform(0.26, 0.5) * (1 - 0.35 * min(1.0, tt / 18))
+                    kind = 'moss' if g.random() < 0.12 else ('crumb' if sz < 4 else 'clod')
+                    sh = shapes.KINDS[kind](core.rng('pour_piece', self.name, s, b, k))
+                    self._streak(streaks, pk, vb + dv + np.array([0, self.g * tt]), sz, cpal)
+                    add_piece(batch, kind, sh, pk, a0 + k + w0 * t * 1.5, sz, light, 0.9)
+                    # crumbs and powder shed from this piece (they fall a little slower)
+                    for m in range(0, int(min(tt, 14)), 2):
+                        am = tt - m
+                        jit = np.array([g.normal(0, 0.35), g.normal(0, 0.2)])
+                        q = pb + (vb + dv) * m + np.array([0, 0.5 * self.g * m * m]) \
+                            + (vb + dv * 0.5 + jit) * am + np.array([0, 0.5 * self.g * 0.82 * am * am])
+                        if (self.ground is not None and q[1] > self.ground) or q[1] > H + 10:
+                            continue
+                        qs = max(1.2, csz * g.uniform(0.06, 0.16))
+                        batch.add(core.chaikin(core.rot(shapes.blob(g, n=5, rmin=0.5, rmax=1.0, smooth=0), g.uniform(0, 6)) * qs, 0) + q,
+                                  cpal['shade'] if g.random() < 0.7 else cpal['lit'])
         # ---- loose bits and clumps ----------------------------------------------------------
         for b in range(bmin, bmax + 1):
             u, kinds, sz, vj, a0, w = self._bits(b)
@@ -361,71 +390,53 @@ class SoilPour:
                 kind = self.kn[kinds[i]]
                 parts = shapes.KINDS[kind](core.rng('pour_shape', self.name, b, i))
                 add_piece(batch, kind, parts, p, a0[i] + w[i] * t, sz[i], light, 0.9)
-        # ---- dust kicked up where it lands --------------------------------------------------
-        if land:
-            ids, PX, PY, RR, BR, PH, Z = [], [], [], [], [], [], []
+        # ---- dust: small puffs where clumps break, kicked-up dust where they land ----------
+        ids, PX, PY, RR, BR, PH, Z, GYs = [], [], [], [], [], [], [], []
+        for s, b, pb, tt, csz in puffs:
+            g = core.rng('pour_breakpuff', self.name, s, b)
+            life = 10.0
+            t_ = tt / life
+            ids.append(5000 + (s * 997 + b) % 4000)
+            PX.append(pb[0] + g.normal(0, csz * 0.3)); PY.append(pb[1] - csz * 0.6 * t_)
+            RR.append(csz * (0.5 + 0.7 * min(1.0, tt / 4)) * g.uniform(0.7, 1.1))
+            BR.append(float(smoothstep(0.25, 1.0, t_))); PH.append(t_ * 2); Z.append(-tt); GYs.append(1e9)
+        if self.ground is not None:
             seen = set()
-            for s, b, x in land:
-                key = (s, b // 2)
+            for s, b, x, tl in land:
+                key = (s, b // 3)
                 if key in seen:
                     continue
                 seen.add(key)
-                for bb in (b,):
-                    pass
-            # landing puffs: born when a strand first reaches the ground at birth frame b
-            for b in range(self.start, min(self.end, fh) + 1, 2):
-                for s, u in enumerate(self.su):
-                    if self.flow(s, b) < 0.25:
-                        continue
-                    # time to fall to the ground for soil born at b
-                    pos, v = self._emit(b, u)
-                    dy = self.ground - pos[1]
-                    if dy <= 0:
-                        continue
-                    tl = (-v[1] + math.sqrt(max(v[1] ** 2 + 2 * self.g * dy, 0))) / self.g
-                    tland = b + tl
-                    a = fh - tland
-                    life = 22.0
-                    if a < 0 or a > life:
-                        continue
-                    x = pos[0] + v[0] * tl
-                    g = core.rng('pour_land', self.name, s, b)
-                    tt = a / life
-                    side = g.choice([-1.0, 1.0])
-                    R = self.land_size * (0.4 + 0.6 * min(1.0, a / 8)) * g.uniform(0.7, 1.1) * self.flow(s, b)
-                    ids.append(s * 997 + (b - self.start) // 2)
-                    PX.append(x + side * self.land_size * 0.9 * (1 - math.exp(-a / 6)))
-                    PY.append(self.ground - R * 0.5 - self.land_size * 0.5 * tt)
-                    RR.append(R); BR.append(smoothstep(0.35, 1.0, tt)); PH.append(side * a * 0.15)
-                    Z.append(-a)
-            if ids:
-                groups, holes = self.land_b.groups(ids, PX, PY, RR, BR, PH, Z, drawing,
-                                                   ground=self.ground + 2)
-                C = (float(np.mean(PX)), float(np.mean(PY)))
-                paint_groups(canvas, groups, holes, palettes.DUST, light, C, self.land_size * 3,
-                             line=2.0, opacity=1.0)
+                a_ = fh - (b + tl)
+                life = 22.0
+                if a_ < 0 or a_ > life:
+                    continue
+                g = core.rng('pour_land', self.name, s, b)
+                tt = a_ / life
+                side = g.choice([-1.0, 1.0])
+                R = self.land_size * (0.4 + 0.6 * min(1.0, a_ / 8)) * g.uniform(0.6, 1.15) * max(0.4, self.flow(s, b))
+                ids.append(s * 997 + b)
+                PX.append(x + side * self.land_size * 0.9 * (1 - math.exp(-a_ / 6)))
+                PY.append(self.ground - R * 0.5 - self.land_size * 0.5 * tt)
+                RR.append(R); BR.append(float(smoothstep(0.35, 1.0, tt))); PH.append(side * a_ * 0.15)
+                Z.append(-a_); GYs.append(self.ground + 2)
+        if ids:
+            groups, holes = self.land_b.groups(ids, PX, PY, RR, BR, PH, Z, drawing, ground=np.array(GYs))
+            C = (float(np.mean(PX)), float(np.mean(PY)))
+            paint_groups(canvas, groups, holes, palettes.DUST, light, C, self.land_size * 3,
+                         line=2.0, opacity=1.0)
+        streaks.draw(canvas)
         batch.draw(canvas)
-        sheets.draw(canvas)
         return canvas
 
-    def _sheet(self, batch, run, s, l):
-        """A falling sheet segment: shade body, lit stripe toward the light, ink edge."""
-        P = run[:, :2]
-        ages = run[:, 2]
-        fl = run[:, 3]
-        wid = self.sw[s] * (0.35 + 0.65 * fl) * (1 - 0.6 * smoothstep(0, self.sbreak[s] * 2, ages))
-        wid[0] *= 0.7
-        wid[-1] *= 0.3
-        if len(P) > 2:
-            P = core.chaikin(P, 2, closed=False)
-            wid = np.interp(np.linspace(0, 1, len(P)), np.linspace(0, 1, len(wid)), wid)
-        # ragged edge: per-point width wobble (changes per drawing via the hash of the point)
-        rag = 1 + 0.18 * np.sin(np.arange(len(P)) * 2.3 + self.sphase[s] + P[:, 1] * 0.05)
-        wid = wid * rag
-        c = palettes.DEBRIS['clod']
-        body = core.stroke_poly(P, wid)
-        batch.add(body, c['shade'], ink=c['ink'], ink_w=1.4)
-        n, _ = core.polyline_normals(P)
-        side = np.sign(np.sum(n * l[None, :], 1, keepdims=True))
-        lit = core.stroke_poly(P + n * side * wid[:, None] * 0.2, wid * 0.42)
-        batch.add(lit, c['lit'])
+    def _streak(self, batch, p, v, size, cpal):
+        """Tapered dark streak behind a falling piece (drawn smear of its fall)."""
+        sp = float(np.hypot(v[0], v[1]))
+        if sp < 1.5 or size < 2:
+            return
+        dirv = v / sp
+        L = min(sp * 2.4, size * 7)
+        q = np.linspace(0, 1, 6)
+        pts = p[None, :] - dirv[None, :] * (q[:, None] * L)
+        wid = size * 0.9 * (1 - q) ** 1.4 + 0.2
+        batch.add(core.stroke_poly(pts, wid), cpal['shade'], alpha=0.75)

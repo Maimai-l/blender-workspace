@@ -59,16 +59,34 @@ fx.DustPuff(name, origin, frame0, size=150, direction=(0, -1), spread=2.6, life=
 fx.GroundDust(name, start, direction, frame0, distance=600, duration=30, height=110, life=26,
               grow=0., ...).draw(canvas, frame)
 ```
+* **Designed billows (round 2)**: every cloud has one dominant mass (alternating big / small
+  neighbours around it, never two equal neighbours); bumps cycle big / small / medium; on the
+  ground the billows are cut flat and their bumps roll over the top arc as a cauliflower crown
+  (small squashed bumps at the base); edges moving sideways get a hook-shaped curl (a lobe with
+  its lower front bitten out); breaking billows trail occasional thin curling wisps. Small and
+  base bumps borrow the mass's tones while the billow is whole (no polka dots), separating
+  pieces shade themselves.
+* **Cauliflower crown (round 3)**: grounded billows (puff main mass, ground-dust head, ring
+  wall) carry 6-10 crown lobes in big / medium / small classes (2-3 big), each with its own lit
+  cap. Lobes bud at the top centre, roll outward and down the sides on 2s and are absorbed at the
+  base; a standing central lobe keeps the crown closed. The mass itself is shape-only and a few
+  shade-only belly lobes carry the mid tone down, so the violet underside ends in a scalloped
+  terminator above the flat ground cut. Big sideways-moving billows get a spiral curl on the
+  leading edge.
 * **Impact puff**: primaries thrown out in a fan (edge lobes travel farther = ground arms; `aspect`
   flattens the vertical), fast ease-out burst (~full size in 1/6 of the life), slow growth,
-  buoyant rise. Each primary carries 4–7 bumps that **orbit** it (`roll`) and sit behind it,
-  so the outline's bumps travel round; late in life the core shrinks, the bumps drift apart and
-  shrink at staggered times, bites open, the last 12 % fades.
+  buoyant rise; late in life the mass shrinks, the bumps drift apart and shrink at staggered
+  times, the last 12 % fades.
 * **Rolling ground dust**: a *head* of 3 billows rides the front (ease-out) and rolls forward;
   it sheds a *tail* billow on every drawing that rises and breaks up.
 * Shading: warm cream lit cap / ochre mid / violet-brown underside (`palettes.DUST`,
   `DUST_DRY`, `DUST_DARK`, `SMOKE`, `STEAM`, `TRAIL_MIST`, `VEIL`; rows = shadow, mid, lit,
   line). `bias` brightens/darkens, `vert` darkens lower billows.
+* **Dust veil** (round 3): `DustVeil(name, origin, frame0, width=1400, height=240, life=48,
+  palette=None, opacity=.55, ground=None, segments=14, rise=.35).draw(canvas, frame)` — a thin,
+  broken, 2-tone, semi-transparent sheet with a lumpy top edge spreading sideways along the
+  ground (flat base), opening gaps and holes and fading; for the S14 blast background (draw it
+  before the blast puff). Test: `fx_tests/veil_*`.
 * Building blocks for other effects: `BillowSet(name, n).groups(idx, x, y, r, breakup, phase, z,
   drawing)` → groups for `paint_groups(canvas, groups, holes, palette, light, centre, size, ...)`.
 * Effects cels are flat-painted by default. `texture=` (e.g. .04) adds a low-contrast dry-brush
@@ -91,9 +109,11 @@ fx.SoilPour(name, emitter, start, end, rate=22, strands=5, size=(2, 8), gravity=
   dust streak along their path that thins out over ~30 frames.
 * **Pouring soil**: `emitter(frame) -> ((x0, y0), (x1, y1))` (or a point, or an array indexed
   by frame) — pass the projected robot edge per frame. Soil spills from a few points along
-  the edge (flow pulses per spill point): continuous sheets near the edge that tear into
-  clumps, loose bits around them, a thin billowing dust veil behind (`veil_opacity`), and dust
-  kicked up where it lands on `ground`. Emitter velocity is inherited (`inherit`).
+  the edge (flow pulses per spill point) as irregular **clumps** (`strand_width` = clump size)
+  that fall, split into 3–5 pieces and shed falling streams of crumbs and powder; every piece
+  drags a tapered dark streak; a small dust puff marks each break, a thin billowing veil hangs
+  behind (`veil_opacity`) and dust kicks up where clumps land on `ground`. No continuous
+  sheets (round 2). Emitter velocity is inherited (`inherit`).
 * `add_piece(batch, kind, parts, pos, angle, size, light)` to place single pieces yourself.
 
 ## 3. Leaves (`leaves.py`)
@@ -105,8 +125,11 @@ fx.LeafBurst(name, origin, frame0, count=30, direction=(0, -1), spread=2., speed
              drag=.09, fall=1.6, size=(14, 30), origin_radius=0, wind=(0, 0))
 leaves.draw(canvas, frame, sunlit=lambda x, y: beam_mask[int(y), int(x)])
 ```
-* Shapes: ovate, lance, round, serrate, maple; colours `green`, `deep`, `gold`, `rust`
-  (`palettes.LEAF`: front lit/shade, back lit/shade, ink, vein).
+* Shapes: ovate, lance, round, serrate (saw teeth), maple (palmate), willow (long), birch (small,
+  toothed), heart, lobed (oak); colours `green`, `deep`, `gold`, `rust` (`palettes.LEAF`) with a
+  per-leaf tint; sizes vary per leaf (a few big ones; birch small, willow long); ~35 % are
+  curled (one half of the blade narrower, the midrib bent); larger leaves get side veins; the
+  outline is a coloured line (leaf shade mixed with ink), not black.
 * The flip about the long axis foreshortens the width with cos(flip) and shows the **back
   colour** when it turns over; edge-on leaves become slivers. Pendulum flutter (rises at the
   ends of each swing) or helical spiral (depth changes the scale). `sunlit` warms the leaves
@@ -130,8 +153,10 @@ ring.draw(canvas, frame, part='front')    # near half
   camera, the far side flattens onto the horizon.
   `ring.project(rho, phi)` / `ring.R(age)` are public if you need to place other things on it.
 * Reads as wind because it is made of: a rolling **dust wall** (head billows in angular slots
-  riding the front, each with two smaller followers trailing inward = comet shapes pointing
-  outward, clumpy thickness and gaps, sporadic billows shed and left behind), **flattened
+  riding the front with cauliflower crowns and flat bases; strongly varied heights - ~20 %
+  towering with a second mass stacked on top, ~30 % low - overlapping, ~10 % gaps, ~15 % lagging
+  behind the front; each with two smaller followers trailing inward, sporadic billows shed and
+  left behind), **flattened
   grass** strokes revealed as the front passes (spring back later), **leaves** thrown outward,
   short-lived radial **speed lines**, and a **pressure band** of broken brush arcs re-drawn
   every drawing; optional `mist` (opacity, e.g. .55) adds translucent floor-mist billows shoved
@@ -165,13 +190,17 @@ fx.speed_lines(canvas, centre, frame, n=90, inner=(.28, .55), width=(2, 14), col
 fx.streak_lines(canvas, direction=(0, -1), frame=f, n=40, length=(200, 700), width=(1.5, 6))
 ```
 * `robot_cel` = the robot drawing as straight RGBA (usually full frame, robot in place).
-* **Stretched smear**: the cel is stretched along the motion from its leading edge and the
-  trailing edge is pulled into streaks of varied length that flatten toward the cel's dark
-  colour (done in a rotated, 2× supersampled frame; cropped to the robot for speed).
+* **Stretched smear** (round 2): the cel is stretched along the motion from its leading edge,
+  keeping its own colours, and tapered speed streaks sampled from its trailing edge (in the
+  body colour found there, not the ink) trail behind, thinning and fading in three steps.
+  `flatten` (default .25) mixes the streaks toward the body's mean colour; `streaks=False`
+  gives the plain stretch.
 * **Multiple-image smear**: afterimages flattening toward one colour, short streaks, cel on top.
 * **Impact frame**: opaque 2-tone frame — field colour, radial wedges + a ring of heavy spikes in
-  the figure colour, the robot as a solid silhouette with only its brightest parts (eyes, core,
-  lit edges) opened up in the field colour, separated from the lines by a halo.
+  the figure colour, the robot as a solid silhouette separated from the lines by a halo. Round 2:
+  the silhouette is cleaned (`clean_shape`: small gaps closed, holes below an area filled,
+  specks dropped, outline smoothed) and only the few largest of its brightest shapes (eyes,
+  core; `max_open=6`) open up in the field colour, cleaned the same way.
 
 ## 7. Light trail (`trail.py`)
 

@@ -13,8 +13,9 @@ from ..canvas import dabs, stroke, catmull, taper
 from ..layers import Painting
 from ..foliage import Blobs, vine
 from ..atmos import mist, beams, glow
-from ..trees import species, paint_tube, trunk_path
-from ..forest import leafy_mass, far_trunks, broadleaf, floor, undergrowth
+from ..trees import species, paint_tube, trunk_path, buttress_roots, Frame
+from ..canvas import catmull
+from ..forest import leafy_mass, far_trunks, broadleaf, floor, undergrowth, layered_mass
 from ..ground import fern, grass
 
 W, H, M = 1920, 1040, 48
@@ -37,14 +38,19 @@ def warm(x, y):
     return np.clip(1.1 - d, 0, 1)
 
 
-def backlit_trunk(cv, rng, x, wb, d, top=-120, base=None, sp='camphor', moss=0.6):
+def backlit_trunk(cv, rng, x, wb, d, top=-120, base=None, sp='camphor', moss=0.6, roots=0, branches=0,
+                  leaves=None):
+    """Backlit silhouette trunk with real taper, lean, root flare, optional buttress
+    roots and a few branches (with small leaf masses collected into `leaves`)."""
     base = HZ + 30 + (1 - d) * 300 if base is None else base
-    pts, ww = trunk_path(rng, (x, base), (x + rng.normal(0, 25), top), wb, wb * 0.75, sway=0.01, bulge=0.07,
-                         flare=0.35, flare_h=0.05)
+    Ht = base - top
+    lean = rng.normal(0, 0.06)
+    pts, ww = trunk_path(rng, (x, base), (x + lean * Ht, top), wb, wb * rng.uniform(0.32, 0.55),
+                         sway=rng.uniform(0.01, 0.03), bulge=0.09, flare=rng.uniform(0.5, 0.95), flare_h=0.05,
+                         lean_curve=rng.normal(0, 0.03))
     mid = pts[len(pts) // 2]
     ux, uy = sunward(mid[0], mid[1])
     bark = species(sp)
-    # silhouettes: dark cool body (hazed by depth), a hot gold rim on the sun side
     dk = aerial(C(40, 34, 62), d, HAZE)
     bark.dark = dk
     bark.mid = aerial(C(62, 52, 76), d, HAZE)
@@ -52,10 +58,32 @@ def backlit_trunk(cv, rng, x, wb, d, top=-120, base=None, sp='camphor', moss=0.6
     bark.rim = C(255, 220, 150)
     bark.refl = aerial(C(90, 80, 110), d, HAZE)
     bark.blotch = aerial(C(60, 70, 72), d, HAZE)
-    paint_tube(cv, pts, ww, rng, bark, (float(ux), float(uy), -0.75), moss=moss * (1 - d), detail=0.6,
-               rim_amt=1.4, refl_amt=0.2, flecks=0.0,
-               moss_pal=dict(dark=aerial(C(30, 44, 54), d, HAZE), mid=aerial(C(50, 70, 60), d, HAZE),
-                             lit=C(190, 180, 90), tip=C(255, 220, 140)))
+    L3 = (float(ux), float(uy), -0.75)
+    mp = dict(dark=aerial(C(30, 44, 54), d, HAZE), mid=aerial(C(50, 70, 60), d, HAZE), lit=C(190, 180, 90),
+              tip=C(255, 220, 140))
+    sp_ = catmull(pts, spacing=3.0)
+    fr = Frame(sp_, np.interp(np.linspace(0, 1, len(sp_)), np.linspace(0, 1, len(ww)), ww))
+    if roots:
+        for rp, rw, sd in buttress_roots(rng, fr, roots, base - 8, wb, spread=1.3):
+            paint_tube(cv, rp, rw, rng, bark, L3, moss=0.8 * (1 - d), detail=0.5, start_fade=0.25, rim_amt=1.2,
+                       refl_amt=0.2, flecks=0.0, moss_pal=mp)
+    paint_tube(cv, pts, ww, rng, bark, L3, moss=moss * (1 - d), detail=0.6, rim_amt=1.4, refl_amt=0.2, flecks=0.0,
+               moss_pal=mp)
+    for k in range(branches):
+        s0 = rng.uniform(0.35, 0.8)
+        p0, w0, _ = fr.at(s0, 0)
+        if p0[1] < 0:
+            continue
+        sgn = rng.choice([-1, 1])
+        a = -np.pi / 2 + sgn * rng.uniform(0.6, 1.2)
+        L = Ht * rng.uniform(0.12, 0.25)
+        p1 = p0 + L * np.array([np.cos(a), np.sin(a)])
+        pm = (p0 + p1) / 2 + np.array([0, -L * 0.08]) + rng.normal(0, L * 0.05, 2)
+        q = catmull(np.array([p0, pm, p1], np.float32), n=16)
+        paint_tube(cv, q, np.linspace(float(w0) * 0.42, float(w0) * 0.12, 16), rng, bark, L3, detail=0.4,
+                   rim_amt=1.4, refl_amt=0.2, flecks=0.0, end_fade=0.15)
+        if leaves is not None:
+            layered_mass(leaves, rng, p1[0], p1[1] - L * 0.05, L * rng.uniform(0.25, 0.4), flat=0.6, droop=0.3)
 
 
 def build(outdir, quick=False):
@@ -91,8 +119,14 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- far
     cv = P.layer('far', 0.2)
-    for x in np.sort(rng.uniform(-60, 1980, 18)):
-        backlit_trunk(cv, rng, x, rng.uniform(12, 40), rng.uniform(0.55, 0.78), sp='beech', moss=0.2)
+    far_leaves = Blobs()
+    for x in np.sort(rng.uniform(-60, 1980, 16)):
+        backlit_trunk(cv, rng, x, float(np.exp(rng.uniform(np.log(12), np.log(52)))), rng.uniform(0.55, 0.78),
+                      sp=['beech', 'camphor', 'cedar'][int(rng.integers(0, 3))], moss=0.2,
+                      branches=int(rng.integers(0, 3)), leaves=far_leaves)
+    if len(far_leaves):
+        leafy_mass(cv, rng, far_leaves, 0.6, HAZE, (0.0, 0.5, -0.85), (0.0, 1.0), 6, density=0.8, trans_amt=0.8,
+                   rim_amt=0.8, lz=-0.8)
     undergrowth(cv, rng, HZ + 10, -60, 1980, 0.6, HAZE, (0.0, -0.3, -0.9), (0.0, -1.0), leaf=5, height=(20, 80))
     mist(cv, rng, -100, 2020, HZ - 300, HZ + 80, HAZE_W, HAZE_C, light=warm, density=1.2, opacity=(0.05, 0.15),
          size=(180, 520), aspect=(0.1, 0.24), profile='bottom')
@@ -100,9 +134,14 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- mid
     cv = P.layer('mid', 0.5)
-    for (x, wb, sp) in [(120, 110, 'camphor'), (420, 70, 'cedar'), (930, 60, 'beech'), (1560, 90, 'camphor'),
-                        (1800, 130, 'beech')]:
-        backlit_trunk(cv, rng, x, wb, 0.12, sp=sp, moss=0.7, base=HZ + 140)
+    mid_leaves = Blobs()
+    for (x, wb, sp, nr, nb) in [(120, 150, 'camphor', 4, 2), (420, 64, 'cedar', 0, 1), (930, 48, 'beech', 0, 2),
+                                (1560, 104, 'camphor', 3, 2), (1800, 180, 'beech', 4, 1)]:
+        backlit_trunk(cv, rng, x, wb, 0.12, sp=sp, moss=0.7, base=HZ + 140, roots=nr, branches=nb,
+                      leaves=mid_leaves)
+    if len(mid_leaves):
+        leafy_mass(cv, rng, mid_leaves, 0.1, HAZE, (0.0, 0.5, -0.85), (0.0, 1.0), 9, density=0.85, trans_amt=0.8,
+                   rim_amt=0.9, lz=-0.8)
     # canopy at the top, backlit
     b = Blobs()
     for x in np.linspace(-80, 2000, 20):

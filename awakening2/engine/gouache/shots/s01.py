@@ -14,7 +14,7 @@ from ..layers import Painting
 from ..foliage import Blobs, render_gbuffer, paint_mass, spray, vine
 from ..trees import (species, paint_tube, trunk_path, buttress_roots, crown_blobs, limb_fan, Frame,
                      MOSS, IVY)
-from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud
+from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud, plane_cloud
 from ..atmos import mist, beams, glow, dapple
 from ..ground import ground, fern, grass, stone, flowers
 from ..forest import broadleaf, far_trunks, surface_roots
@@ -172,8 +172,8 @@ def build(outdir, quick=False):
         stroke_w=(26, 90), stroke_len=(200, 700), angle=-0.1)
     cl_stops = [C(140, 126, 180), C(192, 154, 184), C(236, 182, 172), C(255, 214, 168), C(255, 238, 206)]
     for (cx, by, w_, h_, kind) in [(700, 560, 760, 150, 'strato'), (1240, 470, 520, 190, 'cumulus')]:
-        sculpted_cloud(cv, rng, cx, by, w_, h_, cl_stops, kind=kind, light3=(0.5, -0.65, 0.1),
-                       rim=C(255, 236, 196), rim_amt=0.8, tip=C(255, 246, 220))
+        plane_cloud(cv, rng, cx, by, w_, h_, (cl_stops[0], cl_stops[2], cl_stops[3], cl_stops[4]), kind=kind,
+                    light3=(0.5, -0.75, 0.3), rim=C(255, 244, 214), wisps=0.4)
     glow(cv, SUN[0], SUN[1], 170, C(255, 248, 226), 0.85)
     P.add('sky', 0.0, cv, 'dawn sky through the canopy gap; opaque')
 

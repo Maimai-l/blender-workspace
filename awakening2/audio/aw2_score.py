@@ -167,99 +167,104 @@ class Score:
 
 # ---------------------------------------------------------------------------- dawn
 def dawn(S):
+    """The whole theme as one quiet song across the dawn.  Phrase a starts as the picture fades
+    in (music box, the flute takes over at bar 3); phrase b follows, its peak (B5 over Gmaj7)
+    on the first ray of sun and its resolution (D) on the first core flicker; then the
+    near-silence before the tremor."""
     C = S.C
     d_in, d_out = C.section("dawn", (0.0, C.get("tremor_start", 25.0)))
     fade0 = max(d_in, C.first("fade_in_start", d_in))
     trem = C.first("tremor_start", d_out)
     sun = C.get("sun_ray_reaches_face", d_in + 0.6 * (trem - d_in))
-    cross = C.first("bird_crosses_far", None)
     flick = C.first("core_flicker", None)
     glow = C.first("core_glow_steady", flick + 1.4 if flick else trem - 2.6)
+    res = flick if flick is not None else min(glow, trem - 3.0)
 
-    # flute phrase a: bar 2 (the Gmaj7, the warm chord) lands on the first ray of sun
-    beat = 60.0 / 72
-    if flick is not None:
-        beat = min(beat, (flick + 1.0 - sun) / 8)
-    if cross is not None:
-        beat = min(beat, (sun - cross - 0.5) / 8)
-    beat = fit_beat(beat * 8, 8, 60 / 92, 60 / 58, "dawn flute")
-    tm = Tempo([(0, sun - 8 * beat), (8, sun), (16, sun + 8 * beat)])
-    bar = lambda k: tm(4 * k)
-    S.mark("flute_start", bar(0))
-    S.mark("sun_chord", bar(2))
+    # phrase b: 8 beats from the peak to the resolution; phrase a fills the opening before it
+    bb = fit_beat(res - sun, 8, 60 / 100, 60 / 54, "dawn phrase b")
+    b4 = sun - 8 * bb
+    a0 = fade0 + min(1.0, 0.1 * (b4 - fade0))
+    ab = fit_beat(b4 - 0.5 * bb - a0, 16, 60 / 104, 60 / 54, "dawn phrase a")
+    ta = Tempo([(0, a0), (16, a0 + 16 * ab)])
+    tb = Tempo([(16, b4), (32, b4 + 16 * bb)])
+    bar = lambda k: ta(4 * k) if k < 4 else tb(4 * k)
+    beat_at = lambda k: ab if k < 4 else bb
+    S.mark("musicbox", a0)
+    S.mark("flute_start", bar(2))
+    S.mark("sun_peak", bar(6))
+    S.mark("dawn_resolution", bar(8))
 
-    # music box: the opening motif as a faint memory, winding down (each beat longer)
-    mb_t0 = fade0 + min(2.4, 0.3 * (bar(0) - fade0))
-    mb_end = min(bar(0) - 2.4, (cross - 0.2) if cross else bar(0) - 2.4)
-    if mb_end - mb_t0 > 1.6:
-        mt = Tempo(rit_anchors(0, 4, mb_t0, mb_end, ratio=1.7))
-        rows = [(0, "F#5", "D5"), (1, "A5", None), (2, "D6", "A5"), (3.5, "E6", None), (4, "F#6", "D6")]
-        mbn = []
-        for b, top, low in rows:
-            mbn.append(Note(mt(b), 1.0, nm(top), 0.55 if b < 4 else 0.5))
-            if low:
-                mbn.append(Note(mt(b) + 0.012, 1.0, nm(low), 0.28))
-        S.modal("dawn/musicbox", I.musicbox, mbn, -23.0, hall=0.55)
-        S.mark("musicbox", mb_t0)
+    # music box: phrase a, bars 1-2, with soft dyads (the memory)
+    mbn = []
+    for k, (b, d, m) in enumerate(theme([0, 1])):
+        t = ta(b)
+        mbn.append(Note(t, 1.0, m + 12, 0.5 if k < 6 else 0.46))
+        if k in (0, 2, 4):
+            mbn.append(Note(t + 0.012, 1.0, m + 12 - (4 if k != 2 else 5), 0.24))
+    S.modal("dawn/musicbox", I.musicbox, mbn, -19.0, hall=0.55)
 
-    # string pad: D(add9) | Bm7 | Gmaj7 | Asus4 - A | A (fading into the core hum)
-    p0 = fade0 + 1.0
-    chords = [(p0, bar(1) - p0, ["D3", "A3", "E4", "F#4"]),
-              (bar(1), 4 * beat, ["B2", "A3", "D4", "F#4"]),
-              (bar(2), 4 * beat, ["G2", "B3", "D4", "F#4"]),
-              (bar(3), 3 * beat, ["A2", "A3", "D4", "E4"]),
-              (bar(3) + 3 * beat, max(1.0, trem - 0.9 - bar(3) - 3 * beat), ["A2", "A3", "C#4", "E4"])]
-    pad_end = trem - 0.9
-    sw = lambda t: float(np.interp(t, [p0, bar(1), bar(2) - 0.6, bar(2) + 1.2, bar(3) + 2 * beat, glow, pad_end],
-                                   [0.18, 0.22, 0.25, 0.34, 0.29, 0.17, 0.02]))
+    # the flute: phrase a bars 3-4, then phrase b (peak on the sun ray, resolution on the flicker)
+    rows_a = [(b, d, m) for (b, d, m) in theme([0, 1, 2, 3]) if b >= 8]
+    rows_b = [(b + 16, d, m) for (b, d, m) in theme([4, 5, 6, 7, 8])]
+    shape_a = [0.40, 0.38, 0.36, [(0, 0.40), (0.5, 0.34), (1, 0.12)]]
+    shape_b = [0.40, 0.44, 0.50, 0.52, [(0, 0.54), (0.6, 0.6), (1, 0.55)], 0.52, 0.5,
+               [(0, 0.62), (0.5, 0.66), (1, 0.6)], 0.56, 0.52, [(0, 0.52), (0.7, 0.48), (1, 0.45)], 0.47, 0.45,
+               [(0, 0.46), (0.3, 0.38), (1, 0.0)]]
+    fa = [Note(ta(b), ta.dur(b, d), m, shape_a[i], slur=(i != 0)) for i, (b, d, m) in enumerate(rows_a)]
+    fb = [Note(tb(b), tb.dur(b, d), m, shape_b[i], slur=(i not in (0, 4))) for i, (b, d, m) in enumerate(rows_b)]
+    fb[-1].d = max(1.0, min(2.6 * bb, trem - 1.2 - fb[-1].t))
+    S.flute("dawn/flute", fa + fb, -15.0, vib_depth=0.004)
+
+    # string pad: the theme's harmony, swelling at the sun, fading into the core hum
+    p0 = fade0 + 0.4
+    seq = [(p0, bar(1), ["D3", "A3", "E4", "F#4"]), (bar(1), bar(2), ["B2", "A3", "D4", "F#4"]),
+           (bar(2), bar(3), ["G2", "B3", "D4", "F#4"]), (bar(3), bar(3) + 3 * ab, ["A2", "A3", "D4", "E4"]),
+           (bar(3) + 3 * ab, bar(4), ["A2", "A3", "C#4", "E4"]), (bar(4), bar(5), ["G2", "B3", "D4", "E4"]),
+           (bar(5), bar(6), ["A2", "A3", "D4", "G4"]), (bar(6), bar(7), ["G2", "B3", "D4", "F#4"]),
+           (bar(7), bar(7) + 3 * bb, ["A2", "A3", "D4", "E4"]), (bar(7) + 3 * bb, bar(8), ["A2", "A3", "C#4", "E4"]),
+           (bar(8), max(bar(8) + 1.0, trem - 1.0), ["D3", "A3", "D4", "F#4"])]
+    chords = [(a, b - a, ms) for a, b, ms in seq]
+    pad_end = trem - 1.0
+    sw = lambda t: float(np.interp(t, [p0, bar(2), bar(4), bar(6) - 0.6, bar(6) + 1.2, bar(8), bar(8) + 1.5, pad_end],
+                                   [0.16, 0.2, 0.21, 0.25, 0.33, 0.24, 0.12, 0.0]))
     lines = voice_lines([(t, d, [nm(x) for x in ms]) for t, d, ms in chords], lambda t, k: sw(t))
-    for ln in lines:            # swell inside each held chord, following sw()
+    for ln in lines:
         for nt in ln:
             nt.v = [(0, sw(nt.t)), (0.5, sw(nt.t + nt.d / 2)), (1, sw(nt.t + nt.d))]
     S.strings("dawn/pad_vc", [lines[0]], "vc", -12.0, attack=1.6, release=1.4, players=4)
     S.strings("dawn/pad_vla", lines[1:3], "vla", -13.0, attack=1.6, release=1.4)
     S.strings("dawn/pad_vln2", [lines[3]], "vln2", -16.0, attack=1.8, release=1.4, players=5, bright=-0.2)
     bass = [Note(t, d, nm(ms[0]) - 12, [(0, sw(t) * 0.8), (1, sw(t + d) * 0.8)], slur=True) for t, d, ms in chords]
-    S.strings("dawn/pad_cb", [bass], "cb", -16.0, attack=1.8, release=1.6, players=3)
-    # violins: the light (B5 over the Gmaj7, then A5)
-    vl = [Note(bar(2) - 0.2, 4 * beat + 0.2, nm("B5"), [(0, 0.05), (0.35, 0.31), (1, 0.26)], slur=True),
-          Note(bar(3), 6 * beat, nm("A5"), [(0, 0.32), (0.4, 0.24), (1, 0.02)], slur=True)]
-    S.strings("dawn/light_vln1", [vl], "vln1", -17.0, attack=0.9, release=1.2, players=6)
+    S.strings("dawn/pad_cb", [bass], "cb", -17.0, attack=1.8, release=1.6, players=3)
+    vl = [Note(bar(6) - 0.2, 4 * bb + 0.2, nm("D6"), [(0, 0.04), (0.35, 0.27), (1, 0.22)], slur=True),
+          Note(bar(7), 4 * bb, nm("C#6"), [(0, 0.24), (0.5, 0.18), (1, 0.02)], slur=True)]
+    S.strings("dawn/light_vln1", [vl], "vln1", -18.0, attack=0.9, release=1.2, players=6)
     S.mark("dawn_strings_end", pad_end)
 
-    # felt piano: a slow rocking accompaniment under the flute
-    pat = [["D2", "A2", "F#3", "E3"], ["B1", "F#2", "D3", "A2"], ["G1", "D2", "B2", "F#3"], ["A1", "E2", "D3", "C#3"]]
+    # felt piano: a slow rocking accompaniment under phrase b
+    pat = {4: ["E2", "B2", "G3", "D3"], 5: ["A1", "E2", "D3", "G3"], 6: ["G1", "D2", "B2", "F#3"], 7: ["A1", "E2", "D3", "C#3"]}
     pn = []
-    for k, notes in enumerate(pat):
+    for k, notes in pat.items():
         for j, x in enumerate(notes):
-            t = bar(k) + j * beat
-            hold = (4 - j) * beat + 0.2
-            if k == 3 and j == 2:          # the suspended 4th lets go when the third arrives
-                hold = beat
-            v = (0.36 if j == 0 else 0.24) * (1.12 if k == 2 else 1.0)
-            pn.append(Note(t, hold, nm(x), v))
-    pn.append(Note(bar(4), 3.2, nm("A1"), 0.22))
-    pn.append(Note(bar(4) + 0.02, 3.0, nm("E2"), 0.16))
+            t = bar(k) + j * bb
+            hold = (4 - j) * bb + 0.2
+            if k == 7 and j == 2:          # the suspended 4th lets go when the third arrives
+                hold = bb
+            pn.append(Note(t, hold, nm(x), (0.36 if j == 0 else 0.24) * (1.12 if k == 6 else 1.0)))
+    for dt, x, v in ((0.0, "D2", 0.3), (0.03, "A2", 0.2), (0.06, "F#3", 0.16)):
+        pn.append(Note(bar(8) + dt, max(1.5, 3 * bb), nm(x), v))
     S.piano("dawn/piano", pn, -11.0)
 
-    # the flute: phrase a, tongued at bar starts and on the repeated D
-    rows = theme([0, 1, 2, 3])
-    shape = {0: 0.42, 1: 0.46, 2: 0.52, 3: 0.55, 4: [(0, 0.55), (0.6, 0.64), (1, 0.56)], 5: 0.52, 6: 0.48,
-             7: [(0, 0.55), (0.7, 0.5), (1, 0.46)], 8: 0.44, 9: 0.42, 10: [(0, 0.44), (0.35, 0.40), (1, 0.08)]}
-    fl = notes_from(rows, tm, lambda i, b, m: shape[i], tongue=(0, 7), legato=1.0)
-    fl[-1].d = min(fl[-1].d, max(1.0, glow - fl[-1].t))
-    S.flute("dawn/flute", fl, -15.5, vib_depth=0.004)
-
-    # harp: the first ray of sun (Gmaj9 unfolding)
+    # harp: the first ray of sun (Gmaj9 unfolding under the peak)
     hn = [Note(sun - 0.05 + 0.16 * k * (1 + 0.04 * k), 1.0, nm(x), 0.42 + 0.03 * k)
           for k, x in enumerate(["G2", "D3", "A3", "B3", "D4", "F#4", "A4", "B4"])]
     S.modal("dawn/harp_sun", I.harp, hn, -16.0, hall=0.45)
 
-    # a faint thread of the dream into the near-silence: violin harmonic E6
-    th0 = bar(3) + 2 * beat
+    # a faint thread of the dream into the near-silence: violin harmonic E6 (the ninth over D)
+    th0 = bar(8) + 0.8
     th1 = trem - 0.5
     if th1 - th0 > 1.0:
-        S.strings("dawn/thread", [[Note(th0, th1 - th0, nm("E6"), [(0, 0.0), (0.25, 0.18), (0.8, 0.03), (1, 0.0)])]], "vln1", -29.0,
+        S.strings("dawn/thread", [[Note(th0, th1 - th0, nm("E6"), [(0, 0.0), (0.25, 0.16), (0.8, 0.03), (1, 0.0)])]], "vln1", -29.0,
                   art="harm", attack=0.8, release=0.5, players=3)
     S.mark("near_silence", trem)
 
@@ -541,9 +546,12 @@ def flight(S):
     S.modal("flt/harp_up", I.harp, [Note(SRv - 0.55 + 0.55 * (k / len(hg)) ** 0.85, 1, m, 0.5) for k, m in enumerate(hg)], -10.0, hall=0.45)
     S.perc("flt/swell_peak", SRv - 1.3, I.cymbal_swell(1.3, rg(22)), -15.0, hall=0.3)
 
-    # THE PEAK: bars 6-8 on sky_reveal
-    end_t = min(TF - 0.5, f_out - 1.6)
-    pb = fit_beat(end_t - SRv, 8, 0.5, 0.95, "flight peak")
+    # THE PEAK: bars 6-8 on sky_reveal, carried through the sky shots; it resolves on the spark
+    # (the robot crossing the sun) when the cues have one
+    _, cut, _ = C.sky_split()
+    spark = C.spark_time()
+    end_t = spark if (spark is not None and spark > SRv + 3.0) else min(TF - 0.5, f_out - 1.6)
+    pb = fit_beat(end_t - SRv, 8, 0.5, 1.05, "flight peak")
     tp = Tempo(rit_anchors(0, 8, SRv, SRv + 8 * pb, ratio=1.12))
     rows = theme([6, 7, 8], transpose=E)
     pv = lambda i, b, m: [(0, 0.95), (0.5, 0.9), (1, 0.85)] if i == 0 else [(0, 0.8), (1, 0.78)]
@@ -568,11 +576,31 @@ def flight(S):
     S.strings("flt/pk_vc", [hl[1], hl[2]], "vc", -8.0, attack=0.1, release=0.8)
     S.strings("flt/pk_vla", [hl[3], hl[4]], "vla", -10.0, attack=0.12, release=0.8)
     S.strings("flt/pk_vln2", [hl[5]], "vln2", -10.0, attack=0.12, release=0.8)
-    hh = voice_lines([(SRv, b7 - SRv, [nm("A3"), nm("C#4"), nm("E4")]), (b7, b7m - b7, [nm("G#3"), nm("B3"), nm("D#4")]),
-                      (b7m, b8 - b7m, [nm("A3"), nm("B3"), nm("E4")]), (b8, min(3.0, fin.d), [nm("G#3"), nm("B3"), nm("E4")])], 0.8)
+    hh = voice_lines([(SRv, b7 - SRv, [nm("A3"), nm("C#4")]), (b7, b7m - b7, [nm("G#3"), nm("B3")]),
+                      (b7m, b8 - b7m, [nm("A3"), nm("B3")]), (b8, min(3.0, fin.d), [nm("G#3"), nm("B3")])], 0.75)
     for ln in hh:
-        ln[-1].v = [(0, 0.75), (1, 0.0)]
-    S.brass("flt/pk_hn", hh, "horn", -6.5, attack=0.08, release=0.5)
+        ln[-1].v = [(0, 0.7), (1, 0.0)]
+    S.brass("flt/pk_hn", hh, "horn", -8.5, attack=0.08, release=0.5)
+    # ...while two horns sing the theme's head under the violins' peak (G#3 B3 E4. F#4 | G#4 - - F#4 | E4)
+    mot = [(0, 1, "G#3"), (1, 1, "B3"), (2, 1.5, "E4"), (3.5, 0.5, "F#4"), (4, 3, "G#4"), (7, 1, "F#4")]
+    hm = [Note(tp(b), tp.dur(b, d), nm(x), [(0, 0.78), (1, 0.84)], slur=(k not in (0, 4))) for k, (b, d, x) in enumerate(mot)]
+    hm.append(Note(b8, min(3.0, fin.d), nm("E4"), [(0, 0.8), (0.4, 0.5), (1, 0.0)], slur=True))
+    S.brass("flt/pk_hn_motif", [hm], "horn", -5.5, attack=0.06, release=0.5, players=2)
+    S.mark("horn_motif", hm[0].t)
+    # the ostinato keeps driving while the camera flies with the robot, and stops on the cut to the wide sky
+    ost_end = cut if (cut is not None and cut < b7 + 0.01) else min(b7, SRv + 3.0)
+    sixteenth = pb / 4
+    ov, ova = [], []
+    k = 0
+    while SRv + k * sixteenth < ost_end - 0.05:
+        t = SRv + k * sixteenth
+        ov.append(Note(t, sixteenth * 0.7, nm("A2") if k % 2 == 0 else nm("A3"), 0.6 + 0.2 * (k % 4 == 0)))
+        ova.append(Note(t, sixteenth * 0.65, (nm("A3"), nm("C#4"), nm("E4"), nm("C#4"))[k % 4], 0.5))
+        k += 1
+    if ov:
+        S.strings("flt/ost2_vc", [ov], "vc", -11.0, art="spicc")
+        S.strings("flt/ost2_vla", [ova], "vla", -15.0, art="spicc")
+        S.mark("ostinato_until", ost_end)
     tbl = voice_lines([(SRv, b7 - SRv, [nm("A2"), nm("E3")]), (b7, b7m - b7, [nm("G#2"), nm("D#3")]), (b7m, b8 - b7m, [nm("B2"), nm("F#3")]),
                        (b8, min(3.0, fin.d), [nm("E2"), nm("B2")])], 0.7)
     for ln in tbl:
@@ -591,10 +619,11 @@ def flight(S):
     # the trail of light: soft celesta/glockenspiel sparkles in E pentatonic, thinning out
     pent = [nm(x) for x in ("E6", "F#6", "G#6", "B6", "C#7", "E7", "F#7")]
     r = rg(40)
-    t = SRv + 0.35
+    s0 = (cut + 0.1) if cut is not None else SRv + 0.35          # the trail is seen in the wide shot
+    t = s0
     sp = []
     while t < TF + 0.8:
-        x = (t - SRv) / max(0.5, TF + 0.8 - SRv)
+        x = (t - s0) / max(0.5, TF + 0.8 - s0)
         sp.append(Note(t, 1, pent[int(r.integers(len(pent)))], 0.3 * (1 - 0.6 * x) + 0.05))
         t += r.exponential(0.16 + 0.35 * x)
     S.modal("flt/sparkle", I.celesta, sp, -17.0, hall=0.6)

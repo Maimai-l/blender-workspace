@@ -44,7 +44,7 @@ class Ctx:
 def grain_kernel(rng, k):
     """Noise grain with a smooth onset (10 %) and a tapered tail: no steps."""
     i = np.arange(k)
-    w = np.exp(-i / (k / 4)) * (0.5 - 0.5 * np.cos(np.pi * np.minimum(1.0, i / max(9.0, 0.1 * k))))
+    w = np.exp(-i / (k / 4)) * (0.5 - 0.5 * np.cos(np.pi * np.minimum(1.0, i / max(14.0, 0.1 * k))))
     m = max(1, k // 5)
     w[-m:] *= cos_ramp(m)[::-1]
     return rng.standard_normal(k) * w
@@ -149,6 +149,8 @@ def clank(rng, base=320.0, dur=1.6, bright=0.6, low=0.6, n_modes=9):
     add_modes(y, 0, base * ratios, amps, taus, rng.uniform(0, TWO_PI, n_modes), 12)
     y += bright * norm_peak(bp(rng.standard_normal(n), 1200, 7000, 2)) * np.exp(-t / 0.006)
     y += low * np.sin(TWO_PI * np.cumsum(38 + 50 * np.exp(-t / 0.05)) / SR) * np.exp(-t / 0.18)
+    q = max(2, n // 5)
+    y[-q:] *= cos_ramp(q)[::-1]                    # let the metal ring out, never cut it
     return norm_peak(ramp_in(y, 0.4))
 
 
@@ -442,6 +444,21 @@ def ambience(ctx):
     forest = np.where(t < T_sky - 0.3, forest, np.minimum(forest, np.interp(t, [T_sky - 0.3, T_sky + 0.3], [forest[sec(min(dur, T_sky - 0.3)) - 1], 0.0])))
     forest = np.maximum(forest, np.interp(t, [0, T_tf + 0.4, max(c_in, T_tf + 1.0) + 0.8, dur], [0, 0, 0.75, 0.75]))
     forest = smooth(forest, 300)
+    # the opening shot sees the forest from above the canopy: high open wind there, the
+    # forest floor held back until the camera comes down (crossfade after the first cut)
+    ve = C.vista_end()
+    vista = np.interp(t, [0, ve - 0.3, ve + 2.2], [1, 1, 0])
+    floor = 1 - 0.65 * vista
+    mv = sec(min(dur, ve + 2.5))
+    hw = np.zeros((mv, 2))
+    sway = 1 + 0.35 * slow_noise(rng, mv, 0.25)
+    for ch in range(2):
+        body_ = norm_rms(lp(pink(rng, mv), 1400, 2)) * sway
+        sea = norm_rms(crackle_mono(rng, mv, 1600, (1500, 6000), 3.0)) * (0.7 + 0.3 * sway)
+        whoo = norm_rms(svf_tv(pink(rng, mv), 500 * (1 + 0.3 * slow_noise(rng, mv, 0.3)), 1.2, 1))
+        hw[:, ch] = 0.75 * body_ + 0.3 * sea + 0.4 * whoo
+    hw /= np.sqrt(np.mean(hw ** 2)) + 1e-12
+    ctx.add(hw * vista[:mv, None], 0.0, g=-35, far=0.2, name="high wind over the canopy", bus="amb")
     # wind: gusts (asymmetric bumps), quieter while the robot acts, scripted rise before the ring
     gust = np.zeros(n)
     tg = 1.0
@@ -465,11 +482,11 @@ def ambience(ctx):
         body = norm_rms(svf_tv(src, fc, 0.7, 1)) * db(-44 + 5.0 * wind)
         hissy = norm_rms(svf_tv(rng.standard_normal(n), 900 * (1 + 2.0 * wind), 1.2, 1)) * db(-58 + 12 * wind)
         out[:, ch] = body + hissy
-    ctx.add(out * forest[:, None], 0.0, g=0.0, far=0.10, name="forest wind", bus="amb")
+    ctx.add(out * (forest * floor)[:, None], 0.0, g=0.0, far=0.10, name="forest wind", bus="amb")
     # leaves: crinkle texture whose density follows the wind
     lv = texture(rng, n, 120 + 900 * np.clip(wind - 0.25, 0, 1.5) ** 1.5, [("bp", 2500, 9000, 1.0), ("bp", 1500, 5000, 0.6)],
                  kernel_ms=2.5, spread=0.95)
-    ctx.add(lv * (forest * db(-49 + 5 * np.clip(wind, 0, 1.4)))[:, None] / (np.abs(lv).max() + 1e-9) * 6, 0.0, far=0.25,
+    ctx.add(lv * (forest * floor * db(-49 + 5 * np.clip(wind, 0, 1.4)))[:, None] / (np.abs(lv).max() + 1e-9) * 6, 0.0, far=0.25,
             name="leaves", bus="amb")
     # crickets at dawn, fading as the sun arrives
     cri_end = T_sun + 2.0
@@ -481,7 +498,7 @@ def ambience(ctx):
         pulses = np.clip(np.sin(TWO_PI * rate * tc), 0, 1) ** 3
         car = np.sin(TWO_PI * fcar * tc) + 0.2 * np.sin(TWO_PI * 2 * fcar * tc)
         y = car * pulses * smooth(chirp_on, 8) * np.interp(tc, [0, 1.5, cri_end - 4.0, cri_end], [0.2, 1, 1, 0])
-        ctx.add(y, 0.0, pan=pan, g=lvl, far=0.6, name="cricket", bus="amb")
+        ctx.add(y * floor[:m], 0.0, pan=pan, g=lvl, far=0.6, name="cricket", bus="amb")
     # a distant stream down in the valley
     st = pink(rng, n)
     stream = np.stack([bp(st, 250, 2500, 2), bp(pink(rng, n), 250, 2500, 2)], 1)
@@ -489,7 +506,7 @@ def ambience(ctx):
     bub = texture(rng, n, 70, [("res", 700, 12, 1.0), ("res", 1100, 15, 0.8), ("res", 1600, 18, 0.6), ("res", 520, 10, 0.8)],
                   kernel_ms=0, spread=0.6)
     stream = norm_rms(stream) * db(-55) + norm_rms(bub) * db(-60)
-    ctx.add(stream * forest[:, None], 0.0, far=0.5, name="distant stream", bus="amb", width=0.7)
+    ctx.add(stream * (forest * floor)[:, None], 0.0, far=0.5, name="distant stream", bus="amb", width=0.7)
     # distant birds: a dawn chorus that stops when the flock flees, returning in the coda
     windows = [(0.8, T_burst - 0.3, (1.3, 3.2), 0.0), (max(c_in, T_tf + 1.0) + 0.5, dur - 0.5, (1.4, 3.0), -3.0)]
     sp_list = ["robin", "tit", "chaff", "thrush", "dove", "wren"]
@@ -543,6 +560,17 @@ def on(name):
 @on("bird_crosses_far")
 def h_bird_crosses(ctx, t, k):
     r = rng_for("fx", "cross", k)
+    flare = ctx.C.after(t, {"bird_wings_flare", "bird_touchdown"}, None)
+    if flare is None or flare - t > 5.0:          # not the little bird arriving: a few birds crossing the vista
+        for j in range(3):
+            w = wings(r, r.uniform(1.6, 2.4), r.uniform(13, 18), "small", bound=True)
+            x = np.linspace(0, 1, len(w))
+            w *= np.interp(x, [0, 0.3, 0.7, 1], [0.2, 1.0, 0.9, 0.2])
+            side = -1 if j % 2 else 1
+            ctx.add(dist(w, r.uniform(6, 9)), t - 0.6 + 0.35 * j, pan=np.interp(x, [0, 1], [0.8 * side, -0.6 * side]), g=-7, far=1.0,
+                    name="birds cross the vista" if j == 0 else None)
+        ctx.add(dist(phrase(r, "tit", 1.1), 7.0), t + 0.4, pan=0.3, g=-8, far=1.0, name="far call")
+        return
     d = 2.2
     w = wings(r, d, 17.0, "small", bound=True)
     x = np.linspace(0, 1, len(w))
@@ -1047,14 +1075,8 @@ def h_smear(ctx, t, k):
     ctx.add(w, t, g=-13, near=0.2, name="launch suck", sync=True)
 
 
-def doppler_roar(rng, dur, lift_accel=44.0, vmax=230.0, d0=18.0, c=343.0):
-    """The roar of the climbing robot heard from the ground: a turbulent source rendered in
-    source time, then received through a time-varying delay r(t)/c (Doppler), 1/r and air
-    absorption.  Returns (stereo, distance curve)."""
-    n = sec(dur)
-    ts = np.arange(n) / SR
-    src_n = n + sec(3.0)
-    tsrc = np.arange(src_n) / SR
+def roar_source(rng, src_n):
+    """The engines themselves: turbulent band noise, a low saw tone (72 Hz), a turbine whine."""
     base = np.zeros((src_n, 2))
     turb = 1 + 0.3 * np.clip(slow_noise(rng, src_n, 16.0), -2, 2)
     tone_f = 72.0 * (1 + 0.02 * slow_noise(rng, src_n, 2.0))
@@ -1065,14 +1087,32 @@ def doppler_roar(rng, dur, lift_accel=44.0, vmax=230.0, d0=18.0, c=343.0):
         res = svf_tv(nz, np.full(src_n, 1300.0), 1.8, 1)
         broad = lp(rng.standard_normal(src_n), 700, 2)
         base[:, ch] = (0.55 * norm_rms(res) + 0.6 * norm_rms(broad) + 0.35 * norm_rms(tone) + 0.05 * whine) * turb
-    # trajectory: accelerate straight up, capped speed
-    t_cap = vmax / lift_accel
-    h = np.where(tsrc < t_cap, 0.5 * lift_accel * tsrc ** 2, 0.5 * lift_accel * t_cap ** 2 + vmax * (tsrc - t_cap))
-    r_src = np.sqrt(d0 ** 2 + h ** 2)
-    # received at ts: emitted te with te + r(te)/c = ts  (fixed point)
+    return base
+
+
+def doppler_roar(rng, dur, lift_accel=44.0, vmax=230.0, d0=18.0, c=343.0, r_fn=None):
+    """The roar heard from a fixed listener: the source is rendered in source time, then
+    received through a time-varying delay r(t)/c (Doppler), 1/r and air absorption.  The
+    default trajectory is the climb seen from the ground; r_fn(t) gives any other distance
+    curve (its value at t=0 is the reference distance).  Returns (stereo, distance curve)."""
+    n = sec(dur)
+    ts = np.arange(n) / SR
+    src_n = n + sec(3.0)
+    tsrc = np.arange(src_n) / SR
+    base = roar_source(rng, src_n)
+    if r_fn is None:
+        t_cap = vmax / lift_accel
+        h = np.where(tsrc < t_cap, 0.5 * lift_accel * tsrc ** 2, 0.5 * lift_accel * t_cap ** 2 + vmax * (tsrc - t_cap))
+        r_src = np.sqrt(d0 ** 2 + h ** 2)
+    else:
+        r_src = r_fn(tsrc)
+        d0 = float(r_src[0])
+    # received at ts: emitted te with te + r(te)/c = ts  (Newton; the source moves away)
+    v_src = np.gradient(r_src, tsrc)
     te = ts - d0 / c
-    for _ in range(8):
-        te = ts - np.interp(te, tsrc, r_src) / c
+    for _ in range(6):
+        te = np.clip(te, 0, tsrc[-1])
+        te = te - (te + np.interp(te, tsrc, r_src) / c - ts) / (1 + np.interp(te, tsrc, v_src) / c)
     te = np.clip(te, 0, tsrc[-1])
     r_rec = np.interp(te, tsrc, r_src)
     out = np.zeros((n, 2))
@@ -1101,10 +1141,14 @@ def h_launch(ctx, t, k):
     blast[: sec(0.002)] *= cos_ramp(sec(0.002))[:, None]
     ctx.add(blast / np.abs(blast).max(), t, g=-1, far=0.45, near=0.3, name="LAUNCH blast", sync=True)
     end = C.after(t, {"trail_fades"}, t + 10.5) + 2.0
+    sr_, cut, _ = C.sky_split()
+    fade = 1.0
+    if cut is not None and sr_ > t:
+        end, fade = sr_ + 0.12, 0.12                 # cut to the camera flying with it
     roar, rr = doppler_roar(r, end - t)
     nr = len(roar)
     trn = np.arange(nr) / SR
-    ramp = np.interp(trn, [0, 0.06, 0.5, end - t - 1.0, end - t], [0, 0.8, 1, 1, 0])
+    ramp = np.interp(trn, [0, 0.06, 0.5, end - t - fade, end - t], [0, 0.8, 1, 1, 0])
     ctx.add(roar * ramp[:, None] / (np.abs(roar).max() + 1e-9), t, g=-3, far=0.35, sky=0.25, name="roar recedes (Doppler)")
     deb = texture(r, sec(4.0), np.interp(np.arange(sec(4.0)) / SR, [0, 0.4, 1.2, 4.0], [0, 1600, 600, 20]),
                   [("bp", 1800, 8000, 1.0), ("res", 120, 3, 0.9), ("res", 2400, 12, 0.6), ("bp", 400, 1600, 0.6)], kernel_ms=2.5, spread=1.0)
@@ -1125,16 +1169,117 @@ def h_canopy(ctx, t, k):
     ctx.add(w, t, g=-15, far=0.4, name="passing through")
 
 
+def rushing_wind(rng, dur):
+    """Flying with the robot: a wall of air (deep roar, buffeting, a high hiss) plus a few
+    whistles over the armour; the 300-2000 Hz band is kept lighter so the orchestra sings
+    through it.  Stereo, decorrelated, mono-safe."""
+    n = sec(dur)
+    out = np.zeros((n, 2))
+    buffet = 1 + 0.35 * np.clip(slow_noise(rng, n, 6.0), -2, 2)
+    for ch in range(2):
+        low = norm_rms(lp(pink(rng, n), 380, 2))
+        mid = norm_rms(bp(rng.standard_normal(n), 600, 1800, 2)) * buffet
+        air = norm_rms(bp(rng.standard_normal(n), 3000, 9000, 2)) * (1 + 0.25 * slow_noise(rng, n, 9.0))
+        wh = np.zeros(n)
+        for j in range(3):
+            fc = rng.uniform(1100, 2600) * (1 + 0.12 * slow_noise(rng, n, 0.6))
+            wh += norm_rms(svf_tv(rng.standard_normal(n), fc, 22.0, 1)) * (0.5 + 0.5 * np.clip(slow_noise(rng, n, 1.5), -1, 1))
+        out[:, ch] = 1.0 * low + 0.35 * mid + 0.45 * air + 0.12 * wh / 3
+    return out / (np.abs(out).max() + 1e-9)
+
+
+def debris_flutter(rng, dur, count=22):
+    """Leaves, moss and soil streaming off the robot and fluttering past the camera."""
+    n = sec(dur)
+    out = np.zeros((n, 2))
+    for j in range(count):
+        t0 = dur * rng.beta(1.1, 2.0)
+        d = rng.uniform(0.1, 0.3)
+        m = min(sec(d), n - sec(t0))
+        if m < 32:
+            continue
+        x = np.arange(m) / SR
+        fl = (0.5 + 0.5 * np.sin(TWO_PI * rng.uniform(12, 26) * x + rng.uniform(0, TWO_PI))) ** 2
+        y = bp(rng.standard_normal(m), rng.uniform(1300, 2500), rng.uniform(5000, 8500), 2) * fl * np.sin(np.pi * x / x[-1]) ** 2
+        side = rng.choice([-1.0, 1.0])
+        p = np.linspace(side * rng.uniform(0.5, 0.95), -side * rng.uniform(0.5, 0.95), m)
+        ang = (p + 1) * np.pi / 4
+        s0 = sec(t0)
+        g = rng.uniform(0.4, 1.0)
+        out[s0:s0 + m, 0] += y * np.cos(ang) * g
+        out[s0:s0 + m, 1] += y * np.sin(ang) * g
+    sand = texture(rng, n, np.interp(np.arange(n) / SR, [0, dur], [900, 250]), [("bp", 2200, 8000, 1.0)], kernel_ms=1.2, spread=1.0)
+    out = out / (np.abs(out).max() + 1e-9) + 0.5 * sand / (np.abs(sand).max() + 1e-9)
+    return out / (np.abs(out).max() + 1e-9)
+
+
+def spark_chime(rng):
+    """The robot crossing the sun: a bright E-major chime (bell partials) with a glittering
+    tail of tiny pings and a breath of air."""
+    dur = 4.0
+    n = sec(dur)
+    out = np.zeros((n, 2))
+    for ch in range(2):
+        y = np.zeros(n)
+        f0 = 2637.0 * (1 + 0.0015 * (ch - 0.5))
+        add_modes(y, 0, f0 * np.array([1.0, 1.5, 2.0, 1.26, 2.52, 3.03]), np.array([1.0, 0.55, 0.35, 0.4, 0.15, 0.1]),
+                  np.array([1.1, 0.8, 0.5, 0.9, 0.3, 0.2]), rng.uniform(0, TWO_PI, 6), 24)
+        pent = np.array([2637.0, 2960.0, 3322.4, 3951.1, 4434.9, 5274.0, 5919.9, 6644.9])
+        for j in range(26):
+            t0 = 0.03 + rng.exponential(0.35)
+            if t0 > dur - 0.6:
+                continue
+            add_modes(y, sec(t0), np.array([pent[int(rng.integers(len(pent)))] * rng.choice([1.0, 2.0])]),
+                      np.array([0.18 * np.exp(-t0 / 0.6)]), np.array([0.25]), np.array([0.0]), 24)
+        y += 0.12 * hp(rng.standard_normal(n), 5000, 2) * np.exp(-np.arange(n) / sec(0.12)) * np.minimum(1, np.arange(n) / sec(0.01))
+        out[:, ch] = y
+    return out / (np.abs(out).max() + 1e-9)
+
+
+@on("sun_spark")
+def h_spark(ctx, t, k):
+    ctx.add(spark_chime(rng_for("fx", "spark", k)), t, g=-20, sky=0.5, near=0.1, name="spark crosses the sun", sync=True)
+
+
 @on("sky_reveal")
 def h_sky(ctx, t, k):
-    """The trail of light and mist: airy, slowly sweeping noise with faint E-major partials."""
+    """The sky.  When the cues split it into a tracking shot and a wide shot: first we fly
+    with the robot (rushing wind, the engines close and steady - no Doppler - debris
+    fluttering past), then, wide, the roar flies away from us (Doppler), the trail of light
+    and mist shimmers, and a chime sparks as it crosses the sun.  Otherwise only the trail."""
     C = ctx.C
     r = rng_for("fx", "trail", k)
     tf = C.after(t, {"trail_fades"}, t + 6.5)
-    d = tf - t + 2.0
+    sr_, cut, f_end = C.sky_split()
+    t_trail = t
+    if cut is not None and abs(sr_ - t) < 1e-6:
+        dA = cut - t
+        nA = sec(dA + 0.12)
+        envA = np.ones(nA)
+        envA[: sec(0.02)] = cos_ramp(sec(0.02))
+        envA[-sec(0.12):] *= cos_ramp(sec(0.12))[::-1]
+        ctx.add(rushing_wind(r, dA + 0.12) * envA[:, None], t, g=-7, near=0.1, name="rushing wind (flying with it)", sync=True)
+        src = roar_source(r, nA)
+        close = np.stack([lp(src[:, ch], 6000, 2) for ch in range(2)], 1)
+        ctx.add(close / (np.abs(close).max() + 1e-9) * envA[:, None], t, g=-10, near=0.15, name="engines close (no Doppler)", width=0.8)
+        ctx.add(debris_flutter(r, dA + 0.12) * envA[:, None], t, g=-17, near=0.1, name="debris flutters past")
+        # the wide shot: it flies away from us
+        dB = max(1.0, tf + 1.5 - cut)
+        def away(ts_):
+            v = np.minimum(140.0 + 70.0 * ts_, 300.0)
+            return 90.0 + np.cumsum(v) / SR
+        roarB, _ = doppler_roar(r, dB, r_fn=away)
+        nb = len(roarB)
+        eB = np.interp(np.arange(nb) / SR, [0, 0.03, dB - 1.0, dB], [0, 1, 1, 0])
+        ctx.add(roarB * eB[:, None] / (np.abs(roarB).max() + 1e-9), cut, g=-19, far=0.3, sky=0.5, name="roar flies away (Doppler)")
+        t_trail = cut
+        spark = C.spark_time()
+        if spark is not None and C.first("sun_spark") is None:
+            ctx.add(spark_chime(rng_for("fx", "spark", 0)), spark, g=-20, sky=0.5, near=0.1, name="spark crosses the sun", onset=spark)
+    d = tf - t_trail + 2.0
     n = sec(d)
     tn = np.arange(n) / SR
-    e = np.interp(tn, [0, 0.8, tf - t - 0.4, tf - t + 1.6, d], [0, 1, 0.8, 0, 0])
+    e = np.interp(tn, [0, 0.6, tf - t_trail - 0.4, tf - t_trail + 1.6, d], [0, 1, 0.8, 0, 0])
     air = np.zeros((n, 2))
     for ch in range(2):
         air[:, ch] = svf_tv(r.standard_normal(n), 3500 * (1 + 0.5 * slow_noise(r, n, 0.3)), 0.9, 1)
@@ -1145,7 +1290,7 @@ def h_sky(ctx, t, k):
             fl = 0.6 + 0.4 * np.sin(TWO_PI * r.uniform(0.15, 0.5) * tn + r.uniform(0, TWO_PI))
             parts[:, ch] += np.sin(TWO_PI * f * (1 + 0.002 * (ch - 0.5)) * tn + r.uniform(0, TWO_PI)) * fl / (f / 1318.5)
     parts /= np.abs(parts).max() + 1e-9
-    ctx.add((air * 0.8 + parts * 0.25) * e[:, None], t, g=-20, sky=0.6, name="trail shimmer")
+    ctx.add((air * 0.8 + parts * 0.25) * e[:, None], t_trail, g=-20, sky=0.6, name="trail shimmer", onset=t)
 
 
 @on("trail_fades")

@@ -113,7 +113,7 @@ def blur_small(img, sigma, k=4):
     return cv2.resize(sm, (w, h), interpolation=cv2.INTER_LINEAR)
 
 
-def bloom(rgb, thr=0.74, sigma=22, strength=0.24, tint=(1.0, 0.86, 0.62)):
+def bloom(rgb, thr=0.8, sigma=22, strength=0.2, tint=(1.0, 0.86, 0.62)):
     b = np.clip(rgb - thr, 0, None) / (1 - thr)
     g = blur_small(b, sigma) * 0.6 + blur_small(b, sigma * 3) * 0.4
     return rgb + g * np.asarray(tint, np.float32) * strength
@@ -180,7 +180,7 @@ def paper(rgb, amount=0.025):
     return rgb * (1 + _PAPER[..., None] * amount)
 
 
-def finish(rgb, frame, vig=0.2, grain_amt=0.006, paper_amt=0.008, do_bloom=True, **gk):
+def finish(rgb, frame, vig=0.2, grain_amt=0.0035, paper_amt=0.008, do_bloom=True, **gk):
     if do_bloom:
         rgb = bloom(rgb)
     rgb = grade(rgb, **gk)

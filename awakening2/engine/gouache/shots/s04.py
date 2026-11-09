@@ -10,6 +10,7 @@ from ..layers import Painting
 from ..sky import sky
 from ..atmos import mist, glow
 from ..forest import far_trunks, leafy_mass, undergrowth, forest_row
+from ..soft import mist_strokes
 from ..ground import fern
 from ..foliage import Blobs
 
@@ -28,15 +29,15 @@ def build(outdir, quick=False):
     cv = P.layer('far', 0.2)
     stops = [C(84, 96, 120), C(120, 126, 148), C(150, 148, 160), C(108, 116, 130), C(64, 76, 92)]
     sky(cv, rng, stops, [0, 0.12, 0.2, 0.5, 1.0], sun=(260, 120), glow=(500, C(236, 210, 170), 0.5), n_strokes=0.6)
-    xs = np.sort(rng.uniform(-40, 1960, 16))
     for (dd, n_, wr, lf) in [(0.55, 12, (16, 50), 5.0), (0.3, 8, (40, 120), 7.0)]:
         forest_row(cv, rng, -80, 2000, H + 80, -200, n_, dd, HAZE, L3, SUN2, width=wr, leaf=lf, branches=(1, 3),
-                   saplings=0.0, vines=0.4, fade_p=0.2, top_jitter=20, leaf_size=40 if dd > 0.5 else 56)
-        mist(cv, rng, -100, 2020, 60, 700, HAZE_W, HAZE, density=0.5, opacity=(0.04, 0.1), size=(200, 560),
-             aspect=(0.1, 0.22), profile='mid')
-    mist(cv, rng, -100, 2020, 60, 520, HAZE_W, HAZE, density=0.9, opacity=(0.04, 0.1), size=(200, 560),
-         aspect=(0.1, 0.22), profile='mid')
-    P.add('far', 0.2, cv, 'deep cool forest interior at low height, ground mist; opaque')
+                   saplings=0.0, vines=0.4, fade_p=0.2, top_jitter=20, leaf_size=40 if dd > 0.5 else 56,
+                   soft=10.0 if dd > 0.5 else 7.0)
+        mist_strokes(cv, rng, -200, 2120, 60, 700, HAZE_W, HAZE, 40, width=(40, 110), length=(400, 1100),
+                     opacity=(0.05, 0.12), profile='flat')
+    mist_strokes(cv, rng, -200, 2120, 300, 620, HAZE_W, HAZE, 40, width=(40, 100), length=(500, 1200),
+                 opacity=(0.06, 0.13), profile='flat')
+    P.add('far', 0.2, cv, 'deep cool forest interior at low height, ground mist; painted soft focus; opaque')
 
     cv = P.layer('mid', 0.6)
     pal = dict(dark=C(14, 26, 36), mid=C(28, 52, 54), lit=C(70, 100, 70), tip=C(236, 196, 120))

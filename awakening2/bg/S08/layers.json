@@ -116,7 +116,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.402,
+      "coverage": 0.393,
       "note": "giant framing trunks (camphor left, beech right) and their roots; canopy corners"
     },
     {
@@ -132,18 +132,18 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.031,
+      "coverage": 0.035,
       "note": "ferns, grass and vines in front (bottom corners / sides only)"
     }
   ],
-  "seconds": 45.4,
+  "seconds": 49.2,
   "layer_seconds": {
-    "sky": 1.5,
-    "far": 30.0,
-    "mist_far": 0.8,
-    "mid": 6.6,
-    "mist_mid": 0.9,
-    "beams": 1.0,
+    "sky": 1.9,
+    "far": 34.8,
+    "mist_far": 0.7,
+    "mid": 5.9,
+    "mist_mid": 0.7,
+    "beams": 0.7,
     "near": 3.1,
     "fg": 1.0
   },

@@ -76,7 +76,7 @@ class WindRing:
             self.near = near
         nsp = int(math.ceil(duration / on)) + 2
         self.nsp = nsp
-        self.bil = BillowSet(name + '_wall', slots * (nsp + 2), (4, 6))
+        self.bil = BillowSet(name + '_wall', slots * (nsp + 4), (4, 6))
         g = core.rng('windring', name)
         # grass streaks (uniform over the swept area)
         self.ng = grass
@@ -178,6 +178,7 @@ class WindRing:
         billow); every 4 frames the head sheds short-lived tail billows that rise and break up,
         so the swept ground clears behind the wall."""
         ids, PX, PY, RR, BR, PH, Z, GB = [], [], [], [], [], [], [], []
+        self._gy, self._lead = [], []
         l = core.unit(self.light)
         K = self.slots
         R = self.R(age)
@@ -201,8 +202,10 @@ class WindRing:
                 return
             x, y, sc = self.project(rho, phi)
             r = r_base * sc
+            self._gy.append(y + 1.0 if rise < r * 0.3 else y + 1e6)
             y = y - r * self.lift - rise * sc
             ow = self.outward(phi, rho)
+            self._lead.append((float(ow[0]), float(ow[1])))
             ids.append(i); PX.append(x); PY.append(y); RR.append(r); BR.append(brk)
             PH.append((1.0 if ow[0] >= 0 else -1.0) * TAU * roll_a)
             Z.append(y + r * 0.6)
@@ -218,12 +221,23 @@ class WindRing:
         nseg = 3
         for k in range(K):
             phi = (k + 0.5 + (_h(self.name, 'hp', k) - 0.5) * 0.7) * TAU / K
-            u = (0.8 + 0.5 * _h(self.name, 'hu', k)) * (1 + 0.38 * clump(phi))
-            if u < 0.62:
+            # strongly varied heights: towering billows, low ones, gaps, a few laggers
+            hk = _h(self.name, 'hcls', k)
+            if hk < 0.2:
+                hcls = 1.5 + 0.5 * _h(self.name, 'ht', k)          # towering
+            elif hk < 0.5:
+                hcls = 0.45 + 0.2 * _h(self.name, 'hl', k)         # low
+            else:
+                hcls = 0.8 + 0.3 * _h(self.name, 'hn', k)
+            u = (0.85 + 0.3 * _h(self.name, 'hu', k)) * (1 + 0.3 * clump(phi)) * hcls
+            if _h(self.name, 'gap', k) < 0.1:
                 continue                                  # gaps in the wall
-            r = max(hh * 0.5 * u, spacing * 0.62 * u) * grow
+            r = max(hh * 0.5 * u, spacing * 0.8 * min(u, 1.2)) * grow
             r = min(r, 0.3 * R + 6.0)          # a young ring is a thin ring, not a disc
             lag = hh * 0.3 * (_h(self.name, 'hf', k) - 0.5)
+            if _h(self.name, 'lagger', k) < 0.15:
+                lag -= hh * (0.6 + 0.6 * _h(self.name, 'lg', k))      # lags behind the front
+                r *= 0.8
             brk = float(np.clip(end + (_h(self.name, 'hb', k) - 0.5) * 0.3 * end, 0, 1))
             for m in range(nseg):
                 # head billow + followers trailing inward: a comet pointing outward
@@ -234,6 +248,11 @@ class WindRing:
                 add(k + m * K, rho, phi + 0.03 * m * (_h(self.name, 'fs', k) - 0.5),
                     r * fs * (1 - 0.15 * m * (1 - spd)), bm, age / 16.0 + 0.3 * m,
                     hh * (0.3 * end + 0.12 * m))
+            if hcls > 1.4:
+                # a towering billow: a second, smaller mass stacked on the head
+                rt = r * 0.72
+                add(k + 3 * K, R - r * 0.35 + lag, phi + 0.02, rt, float(np.clip(brk + 0.1, 0, 1)),
+                    age / 14.0 + 0.5, r * 1.15 + hh * 0.3 * end)
         # sporadic billows shed by the wall, left behind to rise and break up
         for k in range(K):
             per = 7 + int(6 * _h(self.name, 'sper', k))
@@ -255,7 +274,7 @@ class WindRing:
                 phi = (k + _h(self.name, 'tp', k, b)) * TAU / K
                 r = hb * 0.36 * (0.8 + 0.4 * _h(self.name, 'tu', k, b)) * (1 + 0.35 * t)
                 rho = Rb - r * 1.6
-                i = K * nseg + (k * 7 + b) % (self.bil.n - K * nseg)
+                i = K * (nseg + 1) + (k * 7 + b) % (self.bil.n - K * (nseg + 1))
                 add(i, rho, phi, r, float(smoothstep(0.15, 1.0, t)), a / 30.0, hb * 0.5 * t)
         return ids, PX, PY, RR, BR, PH, Z, GB
 
@@ -427,13 +446,15 @@ class WindRing:
             self._mist(canvas, age, pt, drawing)
             ids, PX, PY, RR, BR, PH, Z, GB = self._wall(age, pt)
             if ids:
-                groups, holes = self.bil.groups(ids, PX, PY, RR, BR, PH, Z, drawing)
+                groups, holes, wisps = self.bil.groups(ids, PX, PY, RR, BR, PH, Z, drawing,
+                                                       ground=np.array(self._gy), lead=np.array(self._lead),
+                                                       wisps=True)
                 bias_by_id = dict(zip([i % self.bil.n for i in ids], GB))
                 gbias = [bias_by_id.get(g_[3], 0.0) for g_ in groups]
                 C = (float(np.mean(PX)), float(np.mean(PY)))
                 paint_groups(canvas, groups, holes, self.palette, self.light, C,
                              max(self.height * 2.5, 1.0), line=self.dust_line, opacity=self.opacity,
-                             local=0.75, vert=0.5, group_bias=gbias)
+                             local=0.75, vert=0.5, group_bias=gbias, wisps=wisps[::2])
             lines = PolyBatch()
             self._lines(age, lines, pt)
             lines.draw(canvas, self.opacity)

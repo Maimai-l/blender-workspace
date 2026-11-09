@@ -79,7 +79,7 @@ class LightTrail:
         # ---- mist billows ---------------------------------------------------------------
         back_groups, front_groups, holes_b = [], [], []
         if self.mist:
-            ids, PX, PY, RR, BR, PH, Z, FR = [], [], [], [], [], [], [], []
+            ids, PX, PY, RR, BR, PH, Z, FR, LD = [], [], [], [], [], [], [], [], []
             for k in range(len(P)):
                 b = int(births[k])
                 if b % self.every:
@@ -103,7 +103,8 @@ class LightTrail:
                     ids.append(idx); PX.append(x); PY.append(y); RR.append(r)
                     BR.append(float(smoothstep(0.35, 1.0, t + g.uniform(-0.08, 0.08))))
                     PH.append(side * a / 20.0); Z.append(-a + g.random())
-                    FR.append(g.random() < 0.3)
+                    FR.append(g.random() < 0.3 and r > self.width * self.mist_size * 0.55)
+                    LD.append((float(nrm[k, 0] * side), float(nrm[k, 1] * side)))
             if ids:
                 groups, holes = self.bil.groups(ids, PX, PY, RR, BR, PH, Z, drawing)
                 front_ids = set(i for i, f in zip(ids, FR) if f)
@@ -111,6 +112,7 @@ class LightTrail:
                     (front_groups if gg[3] in front_ids else back_groups).append(gg)
                 holes_b = holes
                 C = (float(np.mean(PX)), float(np.mean(PY)))
+                self._mist_c = C
                 size = max(self.width * 3.0, 1.0)
                 if back_groups:
                     paint_groups(canvas, back_groups, holes_b, self.mpal, light, C, size,
@@ -124,9 +126,8 @@ class LightTrail:
             b.add(core.stroke_poly(Ps, ws * k_w, cap_pts=6), col)
         b.draw(canvas)
         if front_groups:
-            C = (float(np.mean(P[:, 0])), float(np.mean(P[:, 1])))
-            paint_groups(canvas, front_groups, [], self.mpal, light, C, max(self.width * 3.0, 1.0),
-                         line=max(1.5, self.width * 0.03), local=0.7, vert=0.35)
+            paint_groups(canvas, front_groups, [], self.mpal, light, self._mist_c, max(self.width * 3.0, 1.0),
+                         line=max(1.5, self.width * 0.03), local=0.7, vert=0.35, bias=0.12)
         # ---- glow (photography) --------------------------------------------------------------
         if light_buf is not None and self.glow_gain > 0:
             rows = []

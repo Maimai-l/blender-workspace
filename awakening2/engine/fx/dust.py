@@ -67,6 +67,18 @@ class _Billow:
         self.wisp_on = g.random(n) < 0.45
         self.wisp_c = g.uniform(-1, 1, n)
         self.m = m
+        # cauliflower crown for grounded billows: 6-10 lobe slots per billow, each a size class
+        # (2-3 big, the rest medium / small, neighbours alternating) that buds at the top centre,
+        # rolls outward and down its side and is absorbed at the base
+        mc = 10
+        self.ncrown = g.integers(6, 11, n)
+        cls = np.array([0.48, 0.2, 0.34, 0.16, 0.44, 0.26, 0.36, 0.18, 0.42, 0.28])
+        shift = g.integers(0, mc, n)
+        self.csize = cls[(shift[:, None] + np.arange(mc)[None, :]) % mc] * g.uniform(0.88, 1.12, (n, mc))
+        self.cu0 = ((np.arange(mc)[None, :] // 2) + g.uniform(0.1, 0.9, (n, mc))) / 5.0
+        self.cwp = g.uniform(0, TAU, (n, mc))
+        self.csq = g.uniform(0.8, 1.0, (n, mc))
+        self.mc = mc
 
     def build(self, idx, px, py, R, brk, phase, z, wob, drawing, ground=None, lead=None,
               wisps=False):
@@ -89,16 +101,61 @@ class _Billow:
             wpd = drawing * 0.8
             near_ground = gj is not None and y0 + r0 > gj - 2
             lobes = []
-            if core_r > 0.6:
-                # the main mass: flattened and widened where it sits on the ground
-                lobes.append((x0, y0, core_r, self.wp[i, 0] + wpd,
-                              1.14 if near_ground else 1.0, 0.84 if near_ground else 1.0, 0.0, 0, 0, 0, 1.0))
             ld = None
             if lead is not None:
                 ld = np.asarray(lead[j], np.float64)
                 nl = float(np.hypot(ld[0], ld[1]))
                 ld = ld / nl if nl > 1e-9 else None
-            nb = self.nsub[i] + (2 if near_ground else 0)
+            crown = near_ground and r0 > 3.0
+            if core_r > 0.6:
+                # the main mass: flattened and widened where it sits on the ground; with a crown
+                # it is shape-only, so its tones (and the scalloped terminator) come from the lobes
+                lobes.append((x0, y0, core_r * (0.86 if crown else 1.0), self.wp[i, 0] + wpd,
+                              1.14 if near_ground else 1.0, 0.84 if near_ground else 1.0, 0.0, 0, 0, 0,
+                              0.0 if (crown and b < 0.4) else 1.0))
+            if crown:
+                cr = core_r * 0.86
+                roll = abs(phase[j]) / TAU * 1.4
+                # a standing central lobe at the top keeps the crown closed where new lobes bud
+                rc = r0 * 0.38 * (1 - 0.4 * b)
+                lobes.append((x0 + cr * 0.08, y0 - cr * 0.84 * 0.62, rc, self.wp[i, 2] + wpd, 1.08, 0.92, 0.0,
+                              0, 0, 0, 1.0))
+                for k in range(self.ncrown[i]):
+                    side = 1.0 if k % 2 == 0 else -1.0
+                    u = (self.cu0[i, k] + roll) % 1.0
+                    # bud at the top centre -> full size -> absorbed at the base corner
+                    grow = (0.22 + 0.78 * smoothstep(0.0, 0.32, u)) * (1 - 0.75 * smoothstep(0.8, 1.0, u))
+                    sr = r0 * self.csize[i, k] * grow * (1 - 0.35 * b)
+                    if sr < 0.6:
+                        continue
+                    ang = -math.pi / 2 + side * (0.12 + u * (math.pi / 2 + 0.25))
+                    ca, sa = math.cos(ang), math.sin(ang)
+                    re = cr / math.sqrt((ca / 1.14) ** 2 + (sa / 0.84) ** 2)     # core edge at ang
+                    rho = re - sr * 0.3 + 0.6 * b ** 1.3 * r0
+                    bx = x0 + rho * ca
+                    by = y0 + rho * sa
+                    by = min(by, gj - sr * 0.45)
+                    low = math.sin(ang) > -0.2                 # side lobes below the shoulder: no lit cap
+                    lobes.append((bx, by, sr, self.cwp[i, k] + wpd * 1.3, 1.0, self.csq[i, k], ang, 0, 0, 0,
+                                  0.5 if low else 1.0))
+                # belly lobes inside the mass (shade only, no lit cap): the mid tone reaches down
+                # and the violet underside ends in a scalloped edge instead of one big arc
+                shrink = (1 - 0.95 * b ** 1.2)
+                for kb, tb in enumerate((-0.74, -0.3, 0.12, 0.58)):
+                    rb = r0 * (0.36, 0.22, 0.31, 0.25)[(kb + i) % 4] * shrink
+                    if rb < 0.8:
+                        continue
+                    lobes.append((x0 + (tb + 0.08 * math.sin(i * 1.7 + kb)) * cr,
+                                  y0 + cr * (0.06 + 0.1 * ((kb + i) % 3)), rb, self.wp[i, 1] + kb + wpd,
+                                  1.0, 0.9, 0.0, 0, 0, 0, 0.5))
+                # a lumpy skirt: two small squashed lobes at the base corners (borrowed tones)
+                for side in (-1.0, 1.0):
+                    sr = r0 * (0.3 if side > 0 else 0.22) * shrink
+                    if sr < 0.8:
+                        continue
+                    lobes.append((x0 + side * cr * 0.95, gj - sr * 0.5, sr, self.wp[i, 1] + side + wpd,
+                                  1.3, 0.62, 0.0, 0, 0, 0, 0.0))
+            nb = 0 if crown else self.nsub[i] + (2 if near_ground else 0)
             for k in range(min(nb, self.m)):
                 arcw = 1.0
                 if near_ground:
@@ -124,20 +181,22 @@ class _Billow:
                     if top < -0.3:                          # base bumps: low and wide
                         sq = min(sq, 0.72)
                         ang = 0.0
-                own = 1.0 if (sr > 0.4 * r0 and top > -0.3) else 0.0
+                # small / base bumps borrow the mass's tones while the billow is whole;
+                # once it breaks up the separating pieces shade themselves
+                own = 1.0 if ((sr > 0.4 * r0 and top > -0.3) or b > 0.25) else 0.0
                 lobes.append((bx, by, sr, self.wp[i, k + 1] + wpd, 1.0, sq, ang, 0, 0, 0, own))
             # hook-shaped curl on the leading side: a forward-leaning lobe with its lower front
             # bitten out, so its tip curls over and down like a breaking wave
-            if ld is not None and self.hook_on[i] and b < 0.75 and abs(ld[0]) > 0.55:
+            if ld is not None and self.hook_on[i] and b < 0.75 and abs(ld[0]) > 0.45 and r0 > 40:
                 # only on edges moving sideways: the curl rolls over the leading side
                 up = np.array([0.0, -1.0])
                 fw = np.array([1.0 if ld[0] > 0 else -1.0, 0.0])
                 hr = self.hook_k[i] * r0 * (1 - 0.6 * b)
                 hc = np.array([x0, y0]) + fw * (r0 * 0.74) + up * (r0 * self.hook_up[i])
                 ang = math.atan2(-0.35, fw[0])
-                bc = hc + fw * (hr * 0.62) - up * (hr * 0.62)
-                lobes.append((hc[0], hc[1], hr, self.wp[i, -1] + wpd, 1.25, 0.9, ang,
-                              bc[0], bc[1], hr * 0.52, 1.0))
+                bc = hc + fw * (hr * 0.95) - up * (hr * 0.8)      # always notches the edge
+                lobes.append((hc[0], hc[1], hr, self.wp[i, -1] + wpd, 1.15, 0.92, ang,
+                              bc[0], bc[1], hr * 0.6, 1.0))
             if lobes:
                 groups.append((z[j], lobes, r0, int(i), None if gj is None else gj + 1.5))
             if self.hole_on[i] and b > 0.35:
@@ -146,6 +205,16 @@ class _Billow:
                     a = self.hole_ang[i] + phase[j] * 0.3
                     holes.append((x0 + math.cos(a) * r0 * 1.05, y0 + math.sin(a) * r0 * 1.05,
                                   hr, wob * 2.0, self.wp[i, 0] * 1.3 + wpd))
+            if wisps and ld is not None and abs(ld[0]) > 0.45 and r0 > 30 and b < 0.6 and self.hook_on[i]:
+                # the leading edge curls over: a fat spiral lip in the lit tone
+                fw = 1.0 if ld[0] > 0 else -1.0
+                cx_ = x0 + fw * r0 * 0.78
+                cy_ = y0 - r0 * 0.42
+                th = np.linspace(-0.2, 3.6, 14)
+                rad = r0 * 0.34 * (1 - 0.55 * th / 3.6) * (1 - 0.5 * b)
+                pts = np.stack([cx_ + fw * np.sin(th) * rad, cy_ - np.cos(th) * rad], 1)
+                wid = r0 * 0.2 * (1 - th / 3.7) ** 1.1 * (1 - 0.6 * b) + 0.4
+                wl.append((pts, wid, 2))
             if wisps and self.wisp_on[i] and 0.2 < b < 0.95 and r0 > 4:
                 back = -ld if ld is not None else np.array([self.wisp_c[i], 0.0])
                 side = back[0] if abs(back[0]) > 0.3 else self.wisp_c[i]
@@ -200,7 +269,11 @@ def paint_groups(canvas, groups, holes, palette, light, centre, size, line=2.5, 
             ts = np.where(ts < 0.28, 0.0, np.maximum(ts, 0.38))
         else:
             tl, ts = shade_params(A[:, 0], A[:, 1], centre, size, light, gb, vert, contrast)
-        ts = np.where(A[:, 10] > 0.5, ts, -1.0)
+        own = A[:, 10] > 0.25
+        if not own.any():                 # broken-up remnants: every piece shades itself
+            own[:] = True
+        tl = np.where((A[:, 10] > 0.25) & (A[:, 10] < 0.75), 0.0, tl)     # 0.5: shade, no lit cap
+        ts = np.where(own, ts, -1.0)
         D = np.stack([A[:, 0], A[:, 1], A[:, 2], np.full(len(A), wob), A[:, 3], ts, tl,
                       A[:, 4], A[:, 5], A[:, 6], A[:, 7], A[:, 8], A[:, 9]], 1)
         lw = line * float(np.clip(r0 / ref, 0.5, 1.3)) if line > 0 else 0.0
@@ -520,3 +593,81 @@ class BillowSet:
                             np.asarray(R, np.float64), np.asarray(brk, np.float64),
                             np.asarray(phase, np.float64), np.asarray(z, np.float64), wob, drawing,
                             ground, lead, wisps)
+
+
+class DustVeil:
+    """A thin, broken, 2-tone, semi-transparent dust sheet with lumpy edges, spreading sideways
+    from `origin` along the ground (e.g. the S14 launch blast, behind the main dust).
+
+    width / height: px span of the grown sheet; life: frames; opacity: of the whole cel (it
+    also fades out over the last 30 %); gaps and late holes break it up; the top edge is lumpy,
+    the base is cut flat at `ground` (default origin y)."""
+
+    def __init__(self, name, origin, frame0, width=1400.0, height=240.0, life=48, light=(0.55, -0.83),
+                 palette=None, opacity=0.55, on=2, ground=None, segments=14, rise=0.35):
+        self.name = name
+        self.origin = np.asarray(origin, np.float64)
+        self.frame0 = int(frame0)
+        self.width = float(width)
+        self.height = float(height)
+        self.life = int(life)
+        self.light = light
+        base = palettes.DUST_DRY if palette is None else palette
+        P = np.asarray(base, np.float32).copy()
+        P[1] = P[2] * 0.55 + P[1] * 0.45            # 2 tones: a light top and a cool underside
+        P[2] = P[1]
+        self.palette = P
+        self.opacity = opacity
+        self.on = on
+        self.ground = self.origin[1] if ground is None else float(ground)
+        self.rise = rise
+        g = core.rng('dustveil', name)
+        n = segments
+        self.n = n
+        self.side = np.where(np.arange(n) % 2 == 0, 1.0, -1.0)
+        self.reach = np.sort(g.uniform(0.08, 1.0, n))
+        self.hk = g.uniform(0.45, 1.15, n) * np.where(g.random(n) < 0.25, 1.35, 1.0)
+        self.gap = g.random(n) < 0.15
+        self.nb = g.integers(3, 6, n)
+        self.bu = g.uniform(0, 1, (n, 6))
+        self.bs = g.uniform(0.22, 0.42, (n, 6))
+        self.wp = g.uniform(0, TAU, (n, 8))
+        self.hole_t = g.uniform(0.35, 0.8, n)
+        self.hole_x = g.uniform(-0.6, 0.6, n)
+
+    def draw(self, canvas, frame, light=None):
+        light = self.light if light is None else light
+        fh = held(frame, self.on, self.frame0)
+        age = fh - self.frame0
+        if age < 0 or age > self.life:
+            return canvas
+        t = age / self.life
+        spread = float(ease_out(min(1.0, t / 0.55), 2.5))
+        drawing = age // max(self.on, 1)
+        groups, holes = [], []
+        segw = self.width / self.n * 1.25
+        for k in range(self.n):
+            if self.gap[k]:
+                continue
+            x = self.origin[0] + self.side[k] * self.reach[k] * self.width * 0.5 * spread
+            hgt = self.height * self.hk[k] * (0.35 + 0.65 * spread) * (1 - 0.3 * t)
+            if hgt < 2:
+                continue
+            ybase = self.ground
+            yc = ybase - hgt * 0.35 - self.height * self.rise * t
+            wpd = drawing * 0.7
+            lobes = [(x, yc, hgt * 0.5, self.wp[k, 0] + wpd, segw / hgt * 1.1, 0.75, 0.0, 0, 0, 0, 1.0)]
+            for m in range(self.nb[k]):
+                bx = x + (self.bu[k, m] - 0.5) * segw * 1.1
+                rr = hgt * self.bs[k, m]
+                lobes.append((bx, yc - hgt * 0.32, rr, self.wp[k, m + 1] + wpd, 1.15, 0.85, 0.0, 0, 0, 0, 1.0))
+            groups.append((-abs(x - self.origin[0]) * 0.001 + k * 1e-4, lobes, hgt * 0.5, k,
+                           ybase + 1.0 if t < 0.5 else None))
+            if t > self.hole_t[k]:
+                hr = hgt * 0.55 * float(smoothstep(self.hole_t[k], 1.0, t))
+                holes.append((x + self.hole_x[k] * segw * 0.5, yc - hgt * 0.1, hr, 0.12, self.wp[k, 7] + wpd))
+        if not groups:
+            return canvas
+        op = self.opacity * (1 - smoothstep(0.7, 1.0, t))
+        return paint_groups(canvas, groups, holes, self.palette, light, (self.origin[0], self.ground - self.height * 0.5),
+                            self.height * 1.2, line=0.0, opacity=op, local=0.6, vert=0.6)

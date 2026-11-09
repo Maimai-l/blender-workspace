@@ -148,6 +148,38 @@ class Cues:
     def frame(self, t):
         return int(round(t * self.fps))
 
+    def cuts(self, a, b):
+        """Shot boundaries strictly inside (a, b)."""
+        return sorted({s["in"] for s in self.shots if a + 1e-6 < s["in"] < b - 1e-6})
+
+    def sky_split(self):
+        """(sky_reveal, cut, end): if a shot cut falls between the sky reveal and the end of
+        the flight (cues v2: S16A tracking -> S16B wide), 'cut' is that cut, else None."""
+        sr = self.first("sky_reveal")
+        if sr is None:
+            return None, None, None
+        f_out = self.section("flight", (sr - 4.0, self.first("trail_fades", sr + 6.5) + 1.5))[1]
+        end = max(f_out, sr + 1.0)
+        cs = self.cuts(sr + 0.5, min(end, self.first("trail_fades", end) + 0.01))
+        return sr, (cs[0] if cs else None), end
+
+    def spark_time(self):
+        """The robot crossing the sun: an explicit 'sun_spark' event, else (when the sky is
+        split into tracking + wide shots) half a second before the flight section ends."""
+        t = self.first("sun_spark")
+        if t is not None:
+            return t
+        sr, cut, end = self.sky_split()
+        if cut is None:
+            return None
+        return max(cut + 1.0, end - 0.5)
+
+    def vista_end(self):
+        """End of the opening shot seen from above the canopy (the first shot cut)."""
+        f0 = self.first("fade_in_start", 0.0)
+        cs = self.cuts(f0 + 1.0, self.duration)
+        return cs[0] if cs else f0 + 4.5
+
 
 def launch_silence(C):
     """The held breath before the launch, shared by score, effects and master: it ends where

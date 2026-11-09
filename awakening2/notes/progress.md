@@ -94,6 +94,37 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   Helpers working: FX round 2 (dust, soil, smear, impact, leaves), BG round 4 (S00 vista, S16
   clouds, S16A flight layers, S12 trunks, S13 ferns).
 
+- 14:50 **v4 rendering on the PC** (`pc.py pipeline v4 S00 S12 S13 S16 S16A --workers 7` ->
+  frames_v4). v4 = timeline restructured (cues.json v2, 79.5 s): S00 vista added at the start
+  (+4.5 s), S16 split into S16A (tracking: robot large, tilted scrolling flight painting,
+  debris/leaves/vines streaming) and S16B (wide: S-curve from the cloud sea to the sun, robot
+  becomes a spark). Shot times now come from cues.json (`shotdefs._sync_times`). Audio
+  regenerated for 79.5 s. Also: shake applied to the whole frame, distance-based robot haze,
+  no lens flare in S11, less grain/bloom, eyes stay lit after waking (`eye_glow`), all the
+  14:40 items. Encode: `pc.py encode v4 frames_v4`.
+
+- 14:59 v4 relaunched clean (7 workers, frames_v4) after a double launch: the first kill
+  (`ps -W | grep`) missed the workers, 14 ran at once and hit MemoryErrors. Always stop PC jobs
+  with `python3 tools/pc.py kill` (PowerShell by command line, tools/killw.ps1 on the PC) and check
+  with tools/procs.ps1. This v4 includes the FX round 2, painter round 4 (+clouds in S01/S03/S06/
+  S10, S17), S08 3/4 camera, S10 top light, S12 snap, fringed moss lines, S04 core glow.
+  NOT in v4 (for v5): per-part lag/overlap in anim.py, painter round 5 (S11 canopy, soft-focus
+  S02/S04, S10 margin), sound polish round.
+
+- 15:05 kneel fixed: in the old KNEEL_DORMANT the right knee hovered 0.78 m and the hand 2 m
+  above the ground (the toes held the body up), so the kneel read as a crouch. Solved angles
+  (thigh_R 12, shin_R -84, foot_R -65, thigh_L 90, shin_L -106, upperarm_R 16/-6) put the knee
+  and the knuckles on the ground; KNEEL_SINK re-solved so the hand presses down; dormant head
+  -12 (face shows under the roof), waking head 0. SURF_VERSION 8 (moss re-planned).
+- 15:13 helpers done: BG round 5 (S11 plane canopy + soft halo, S02/S04 painted soft focus,
+  S10 160 px margin, S08/S09 trunk character), FX round 3 (cauliflower dust crowns, varied
+  ring wall, DustVeil, used in S14), sound polish for cues v2 (S00 opening, S16A wind bed +
+  theme at 64.0, S16B Doppler away + spark chime 71.5).
+- v4 finishing with work-stealing helpers: `pc.py steal v4h frames_v4 4 S09 S12 S13 S16A S08`.
+- v5 = everything above + anim lag. Launch: `pc.py sync`, `pc.py pipeline v5 S02 S04 S08 S09
+  S10 S11 --workers 7` (BG regen for round 5), then steal for the slow shots when the fast
+  workers go idle.
+
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.
 2. v3: `pc.py sync`, then `pc.py pipeline v3 --workers 7` (no bg regen needed), encode, QA.

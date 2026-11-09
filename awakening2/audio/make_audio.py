@@ -51,7 +51,7 @@ PRE_LUFS = -20.0              # the summed stems are brought here before the com
 KNOWN_TRANSIENTS = {"bird_wings_flare", "bird_touchdown", "bird_hop", "bird_chirp", "core_flicker", "core_heartbeat",
                     "birds_burst", "eye_lids_open", "eyes_ignite", "small_bird_flees", "hand_presses_ground", "rise_groan",
                     "roots_tear", "stands_full_thud", "head_lift_creak", "back_plates_open", "crouch_anticipation",
-                    "engine_sputter", "engine_ignite", "wind_ring", "impact_frame", "canopy_burst", "bird_returns"}
+                    "engine_sputter", "engine_ignite", "wind_ring", "impact_frame", "canopy_burst", "bird_returns", "sun_spark"}
 
 
 # ============================================================================ workers
@@ -270,8 +270,15 @@ def music_sync_report(C, music, marks, mix):
     sr_ = C.first("sky_reveal")
     if "theme_peak" in marks and sr_ is not None:
         print("  theme peak (C#6 over Amaj7) at %.3f s; sky_reveal %.3f s (diff %+.0f ms)" % (marks["theme_peak"], sr_, 1000 * (marks["theme_peak"] - sr_)))
-    if "sun_chord" in marks:
-        print("  flute bar 3 (Gmaj7, the warm chord) at %.3f s; sun_ray_reaches_face %.3f s" % (marks["sun_chord"], C.first("sun_ray_reaches_face", -1)))
+    if "sun_peak" in marks:
+        print("  dawn: phrase b's peak (B5 over Gmaj7) at %.3f s, sun_ray_reaches_face %.3f s; its resolution at %.3f s, first core_flicker %s" % (
+            marks["sun_peak"], C.first("sun_ray_reaches_face", -1), marks.get("dawn_resolution", -1), C.first("core_flicker")))
+    sr_, cut, _ = C.sky_split()
+    if cut is not None:
+        print("  sky split: tracking shot %.2f-%.2f s (ostinato until %.2f), wide shot from %.2f s" % (sr_, cut, marks.get("ostinato_until", -1), cut))
+    if C.spark_time() is not None:
+        print("  spark (robot crosses the sun) at %.2f s%s; the theme resolves at %.2f s" % (
+            C.spark_time(), "" if C.first("sun_spark") is not None else " (derived: end of the flight section - 0.5 s)", marks.get("flight_home", -1)))
     ts = C.first("tremor_start")
     if ts is not None:
         print("  near-silence before the tremor: music RMS %.1f dBFS over %.1f-%.1f s (dawn average %.1f)" % (

@@ -114,10 +114,12 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- near: giant framing trunks
     cv = P.layer('near', 0.8)
-    giant(cv, rng, (130, H + 60), (230, -80), 420, 300, L3, sp='camphor', roots=6, ivy=0.5, moss=1.3, twist=0.22,
-          keep_out=(ROBOT[0] - 60, ROBOT[2] + 60), flecks=0.3)
-    giant(cv, rng, (1800, H + 60), (1700, -80), 380, 280, L3, sp='beech', roots=5, ivy=0.1, moss=1.0, twist=0.0,
-          keep_out=(ROBOT[0] - 60, ROBOT[2] + 60), lichen=0.2, blotch=C(96, 122, 92), flecks=0.3)
+    giant(cv, rng, (150, H - 40), (240, -80), 400, 290, L3, sp='camphor', roots=6, ivy=0.0, moss=1.1, twist=0.22,
+          keep_out=(ROBOT[0] - 60, ROBOT[2] + 60), flecks=0.3, root_spread=1.6,
+          traits=dict(knots=3, fungi=2, hollow=True, ivy_bands=2, moss_cushions=4))
+    giant(cv, rng, (1790, H - 30), (1700, -80), 370, 270, L3, sp='beech', roots=5, ivy=0.0, moss=0.8, twist=0.0,
+          keep_out=(ROBOT[0] - 60, ROBOT[2] + 60), lichen=0.2, blotch=C(96, 122, 92), flecks=0.3, root_spread=1.5,
+          traits=dict(knots=4, fungi=3, hollow=False, ivy_bands=1, moss_cushions=3, side=-1.0))
     # near canopy at the top corners
     b = Blobs()
     for (cx, cy, n_) in [(220, -20, 16), (1720, -30, 16), (600, -70, 6), (1330, -80, 6)]:

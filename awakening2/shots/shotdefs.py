@@ -109,6 +109,10 @@ def v(*x):
 
 
 SHOTS = [
+    dict(id='S00', t0=0.0, t1=4.5, step=2,
+         desc='Establishing vista: sunrise over the misty forest; a gap in the canopy where mist rises',
+         cam=[(0.0, v(-17, 31, 3.2), v(-3, 6, 44), 30)], pose=[], light=SUN_BACK, bg='S00',
+         notes='Fade in from black; slow pan left to right over the painting; a few birds cross; a shaft of light into the gap.'),
     dict(id='S01', t0=0.0, t1=8.0, step=2,
          desc='Tilt-down reveal: crowns against the dawn sky through the canopy gap, down the trunks, to the kneeling robot in mist',
          cam=[(0.0, v(15, 31, 3.0), v(3, 6, 44), 26), (1.2, v(15, 31, 3.0), v(3, 6, 44), 26),
@@ -148,7 +152,7 @@ SHOTS = [
          notes='Lids open 0.7-1.3 s (on 2s with a hold), eyes flicker 1.3-2.0 s; bird flees 2.1 s.'),
     dict(id='S08', t0=34.0, t1=38.5, step=3,
          desc='RISE A, wide front between trunks: the hand presses into the earth, the whole body heaves up; soil, roots and vines pour off',
-         cam=[(0.0, v(-6, 40, 2.6), v(0, 0, 8.6), 30)],
+         cam=[(0.0, v(23, 28, 2.2), v(0.5, 0, 7.4), 27)],
          pose=[(0.0, 'KNEEL_WAKE'), (0.4, 'KNEEL_WAKE'), (0.9, 'KNEEL_SINK'), (1.6, 'PUSH_PLANT'), (2.5, 'PUSH_UP'),
                (3.1, 'PUSH_UP'), (4.5, 'RISE_CROUCH')],
          light=SUN_BACK, bg='S08', shake=(0.5, 4.5, 4.0),
@@ -171,6 +175,7 @@ SHOTS = [
          desc='Back 3/4 medium: the roof halves swing open, engine bells glow, a hard crouch, engines sputter and ignite',
          cam=[(0.0, v(-20, -24, 9.0), v(0, 0, 10.5), 35)],
          pose=[(0.0, 'STAND_LOOKUP'), (0.7, 'STAND_LOOKUP'), (1.4, 'LAUNCH_CROUCH'), (3.5, 'LAUNCH_CROUCH')],
+         spacing='in',
          light=SUN_BACK, bg='S12', shake=(2.4, 3.5, 5.0),
          notes='Roof opens 0.5-1.3 s; crouch 1.4-1.9 s; sputter 2.4 s; ignition 3.0 s.'),
     dict(id='S13', t0=52.0, t1=55.0, step=2,
@@ -193,10 +198,15 @@ SHOTS = [
                (0.9, 'LAUNCH_UP', dict(lift=80.0)), (1.4, 'LAUNCH_UP', dict(lift=170.0)), (3.0, 'LAUNCH_UP', dict(lift=520.0))],
          spacing='linear', light=SUN_BACK, bg='S11',
          notes='Robot silhouette punches through the gap at 0.4 s, gone by 1.0 s; leaves burst and fall.'),
-    dict(id='S16', t0=59.5, t1=67.5, step=3,
-         desc='Golden sky, long lens: it climbs in a long curve leaving a wide trail of light and mist',
+    dict(id='S16A', t0=59.5, t1=62.5, step=3,
+         desc='Tracking beside the robot as it climbs: it fills the frame, moss and soil stream off, engines roar',
+         cam=[(0.0, v(-28.0, 34.0, 2.0), v(0.0, 0.0, 9.0), 24)],
+         pose=None,
+         light=SUN_BACK, bg='S16A', notes='The camera flies with it; the sky and clouds stream past (down-left).'),
+    dict(id='S16B', t0=62.5, t1=67.5, step=3,
+         desc='Wide golden sky: the curving trail of light and mist; the robot becomes a spark crossing the sun',
          cam=[(0.0, v(-60, 230, 60), v(10, 0, 150), 40)],
-         pose=None, light=SUN_BACK, bg='S16', notes='Locked. The robot enters lower left and climbs along a big arc to the upper right, toward the sun.'),
+         pose=None, light=SUN_BACK, bg='S16', notes='Locked. The trail curves from lower left to the sun at upper right.'),
     dict(id='S17', t0=67.5, t1=75.0, step=2,
          desc='Ending: the empty clearing, sunbeams, leaves spiral down; the small bird lands on the moss where the robot knelt; fade out',
          cam=[(0.0, v(15, 31, 3.0), A['pelvis'] + v(0.5, 0, 4.4), 26),
@@ -246,13 +256,13 @@ def _bez(p, t):
     return u ** 3 * p[0] + 3 * u * u * t * p[1] + 3 * u * t * t * p[2] + t ** 3 * p[3]
 
 
-S16_SCREEN = [(230, 1300), (430, 330), (1080, 160), (1640, 300)]     # screen-space arc (px)
-S16_DEPTH = (78.0, 270.0)
+S16_SCREEN = [(250, 770), (1150, 640), (360, 230), (1610, 205)]      # S-curve ending at the sun (px)
+S16_DEPTH = (110.0, 900.0)
 
 
-def s16_root(t, dur=8.0):
+def s16_root(t, dur=5.0):
     """World root matrix of the robot along the S16 arc at shot time t (seconds), incl. before t=0."""
-    sh = next(x for x in SHOTS if x['id'] == 'S16')
+    sh = next(x for x in SHOTS if x['id'] == 'S16B')
     cam = camera(sh, 0.0)
     def world_at(tt):
         u = np.clip(tt / dur, -0.6, 1.0)
@@ -280,14 +290,45 @@ def s16_root(t, dur=8.0):
     return M
 
 
+def s16a_root(t):
+    """S16A: the robot held in a tracking camera; it banks and pitches a little (keys on 3s)."""
+    roll = -45.0 + 6.0 * np.sin(t * 1.3)
+    pitch = -10.0 + 4.0 * np.sin(t * 0.9 + 0.5)
+    yaw = 30.0
+    R = r3d.rot_matrix(pitch, roll, yaw)
+    M = np.eye(4, dtype=np.float32)
+    M[:3, :3] = R
+    pel = rig().parts['pelvis'].joint
+    M[:3, 3] = np.array([0.0, 0.0, 9.0], np.float32) - R @ pel + np.array([0, 0, 0.6 * np.sin(t * 2.1)], np.float32)
+    return M
+
+
 def _s16_keys():
     keys = []
-    for k in range(0, 8 * 8 + 1):
+    for k in range(0, 5 * 8 + 1):
         t = k / 8.0
         keys.append((t, 'FLY', dict(M=s16_root(t))))
     return keys
 
 
 for _s in SHOTS:
-    if _s['id'] == 'S16':
+    if _s['id'] == 'S16B':
         _s['pose'] = _s16_keys()
+    if _s['id'] == 'S16A':
+        _s['pose'] = [(k / 8.0, 'FLY', dict(M=s16a_root(k / 8.0))) for k in range(0, 3 * 8 + 1)]
+
+
+# ---------------------------------------------------------------- timing from the cue sheet
+def _sync_times():
+    import json
+    try:
+        cues = json.load(open(os.path.join(ROOT, 'audio', 'cues.json')))
+    except Exception:
+        return
+    tm = {c['id']: (c['in'], c['out']) for c in cues['shots']}
+    for _s in SHOTS:
+        if _s['id'] in tm:
+            _s['t0'], _s['t1'] = tm[_s['id']]
+
+
+_sync_times()

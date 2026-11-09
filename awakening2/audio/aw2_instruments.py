@@ -30,6 +30,15 @@ from aw2_core import (SR, TWO_PI, add_modes, additive_dyn, bp, cos_ramp, db, fad
                       norm_rms, pan_stereo, peq, saw_blep, sec, shelf, slow_noise, smooth, svf_tv)
 
 
+def tail_fade(buf, frac=0.25):
+    """Raised-cosine fade over the last `frac` of a note buffer, so a ringing mode is never
+    cut off (no click when the buffer ends before the note has died away)."""
+    q = max(2, int(len(buf) * frac))
+    w = cos_ramp(q)[::-1]
+    buf[-q:] *= w[:, None] if buf.ndim == 2 else w
+    return buf
+
+
 # ============================================================================ notes
 class Note:
     """t, d in seconds; m MIDI (float ok); v velocity 0..1 or [(frac, v), ...] swell points."""
@@ -288,9 +297,11 @@ def pizz(notes, rng, section="vc", players=3, bright=0.5):
             amps = np.abs(np.sin(np.pi * k * 0.18)) / k ** (1.5 - 0.5 * bright) * nt.vmax()
             tau0 = 0.55 * (110.0 / f0) ** 0.35
             taus = tau0 / (1 + 0.45 * (k - 1))
-            add_modes(buf, 0, f0 * det * k * (1 + 0.0002 * k ** 2), amps, taus, rng.uniform(0, TWO_PI, 12), 24)
+            add_modes(buf, 0, f0 * det * k * (1 + 0.0002 * k ** 2), amps, taus, rng.uniform(0, TWO_PI, 12), 48)
             thump = lp(rng.standard_normal(buf_n), 300, 2) * np.exp(-np.arange(buf_n) / sec(0.012)) * 0.25 * nt.vmax()
+            thump[: sec(0.001)] *= cos_ramp(sec(0.001))
             buf += thump
+            tail_fade(buf)
             s = max(0, sec(nt.t + rng.normal(0, 0.008) - t0))
             e = min(n, s + buf_n)
             out[s:e] += pan_stereo(buf[: e - s], rng.uniform(*P["pan"]))
@@ -396,6 +407,7 @@ def piano(notes, rng, felt=0.75, pedal=True, width=0.28):
         off = sec(nt.d)
         if off < m:
             buf[off:] *= np.exp(-np.arange(m - off) / sec(0.11))
+        tail_fade(buf, 0.15)
         pan = np.clip((nt.m - 64) / 30.0, -1, 1) * width
         s = sec(nt.t - t0)
         out[s:s + m] += pan_stereo(buf, pan)
@@ -424,6 +436,7 @@ def _modal_notes(notes, rng, table, tau_fn, click, pan_fn, tail=3.0, att=12):
         if click:
             c = min(m, sec(0.004))
             buf[:c] += hp(rng.standard_normal(c), click[0], 2) * np.exp(-np.arange(c) / sec(click[1])) * click[2] * v
+        tail_fade(buf)
         s = sec(nt.t - t0)
         out[s:s + m] += pan_stereo(buf, pan_fn(nt))
     return t0, out
@@ -462,9 +475,12 @@ def harp(notes, rng, pan=-0.38):
         taus = tau0 / (1 + 0.28 * (k - 1))
         m = min(n - sec(nt.t - t0), sec(min(5.0, tau0 * 6)))
         buf = np.zeros(m)
-        add_modes(buf, 0, f0 * k * (1 + 0.00004 * k ** 2), amps, taus, np.zeros(16), 30)
+        add_modes(buf, 0, f0 * k * (1 + 0.00004 * k ** 2), amps, taus, np.zeros(16), 48)
         c = min(m, sec(0.01))
-        buf[:c] += lp(rng.standard_normal(c), 2000, 2) * np.exp(-np.arange(c) / sec(0.002)) * 0.04 * v
+        pk = lp(rng.standard_normal(c), 2000, 2) * np.exp(-np.arange(c) / sec(0.002)) * 0.04 * v
+        pk[: sec(0.0008)] *= cos_ramp(sec(0.0008))
+        buf[:c] += pk
+        tail_fade(buf)
         s = sec(nt.t - t0)
         out[s:s + m] += pan_stereo(buf, pan + np.clip((nt.m - 70) / 60.0, -0.2, 0.2))
     return t0, out * 1.4
@@ -489,8 +505,9 @@ def timpani(midi, vel, rng, dur=None):
     glide = 1 + 0.022 * vel * np.exp(-t / 0.07)
     out += np.sin(TWO_PI * np.cumsum(f * glide) / SR) * np.exp(-t / tau1) * np.minimum(1, t / 0.002)
     mal = lp(rng.standard_normal(n), 900 + 1500 * vel, 2) * np.exp(-t / 0.005) * 0.5 * vel
+    mal[: sec(0.0008)] *= cos_ramp(sec(0.0008))
     out = (out + mal) * vel
-    return out * 0.6
+    return tail_fade(out * 0.6)
 
 
 def timp_roll(dur, midi, vel_pts, rng, rate=15.0):
@@ -532,7 +549,7 @@ def bass_drum(vel, rng):
     fd = 44.0 * (1 + 0.5 * np.exp(-t / 0.06))
     y = np.sin(TWO_PI * np.cumsum(fd) / SR) * np.exp(-t / 0.75) * np.minimum(1, t / 0.004)
     y += lp(rng.standard_normal(n), 350, 2) * np.exp(-t / 0.05) * 0.35
-    return y * vel
+    return tail_fade(y * vel)
 
 
 def _cymbal_modes(rng, nmodes=160, lo=320.0, hi=15000.0):
@@ -600,4 +617,4 @@ def tamtam(vel, rng, dur=7.0):
         bloom = (1 - np.exp(-t / 0.7)) * np.exp(-t / 3.5)
         mal = lp(rng.standard_normal(n), 300, 2) * np.exp(-t / 0.03) * 0.6
         out[:, ch] = y + z * bloom * 2.5 + mal
-    return out * vel * 0.5
+    return tail_fade(out * vel * 0.5, 0.3)

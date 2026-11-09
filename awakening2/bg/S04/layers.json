@@ -21,7 +21,7 @@
       ],
       "blend": "normal",
       "coverage": 1.0,
-      "note": "deep cool forest interior at low height, ground mist; opaque"
+      "note": "deep cool forest interior at low height, ground mist; painted soft focus; opaque"
     },
     {
       "name": "mid",
@@ -36,13 +36,13 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.054,
+      "coverage": 0.066,
       "note": "dark ferns at the left strip with warm glints"
     }
   ],
-  "seconds": 17.0,
+  "seconds": 8.5,
   "layer_seconds": {
-    "far": 15.7,
+    "far": 7.2,
     "mid": 0.8
   },
   "note_robot": "the chest covers x > ~0.07 of the frame; paint visible on the left strip and top"

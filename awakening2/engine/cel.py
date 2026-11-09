@@ -200,11 +200,21 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
         w = np.where(soft_any[iy, ix], w * style.get('soft_line', 0.62), w)
         return w.astype(np.float32)
 
-    strokes = ink.chains_to_strokes(chains, widths, rng, smooth_sigma=1.2 * ss, step=1.5 * ss,
+    # chains on soft material (moss, leaves) get a bumpy, fringed line; metal stays clean
+    hard_c, soft_c = [], []
+    for ch in chains:
+        p_ = ch[0]
+        ix = np.clip(p_[:, 0].astype(int), 0, W - 1); iy = np.clip(p_[:, 1].astype(int), 0, H - 1)
+        (soft_c if soft_any[iy, ix].mean() > 0.5 else hard_c).append(ch)
+    strokes = ink.chains_to_strokes(hard_c, widths, rng, smooth_sigma=1.2 * ss, step=1.5 * ss,
                                     corner_deg=style.get('corner_deg', 62.0),
                                     taper_px=style.get('taper_px', 10.0) * ss,
                                     wob_amp=style.get('wobble', 0.35) * ss, wob_wl=40.0 * ss,
                                     width_fn=wfn)
+    strokes += ink.chains_to_strokes(soft_c, widths, rng, smooth_sigma=0.8 * ss, step=1.2 * ss,
+                                     corner_deg=50.0, taper_px=6.0 * ss,
+                                     wob_amp=style.get('soft_wobble', 1.3) * ss, wob_wl=11.0 * ss,
+                                     width_fn=wfn, var=0.35)
     inkc = np.asarray(style.get('ink', (0.17, 0.12, 0.12)), np.float32)
     a = m.astype(np.float32)
     # colour trace: lines that lie on moss / foliage are drawn in a deep green, not the brown ink

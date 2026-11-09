@@ -11,7 +11,7 @@ from ..noise import rng_for
 from ..canvas import stroke, taper
 from ..layers import Painting
 from ..foliage import Blobs, spray
-from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud
+from ..sky import sky, cumulus_blobs, paint_clouds, sculpted_cloud, plane_cloud
 from ..atmos import glow
 from ..trees import species, paint_tube, trunk_path
 from ..forest import leafy_mass, layered_mass
@@ -35,8 +35,8 @@ def build(outdir, quick=False):
         n_strokes=0.9, stroke_w=(26, 90), stroke_len=(240, 800), angle=-0.06)
     cpal = [C(140, 118, 176), C(194, 150, 182), C(242, 186, 168), C(255, 220, 176), C(255, 242, 212)]
     for (cx, by, w_, h_, kind) in [(150, 330, 760, 200, 'cumulus'), (1780, 250, 620, 110, 'strato')]:
-        sculpted_cloud(cv, rng, cx, by, w_, h_, cpal, kind=kind, light3=(0.1, 0.6, 0.15), rim=C(255, 238, 200),
-                       rim_amt=0.8, under=0.3)
+        plane_cloud(cv, rng, cx, by, w_, h_, (cpal[0], cpal[2], cpal[3], cpal[4]), kind=kind,
+                    light3=(0.3, -0.75, 0.3), rim=C(255, 244, 214), wisps=0.4)
     P.add('sky', 0.0, cv, 'peach-gold dawn sky; upper middle kept open for the flock; opaque')
 
     # ---------------------------------------------------------------- far crowns (hazier, lower)

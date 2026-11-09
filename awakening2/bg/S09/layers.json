@@ -36,7 +36,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.703,
+      "coverage": 0.695,
       "note": "far trunks rising from the low horizon into mist; hazy canopy"
     },
     {
@@ -52,7 +52,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.371,
+      "coverage": 0.36,
       "note": "mid trunks, canopy and vines at the top, beams (robot goes above this layer)"
     },
     {
@@ -68,7 +68,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.212,
+      "coverage": 0.216,
       "note": "huge trunks rising up both frame edges"
     },
     {
@@ -84,16 +84,16 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.085,
+      "coverage": 0.086,
       "note": "extreme foreground ferns and grass along the bottom"
     }
   ],
-  "seconds": 35.8,
+  "seconds": 41.7,
   "layer_seconds": {
-    "sky": 1.5,
-    "far": 28.4,
-    "mid": 2.8,
-    "near": 1.7,
+    "sky": 2.0,
+    "far": 33.7,
+    "mid": 2.7,
+    "near": 1.9,
     "fg": 0.9
   },
   "sun": [

@@ -1,0 +1,1 @@
+Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" | Where-Object { $_.CommandLine -like '*Blender 5.2*' } | ForEach-Object { "$($_.ProcessId) $($_.CommandLine.Substring([Math]::Max(0, $_.CommandLine.Length - 80)))" }

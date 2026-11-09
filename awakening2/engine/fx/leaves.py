@@ -12,8 +12,9 @@ import numpy as np
 from . import core, palettes, shapes
 from .core import PolyBatch, held
 
-DEFAULT_COLOURS = {'green': 0.5, 'deep': 0.2, 'gold': 0.22, 'rust': 0.08}
-DEFAULT_KINDS = {'ovate': 0.35, 'lance': 0.2, 'round': 0.15, 'serrate': 0.2, 'maple': 0.1}
+DEFAULT_COLOURS = {'green': 0.42, 'deep': 0.22, 'gold': 0.24, 'rust': 0.12}
+DEFAULT_KINDS = {'ovate': 0.15, 'lance': 0.08, 'round': 0.06, 'serrate': 0.17, 'maple': 0.1,
+                 'willow': 0.1, 'birch': 0.12, 'heart': 0.1, 'lobed': 0.12}
 
 
 def _pick(g, d, n):
@@ -22,21 +23,35 @@ def _pick(g, d, n):
     return [names[i] for i in g.choice(len(names), size=n, p=w / w.sum())]
 
 
+def _bend(x, y, bend):
+    """Curve a leaf along its length (local coords, x in -1..1)."""
+    return x, y + bend * (x * x - 0.3)
+
+
 def add_leaf(batch, outline, pos, ang, length, flip, colours, light, ink_w=1.2, sunlit=0.0,
-             alpha=1.0, tilt=1.0):
+             alpha=1.0, tilt=1.0, curl=0.0, bend=0.0, tint=None, veins=True):
     """Add one leaf (outline in -1..1 local units, tip at +x) to a PolyBatch.
 
-    flip : radians about the long axis (cos < 0 shows the back);  tilt: length foreshortening."""
+    flip : radians about the long axis (cos < 0 shows the back);  tilt: length foreshortening.
+    curl : 0..1 one half of the blade turns away (narrower), as on a curled leaf;
+    bend : the midrib bends (local units);  tint: (r, g, b) multiplier for per-leaf variation."""
     cf = math.cos(flip)
     front = cf >= 0
     wsc = max(abs(cf), 0.1)
     half = length * 0.5
     c, s = math.cos(ang), math.sin(ang)
-    lx = outline[:, 0] * half * tilt
-    ly = outline[:, 1] * half * wsc
+    oy = outline[:, 1] * np.where(outline[:, 1] > 0, 1 - 0.75 * curl, 1.0)
+    bx, by = _bend(outline[:, 0], oy, bend)
+    lx = bx * half * tilt
+    ly = by * half * wsc
     P = np.stack([lx * c - ly * s + pos[0], lx * s + ly * c + pos[1]], 1)
     lit = colours['f_lit'] if front else colours['b_lit']
     sh = colours['f_sh'] if front else colours['b_sh']
+    if tint is not None:
+        tv = np.asarray(tint, np.float32)
+        lit = np.clip(lit * tv, 0, 1)
+        sh = np.clip(sh * tv, 0, 1)
+    ink = core.mix(sh, colours['ink'], 0.55)              # a coloured line, not a black one
     if sunlit > 0:
         lit = core.mix(lit, palettes.LIGHT_GOLD, 0.45 * sunlit)
         sh = core.mix(sh, lit, 0.25 * sunlit)
@@ -47,20 +62,32 @@ def add_leaf(batch, outline, pos, ang, length, flip, colours, light, ink_w=1.2, 
     if term is None:
         lit = core.mix(lit, sh, 0.5)
     iw = ink_w if length > 10 else ink_w * 0.7
+
+    def to_screen(x, y):
+        x, y = _bend(np.asarray(x, np.float64), np.asarray(y, np.float64), bend)
+        X = x * half * tilt
+        Y = y * half * wsc
+        return np.stack([X * c - Y * s + pos[0], X * s + Y * c + pos[1]], 1)
+
     # stem
-    st = np.array([[-1.0, 0.0], [-1.28, 0.06 * (1 if front else -1)]])
-    sx = st[:, 0] * half * tilt
-    sy = st[:, 1] * half * wsc
-    S = np.stack([sx * c - sy * s + pos[0], sx * s + sy * c + pos[1]], 1)
-    batch.add(core.stroke_poly(S, [max(1.0, length * 0.035)] * 2), colours['ink'], alpha=alpha)
-    batch.add(P, lit, sh, colours['ink'], iw, term, alpha)
-    if wsc > 0.3 and length > 12:
-        # midrib (front: vein colour, back: paler raised rib)
-        mx = np.linspace(-0.95, 0.72, 5) * half * tilt
-        my = np.zeros(5)
-        M = np.stack([mx * c - my * s + pos[0], mx * s + my * c + pos[1]], 1)
+    S = to_screen([-1.0, -1.28], [0.0, 0.06 * (1 if front else -1)])
+    batch.add(core.stroke_poly(S, [max(1.0, length * 0.035)] * 2), ink, alpha=alpha)
+    batch.add(P, lit, sh, ink, iw, term, alpha)
+    if wsc > 0.3 and length > 12 and veins:
+        # midrib (front: vein colour, back: paler raised rib) and side veins on larger leaves
         vc = colours['vein'] if front else core.mix(colours['b_lit'], colours['b_sh'], 0.6)
-        batch.add(core.stroke_poly(M, np.linspace(max(1.0, length * 0.03), 0.4, 5)), vc, alpha=alpha)
+        if tint is not None:
+            vc = np.clip(vc * np.asarray(tint, np.float32), 0, 1)
+        M = to_screen(np.linspace(-0.95, 0.72, 6), np.zeros(6))
+        batch.add(core.stroke_poly(M, np.linspace(max(1.0, length * 0.03), 0.4, 6)), vc, alpha=alpha)
+        if length > 24:
+            for xv in (-0.45, -0.05, 0.32):
+                for side in (-1, 1):
+                    wdt = float(np.interp(xv, outline[:, 0], np.abs(outline[:, 1]))) * 0.75
+                    if side > 0:
+                        wdt *= (1 - 0.75 * curl)
+                    V = to_screen([xv, xv + 0.22], [0.0, side * wdt])
+                    batch.add(core.stroke_poly(V, [max(0.8, length * 0.018), 0.3]), vc, alpha=alpha * 0.9)
 
 
 class _LeafSet:
@@ -69,8 +96,15 @@ class _LeafSet:
         self.n = count
         self.kind = _pick(g, kinds or DEFAULT_KINDS, count)
         self.col = _pick(g, colours or DEFAULT_COLOURS, count)
-        self.len = g.uniform(size[0], size[1], count)
+        u = g.random(count)
+        self.len = size[0] + (size[1] - size[0]) * u ** 1.4
+        self.len *= np.where(g.random(count) < 0.12, 1.45, 1.0)          # a few big ones
+        self.len *= np.where(np.isin(self.kind, ['birch', 'round']), 0.75, 1.0)
+        self.len *= np.where(np.isin(self.kind, ['willow']), 1.25, 1.0)
         self.outline = [shapes.leaf(k, core.rng('leaf_shape', name, i)) for i, k in enumerate(self.kind)]
+        self.curl = np.where(g.random(count) < 0.35, g.uniform(0.35, 0.85, count), g.uniform(0, 0.15, count))
+        self.bend = g.uniform(-0.25, 0.25, count) + np.where(self.curl > 0.3, 0.2, 0.0) * g.choice([-1, 1], count)
+        self.tint = np.clip(1 + g.normal(0, 0.07, (count, 3)) + g.normal(0, 0.06, (count, 1)), 0.75, 1.2)
         self.g = g
 
     def paint(self, canvas, items, light, sunlit=None, ink=1.2):
@@ -86,7 +120,8 @@ class _LeafSet:
                 continue
             sl = float(sunlit(x, y)) if sunlit is not None else 0.0
             add_leaf(b, self.outline[i], (x, y), ang, L, flip, palettes.LEAF[self.col[i]], light,
-                     ink * max(0.7, min(1.4, L / 26)), sl)
+                     ink * max(0.7, min(1.4, L / 26)), sl, curl=float(self.curl[i]),
+                     bend=float(self.bend[i]), tint=self.tint[i])
         b.draw(canvas)
         return canvas
 

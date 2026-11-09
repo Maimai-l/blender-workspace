@@ -143,7 +143,8 @@ def far_trunks(cv, rng, xs, base_y, top_range, d, haze, L3, mist_col, mist_band,
 
 
 def giant(cv, rng, base, top, wb, wt, L3, sp='camphor', roots=6, ivy=0.6, moss=1.3, twist=0.2, flare=0.55,
-          keep_out=None, flecks=0.3, d=0.0, haze=None, lichen=None, blotch=None, root_spread=1.5, detail=1.0):
+          keep_out=None, flecks=0.3, d=0.0, haze=None, lichen=None, blotch=None, root_spread=1.5, detail=1.0,
+          traits=None):
     """Huge near trunk with buttress roots. keep_out=(x0, x1): roots avoid this x range."""
     pts, ww = trunk_path(rng, base, top, wb, wt, sway=0.025, bulge=0.08, flare=flare, flare_h=0.045)
     bark = species(sp, depth=d, haze=haze)
@@ -160,6 +161,8 @@ def giant(cv, rng, base, top, wb, wt, L3, sp='camphor', roots=6, ivy=0.6, moss=1
         paint_tube(cv, rp, rw, rng, bark, L3, moss=1.6, detail=0.8 * detail, start_fade=0.25, depth=d, haze=haze)
     paint_tube(cv, pts, ww, rng, bark, L3, moss=moss, ivy=ivy, twist=twist, flecks=flecks, detail=detail,
                moss_base=0.5, sky_side=0.3, depth=d, haze=haze)
+    if traits:
+        character(cv, rng, pts, ww, bark, L3, **traits)
     return pts, ww
 
 
@@ -300,7 +303,7 @@ def leaf_spray_mass(blobs, rng, p0, p1, size, droop=0.25, n=None, light=1.0, hue
 
 def forest_row(cv, rng, x0, x1, y_ground, y_top, n, d, haze, L3, sun2, mist_col=None, mist_band=None,
                width=(16, 60), leaf=6.0, branches=(1, 3), saplings=0.5, vines=0.3, keep=None, fade_p=0.3,
-               leaf_size=None, top_jitter=120, hue=0.0, lz=-0.15, canopy=True):
+               leaf_size=None, top_jitter=120, hue=0.0, lz=-0.15, canopy=True, soft=0.0):
     """One row of a forest seen from inside: varied trunks; leafy side-branch sprays at
     many heights; saplings between trunks; hanging vines. Foliage of the whole row is
     painted in one pass after the trunks. keep=(x0, x1): no saplings there."""
@@ -322,8 +325,12 @@ def forest_row(cv, rng, x0, x1, y_ground, y_top, n, d, haze, L3, sun2, mist_col=
                              w * rng.uniform(0.5, 0.8), sway=sw, bulge=0.07, flare=rng.uniform(0.15, 0.6),
                              flare_h=0.05, lean_curve=rng.normal(0, 0.012))
         sf = rng.uniform(0.1, 0.4) if rng.random() < fade_p else 0.0
-        paint_tube(cv, pts, ww, rng, bark, L3, detail=0.35, depth=dd, haze=haze, moss=0.5, start_fade=sf,
-                   end_fade=0.08, mist_fade=mist_band, mist_col=mist_col, flecks=0.2)
+        if soft > 0:
+            paint_tube(cv, pts, ww, rng, bark, L3, detail=0.1, depth=dd, haze=haze, moss=0.0, start_fade=sf,
+                       end_fade=0.08, flecks=0.0, soft_edge=soft)
+        else:
+            paint_tube(cv, pts, ww, rng, bark, L3, detail=0.35, depth=dd, haze=haze, moss=0.5, start_fade=sf,
+                       end_fade=0.08, mist_fade=mist_band, mist_col=mist_col, flecks=0.2)
         fr = Frame(pts, ww)
         for j in range(int(rng.integers(branches[0], branches[1] + 1))):
             if rng.random() < 0.45:
@@ -362,9 +369,116 @@ def forest_row(cv, rng, x0, x1, y_ground, y_top, n, d, haze, L3, sun2, mist_col=
             layered_mass(blobs, rng, xc + rng.normal(0, leaf_size), y_top + depth_c,
                          leaf_size * rng.uniform(1.6, 2.8), flat=0.6, hue=hue, droop=0.6)
     if len(blobs):
-        leafy_mass(cv, rng, blobs, d, haze, L3, sun2, leaf, density=0.85, trans_amt=0.55, rim_amt=0.6, lz=lz,
-                   droop=0.5)
+        if soft > 0:
+            from .sky import paint_planes
+            cols = tuple(aerial(c, d, haze) for c in (LEAF[1], LEAF[2], LEAF[3], LEAF[4]))
+            paint_planes(cv, rng, blobs, cols, light3=(L3[0], L3[1], 0.2), th=(0.4, 0.68, 0.95), noise_amt=0.07,
+                         strokes=0.7, brush_edge=1.0, leafy_edge=0.15, leaf_px=max(leaf * 2.5, 8), glob=0.45,
+                         rim=aerial(RIM, d * 0.5, haze), rim_amt=0.35)
+        else:
+            leafy_mass(cv, rng, blobs, d, haze, L3, sun2, leaf, density=0.85, trans_amt=0.55, rim_amt=0.6, lz=lz,
+                       droop=0.5)
+    if soft > 0:
+        vine_specs = vine_specs[::3]
     for (vx, vy, dd) in vine_specs:
         vine(cv, vx, vy, Hrow * rng.uniform(0.15, 0.4), rng, aerial(C(50, 50, 58), dd, haze),
              aerial(C(36, 60, 60), dd, haze), aerial(C(130, 156, 84), dd * 0.8, haze), leaf=max(leaf * 1.2, 5),
              width=max(leaf * 0.25, 1.2), sun2=sun2)
+
+
+def character(cv, rng, pts, ww, bark, L3, knots=3, fungi=2, hollow=False, ivy_bands=0, moss_cushions=0,
+              ivy_pal=None, side=None):
+    """Give a near trunk individual features (alpha-locked onto the trunk, except fungi and
+    cushions which may overhang): knot holes with a lit lip, bracket fungi, a dark hollow
+    between the roots, ivy in a few distinct climbing bands (dense at the foot, thinning
+    upward, bare gaps between) and thick moss cushions on the root flare."""
+    from .trees import IVY
+    sp_ = catmull(np.asarray(pts, np.float32), spacing=3.0)
+    fr = Frame(sp_, np.interp(np.linspace(0, 1, len(sp_)), np.linspace(0, 1, len(ww)), np.asarray(ww, np.float32)))
+    L = np.asarray(L3, np.float32)
+    L2 = L[:2] / (np.hypot(L[0], L[1]) + 1e-6)
+    nd = fr.N[len(sp_) // 2]
+    lit_sgn = 1.0 if (nd[0] * L2[0] + nd[1] * L2[1]) > 0 else -1.0
+    side = side if side is not None else lit_sgn
+    dark = mix(bark.dark, C(16, 12, 24), 0.5)
+    # --- knot holes: dark oval, lit lower lip, a ring of bark strokes around it
+    for k in range(knots):
+        s0 = rng.uniform(0.12, 0.75)
+        t0 = rng.uniform(-0.55, 0.55)
+        p, w, _ = fr.at(s0, t0)
+        r = float(w) * rng.uniform(0.035, 0.07)
+        ang = float(np.arctan2(fr.T[int(s0 * (len(sp_) - 1)), 1], fr.T[int(s0 * (len(sp_) - 1)), 0]))
+        dabs(cv, [p[0]], [p[1]], [r * 3.2], mix(bark.mid, bark.dark, 0.6), aspect=0.62, angle=ang, edge=0.35,
+             rag=0.5, bristle=0.4, mode='lock', rng=rng)
+        dabs(cv, [p[0]], [p[1]], [r * 2.0], dark, aspect=0.5, angle=ang, edge=0.25, rag=0.4, bristle=0.1,
+             mode='lock', rng=rng)
+        lip = np.array([p[0] + np.cos(ang + np.pi / 2) * r * 0.9 * lit_sgn, p[1] + np.sin(ang + np.pi / 2) * r * 0.9 * lit_sgn])
+        dabs(cv, [lip[0]], [lip[1]], [r * 1.8], mix(bark.lit, bark.rim, 0.3), aspect=0.25, angle=ang, edge=0.35,
+             rag=0.3, bristle=0.3, opacity=0.8, mode='lock', rng=rng)
+    # --- hollow at the base between two buttress roots
+    if hollow:
+        p, w, _ = fr.at(rng.uniform(0.0, 0.04), rng.uniform(-0.25, 0.25))
+        hw_ = float(w) * rng.uniform(0.18, 0.26)
+        n = 40
+        xs = p[0] + rng.normal(0, hw_ * 0.3, n)
+        ys = p[1] - np.abs(rng.normal(0, hw_ * 0.7, n))
+        dabs(cv, xs, ys, rng.uniform(hw_ * 0.4, hw_ * 0.8, n), jitter(np.broadcast_to(dark, (n, 3)), rng, dl=0.02),
+             aspect=0.7, edge=0.3, rag=0.6, bristle=0.2, mode='lock', rng=rng)
+        # mossy lip around the hollow
+        m = 60
+        a = rng.uniform(np.pi * 1.0, np.pi * 2.0, m)
+        lx = p[0] + np.cos(a) * hw_ * 0.75
+        ly = p[1] - hw_ * 0.6 + np.sin(a) * hw_ * 0.9
+        dabs(cv, lx, ly, rng.uniform(6, 16, m), jitter(mix(C(78, 122, 72), C(160, 188, 86), rng.random(m)[:, None]), rng,
+             dl=0.03), aspect=0.7, edge=0.3, rag=0.5, mode='lock', rng=rng)
+    # --- bracket fungi: stacked shelves on the side of the trunk (overhang the silhouette)
+    for k in range(fungi):
+        s0 = rng.uniform(0.08, 0.45)
+        t0 = side * rng.uniform(0.65, 0.95) * rng.choice([1, -1], p=[0.7, 0.3])
+        p, w, _ = fr.at(s0, t0)
+        nshelf = int(rng.integers(2, 5))
+        for j in range(nshelf):
+            sw = float(w) * rng.uniform(0.07, 0.13) * (1 - 0.15 * j)
+            cx = p[0] + np.sign(t0) * sw * 0.35 + rng.normal(0, sw * 0.15)
+            cy = p[1] - j * sw * 0.42
+            # shadow under the shelf
+            dabs(cv, [cx], [cy + sw * 0.16], [sw * 1.9], C(40, 30, 40), aspect=0.2, angle=0.0, edge=0.4, rag=0.3,
+                 opacity=0.7, rng=rng)
+            col = mix(C(200, 168, 120), C(238, 216, 170), rng.uniform(0.2, 0.8))
+            dabs(cv, [cx], [cy], [sw * 1.8], col, aspect=0.32, angle=0.0, shape='round', edge=0.3, rag=0.25,
+                 bristle=0.3, rng=rng)
+            dabs(cv, [cx + L2[0] * sw * 0.1], [cy - sw * 0.06], [sw * 1.2], C(255, 236, 196), aspect=0.18, angle=0.0,
+                 edge=0.4, rag=0.2, opacity=0.7, rng=rng)
+    # --- ivy in distinct climbing bands
+    ip = ivy_pal or IVY
+    for b_ in range(ivy_bands):
+        t0 = rng.uniform(-0.75, 0.6)
+        s_top = rng.uniform(0.3, 0.8)
+        n = int(240 * s_top)
+        ss = np.sort(rng.uniform(0, s_top, n) ** 1.6 * s_top / max(s_top ** 1.6, 1e-6))
+        tt = t0 + np.sin(ss * 9 + rng.uniform(0, 6)) * 0.12 + rng.normal(0, 0.09 + 0.12 * (1 - ss / s_top), n)
+        ok = np.abs(tt) < 0.97
+        ss, tt = ss[ok], tt[ok]
+        q, w, _ = fr.at(ss, tt)
+        i_ = np.clip((ss * (len(sp_) - 1)).astype(int), 0, len(sp_) - 1)
+        ndl = fr.N[i_, 0] * L2[0] + fr.N[i_, 1] * L2[1]
+        val = np.clip(0.45 + 0.4 * tt * np.sign(ndl) + rng.normal(0, 0.15, len(ss)), 0, 1)
+        cols = jitter(ramp([ip['dark'], ip['mid'], ip['lit'], ip['gloss']], val, [0, 0.4, 0.8, 1.0]), rng, dl=0.03,
+                      dc=0.1, dh=0.05)
+        sz = np.clip(w * rng.uniform(0.035, 0.065, len(ss)), 6, 30) * (1.15 - 0.4 * ss / s_top)
+        order = np.argsort(val)
+        dabs(cv, q[order, 0], q[order, 1], sz[order], cols[order], aspect=rng.uniform(0.6, 0.9, len(ss))[order],
+             angle=rng.uniform(0, 2 * np.pi, len(ss))[order], shape='petal', edge=0.22, rag=0.2, split=0.12, rng=rng)
+    # --- thick moss cushions on the root flare (overhang a little, lit tops)
+    for k in range(moss_cushions):
+        p, w, _ = fr.at(rng.uniform(0.0, 0.12), rng.uniform(-0.9, 0.9))
+        R = float(w) * rng.uniform(0.08, 0.14)
+        b = Blobs()
+        for j in range(int(rng.integers(3, 6))):
+            r = R * rng.uniform(0.5, 0.9)
+            b.add(p[0] + rng.normal(0, R * 0.6), p[1] + rng.normal(0, R * 0.3), r * 1.2, r * 0.75,
+                  light=rng.uniform(0.9, 1.1), hue=rng.normal(0, 0.05), rng=rng, lumpy=0.25)
+        from .sky import paint_planes
+        paint_planes(cv, rng, b, (C(32, 60, 62), C(62, 100, 68), C(118, 150, 78), C(176, 186, 100)),
+                     light3=(L3[0], L3[1], 0.5), th=(0.3, 0.58, 0.85), strokes=0.0, leafy_edge=0.8, leaf_px=7,
+                     leaf_cols=[C(36, 66, 62), C(78, 116, 70), C(140, 166, 84)], noise_amt=0.1, rim=None)

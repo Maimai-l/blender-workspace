@@ -42,7 +42,8 @@ class Base:
     ref_t = 0.0
     win0 = (0.0, 0.0)
     win_scale = 1.0
-    haze = 0.045
+    haze = 0.0                 # extra haze on top of the distance-based amount
+    haze_auto = True
     wrap = 0.32
     ground = True
     sky_dir = (0.0, 0.25, 1.0)
@@ -177,8 +178,15 @@ class Base:
     def light(self, cam):
         return comp.light_from_screen(cam, self.light_az, self.light_el)
 
+    eye_glow = None            # after the robot wakes (S07) its eyes stay lit
+
     def style(self, tq, cam):
-        return dict(light=self.light(cam), seed=int(tq * 24) // 2 + 17, sky_dir=self.sky_dir)
+        st = dict(light=self.light(cam), seed=int(tq * 24) // 2 + 17, sky_dir=self.sky_dir)
+        if self.eye_glow is not None:
+            import warden as WD
+            g = float(self.eye_glow)
+            st['lens_fn'] = lambda o, l, g=g: WD.eye_colour(o, g, l)
+        return st
 
     def robot_state(self, tq):
         return ()
@@ -200,8 +208,18 @@ class Base:
         return 1.0
 
     # ------------------------------------------------------------ compose
+    def robot_haze(self):
+        """Aerial perspective for the robot, from its distance (it must sit in the same air as the trees)."""
+        if self.haze_auto is False:
+            return self.haze
+        c = self.S.cam(self.ref_t)
+        d = float(np.linalg.norm(np.asarray(self.anchor(), np.float32) - c.pos))
+        return float(np.clip((d - 14.0) / 110.0, 0.0, 0.26)) + self.haze
+
     def compose(self, f, t, cam):
-        shake = self.S.shake(f)
+        # camera shake moves the whole photographed frame (all cels together), on 1s
+        shake_xy = self.S.shake(f)
+        shake = (0.0, 0.0)
         ctx = dict(cam=cam, shake=shake)
         rgb = np.zeros((H, W, 3), np.float32) + np.array([0.85, 0.80, 0.70], np.float32)
         behind, front = self.split_layers()
@@ -218,9 +236,10 @@ class Base:
                 rgb = rgb * (1 - 0.55 * g[..., None]) + rgb * np.asarray(self.shadow_tint, np.float32) * 0.55 * g[..., None]
             a = cel_rgba[..., 3]
             robot_rgb = cel_rgba[..., :3]
-            if self.haze > 0:
+            hz = self.robot_haze()
+            if hz > 0:
                 mist = comp.blur_small(rgb, 25)
-                robot_rgb = robot_rgb * (1 - self.haze) + mist * a[..., None] * self.haze
+                robot_rgb = robot_rgb * (1 - hz) + mist * a[..., None] * hz
             if self.wrap > 0:
                 robot_rgb = comp.light_wrap(robot_rgb, a, rgb, radius=16, strength=self.wrap)
             rgb = self.robot_extra(robot_rgb, a, rgb, f, t, ctx)
@@ -235,6 +254,9 @@ class Base:
         lb = np.zeros((H, W, 3), np.float32)
         self.light_buf(lb, f, t, ctx)
         rgb = 1 - (1 - np.clip(rgb, 0, 1)) * (1 - np.clip(lb, 0, 1))
+        if shake_xy[0] or shake_xy[1]:
+            Ms = np.float32([[1.03, 0, shake_xy[0] - W * 0.015], [0, 1.03, shake_xy[1] - H * 0.015]])
+            rgb = cv2.warpAffine(rgb, Ms, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         rgb = comp.finish(rgb, int(round(self.S.shot['t0'] * 24)) + f, **self.grade_kw)
         fade = 1.0
         if self.fade_in:
@@ -278,7 +300,7 @@ class S01(Base):
     win0 = (0.0, 2900 - 1040)
     robot_depth = 0.45
     behind = ('sky', 'far', 'mist_far', 'mid', 'mist_mid')
-    fade_in = 1.6
+    fade_in = None
     light_az, light_el = 118, 38
 
     def setup(self):
@@ -440,11 +462,27 @@ class S04(Base):
     def style(self, tq, cam):
         st = Base.style(self, tq, cam)
         g = self.glow_level(tq)
-        core = np.array([0.23, 0.16, 0.19]) * (1 - g) + np.array([1.0, 0.86, 0.5]) * g
         import warden as WD
-        st['emissive'] = {WD.GLOW: core}
+        st['emissive'] = {}
+        def glow_fn(o, g=g):
+            # the furnace core: designed concentric bands (white-gold heart, orange, ember edge), in part space
+            r = np.sqrt(((o[:, 0]) / 1.2) ** 2 + ((o[:, 2] - 4.35) / 1.0) ** 2)
+            dark = np.array([0.20, 0.13, 0.15], np.float32)
+            heart = np.array([1.0, 0.95, 0.78], np.float32); mid = np.array([1.0, 0.70, 0.30], np.float32)
+            edge = np.array([0.78, 0.30, 0.16], np.float32)
+            rr = r / max(0.25 + 0.75 * g, 1e-3)
+            col = np.where((rr < 0.35)[:, None], heart, np.where((rr < 0.7)[:, None], mid, np.where((rr < 1.05)[:, None], edge, dark)))
+            return (dark * (1 - g) + col * g).astype(np.float32) if g < 1 else col.astype(np.float32)
         if g > 0:
-            st['spill'] = (SD.A['chest'] + np.array([0, 0.6, -0.3], np.float32), 1.6 * g + 0.6, (1.0, 0.72, 0.35), 0.6 * min(1.0, g))
+            st['glow_fn'] = glow_fn
+            st['glow_mat'] = WD.GLOW
+            M = SD.rig().world_mats(SD.K)['torso']
+            C = r3d.xform_points(M, np.array([[0, 3.3, 4.35]], np.float32))[0]
+            Nw = M[:3, :3] @ np.array([0, 1.0, 0], np.float32)
+            parts_ok = [SD.rig().parts[n].index for n in ('grille', 'torso')]
+            st['core_light'] = (C, Nw, 2.6 + 2.2 * g, (1.0, 0.68, 0.32), min(1.0, 0.4 + 0.6 * g), parts_ok)
+        else:
+            st['emissive'] = {WD.GLOW: np.array([0.20, 0.13, 0.15], np.float32)}
         return st
 
     def light_buf(self, lb, f, t, ctx):
@@ -631,6 +669,7 @@ class Rise(Base):
 
 
 class S08(Rise):
+    eye_glow = 0.85
     painting = 'S08'
     fallback = ('S01', (0.0, 1860.0), 1.0, 0)
     robot_depth = 0.55
@@ -641,6 +680,7 @@ class S08(Rise):
 
 
 class S09(Rise):
+    eye_glow = 0.9
     painting = 'S09'
     fallback = ('S01', (0.0, 1700.0), 1.0, 0)
     robot_depth = 0.55
@@ -657,7 +697,7 @@ class S10(Base):
     redraw_on_camera = True
     robot_depth = 0.6
     ground = False
-    light_az, light_el = -35, 52
+    light_az, light_el = 150, 68      # from the canopy gap above: the upturned face catches it
     def glow(self, tq):
         return 0.7 + 0.3 * ease((tq - 1.6) / 0.8)
     def robot_state(self, tq):
@@ -690,8 +730,10 @@ class S11(Base):
         cv_ = fx.new_canvas(H, W)
         self.leaves.draw(cv_, f)
         return comp.over_straight(rgb, cv_)
+    def layer_opacity(self, name, t):
+        return 0.0 if name == 'flare' else 1.0
     def light_buf(self, lb, f, t, ctx):
-        fx.lens_flare(lb, (1250, 260), strength=0.25, frame=f)
+        fx.glow(lb, (1250, 260), 520, colour=(1.0, 0.86, 0.55), intensity=0.3)
 
 
 class Engines:
@@ -712,6 +754,7 @@ class Engines:
 
 
 class S12(Base):
+    eye_glow = 1.0
     painting = 'S12'
     fallback = ('S01', (0.0, 1500.0), 1.0, 4)
     robot_depth = 0.55
@@ -741,7 +784,10 @@ class S12(Base):
 
 
 class S13(Base):
+    eye_glow = 1.0
     painting = 'S13'
+    haze_auto = False
+    haze = 0.08
     fallback = ('S01', (0.0, 1860.0), 1.0, 0)
     robot_depth = 0.5
     light_az, light_el = 110, 50
@@ -775,6 +821,7 @@ class S13(Base):
 
 class S14(Base):
     """Launch: anticipation hold, smears, impact frames, exit upward."""
+    eye_glow = 1.0
     vines = False
     painting = 'S08'
     fallback = ('S01', (0.0, 1860.0), 1.0, 0)
@@ -790,6 +837,8 @@ class S14(Base):
         self.blast = fx.DustPuff('S14_blast', origin=(float(g[0]), float(g[1]) + 40), frame0=7, size=560, spread=3.8,
                                  life=40, ground=float(g[1]) + 70, aspect=0.45, arms=1.2, direction=(0, -1),
                                  palette=fx.palettes.DUST_DARK)
+        self.veil = fx.DustVeil('S14_veil', origin=(float(g[0]), float(g[1]) + 50), frame0=8, width=1700, height=300,
+                                life=56, palette=fx.palettes.DUST_DARK, opacity=0.55, ground=float(g[1]) + 70)
         self.ring = fx.GroundDust('S14_ringL', start=(float(g[0]), float(g[1]) + 60), direction=(-1, 0), frame0=8,
                                   distance=1100, duration=20, height=170)
         self.ring2 = fx.GroundDust('S14_ringR', start=(float(g[0]), float(g[1]) + 60), direction=(1, 0), frame0=8,
@@ -845,6 +894,7 @@ class S14(Base):
         return robot_rgb + rgb * (1 - a[..., None])
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
+        self.veil.draw(cv_, f)
         self.ring.draw(cv_, f); self.ring2.draw(cv_, f)
         self.blast.draw(cv_, f)
         self.debris.draw(cv_, f)
@@ -858,6 +908,7 @@ class S14(Base):
 
 class S15(Base):
     """From below: it tears up through the canopy gap; the canopy bursts; leaves rain down."""
+    eye_glow = 1.0
     painting = 'S11'
     ground = False
     vines = False
@@ -915,9 +966,12 @@ class S15(Base):
         fx.glow(lb, (960, 470), 600, colour=(1.0, 0.85, 0.5), intensity=0.3 + 0.3 * ease((t - 0.6) / 0.6))
 
 
-class S16(Base):
-    """Golden sky: the robot climbs along a big arc leaving a trail of light and mist."""
+class S16B(Base):
+    """Golden sky: the robot climbs along a big S-curve to the sun; the trail of light and mist."""
+    eye_glow = 1.0
     painting = 'S16'
+    win0 = (400.0, 0.0)
+    haze_auto = False
     ground = False
     redraw_on_camera = True
     robot_depth = 0.4
@@ -930,7 +984,7 @@ class S16(Base):
         self.trail = fx.LightTrail('S16_trail', width=78, life=420, mist=True, mist_size=0.7, light=(0.6, -0.8), mist_every=5)
         self.flames = [fx.EngineFlame(f'S16_e{i}', ignite=-40, sputters=[]) for i in range(2)]
     def cam2d(self, t, t_ref=None):
-        return np.array([960.0, 520.0]), np.array([-60.0 * ease(t / 8.0), 0.0]), 1.0
+        return np.array([960.0, 520.0]), np.array([-40.0 * ease(t / 5.0), 0.0]), 1.0
     def head_point(self, t):
         M = SD.s16_root(t)
         return r3d.xform_points(M, np.array([[0, -3.0, 8.0]], np.float32))[0]
@@ -973,6 +1027,137 @@ class S16(Base):
     def light_buf(self, lb, f, t, ctx):
         if 'lb' in ctx:
             lb += ctx['lb']
+        # far away the robot becomes a spark: an engine glint that grows as the figure shrinks
+        cam = ctx['cam']
+        P = r3d.xform_points(SD.s16_root(t), np.array([[0, -2.5, 4.0]], np.float32))[0]
+        q = cam.project(P[None])[0]
+        size = cam.fpx * 20.0 / max(q[2], 1.0)
+        k = float(np.clip((140.0 - size) / 110.0, 0.0, 1.0))
+        if k > 0:
+            fx.glow(lb, (float(q[0]), float(q[1])), 40 + 60 * k, colour=(1.0, 0.95, 0.8), intensity=0.9 * k)
+            Lc = np.zeros((H, W), np.float32)
+            r = int(30 + 90 * k)
+            cx, cy = int(q[0]), int(q[1])
+            cv2.line(Lc, (cx - r, cy), (cx + r, cy), 1.0, 2, cv2.LINE_AA)
+            cv2.line(Lc, (cx, cy - int(r * 0.7)), (cx, cy + int(r * 0.7)), 1.0, 2, cv2.LINE_AA)
+            Lc = cv2.GaussianBlur(Lc, (0, 0), 1.2) * k
+            lb += Lc[..., None] * np.array([1.0, 0.95, 0.85], np.float32)
+
+
+class S16A(Base):
+    """Tracking beside the climbing robot: it fills the frame; sky and clouds stream past."""
+    eye_glow = 1.0
+    painting = 'S16A'
+    fallback = ('S16', (0.0, 120.0), 1.7, 0)
+    ground = False
+    redraw_on_camera = True
+    haze_auto = False
+    haze = 0.04
+    robot_depth = 0.45
+    wind = 0.0
+    light_az, light_el = 120, 22
+    SPEED = 950.0                    # px/s of the painting's x at depth 1 (the wisps)
+    TILT = 22.0                      # dutch angle: the painting's +x points up-right on screen
+    SCROLL_K = {'sky': 0.18, 'cloud_bank': 0.55, 'wisps': 1.5}
+    def anchor(self):
+        return np.array([0.0, 0.0, 9.0], np.float32)
+    def split_layers(self):
+        if self.P is None or self.pname != 'S16A':
+            return Base.split_layers(self)
+        return ['sun_glow', 'sky', 'cloud_bank', 'wisps'], []
+    def bg_layers(self, rgb, names, t, shake, opacity=None):
+        if self.P is None or self.pname != 'S16A':
+            return Base.bg_layers(self, rgb, names, t, shake, opacity)
+        th = math.radians(self.TILT); sc = 1.45
+        c, s_ = math.cos(th), math.sin(th)
+        for L in self.P.layers:
+            if L['name'] not in names:
+                continue
+            img = comp.load_rgba(os.path.join(self.P.folder, L['file']))
+            if L['name'] == 'sun_glow':
+                lay = img
+            else:
+                x_off = (self.SPEED * self.SCROLL_K.get(L['name'], 1.0) * t + 700.0) % img.shape[1]
+                # screen = C + sc * R * (p - (x_off + C'))  with C the frame centre and C' the painting window centre
+                A = np.float32([[sc * c, sc * s_, 0], [-sc * s_, sc * c, 0]])
+                pc = np.array([x_off + 960.0, 520.0], np.float32)
+                A[:, 2] = np.array([960.0, 520.0], np.float32) - A[:, :2] @ pc
+                lay = cv2.warpAffine(img, A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+            rgb = comp.over_straight(rgb, lay)
+        return rgb
+    def M_cel(self, t, tc, shake):
+        return np.float32([[1, 0, 0], [0, 1, 0]])
+    def setup(self):
+        self.flames = [fx.EngineFlame(f'S16A_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+        d = (-0.93, 0.37)
+        self.leaves = fx.LeafBurst('S16A_leaves', origin=(1000, 420), frame0=0, count=70, direction=d,
+                                   spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=260, wind=(-0.7, 0.28))
+        self.leaves2 = fx.LeafBurst('S16A_leaves2', origin=(900, 500), frame0=30, count=50, direction=d,
+                                    spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=300, wind=(-0.7, 0.28))
+        self.debris = fx.DebrisBurst('S16A_soil', origin=(980, 460), frame0=2, count=60,
+                                     kinds={'clod': 0.3, 'crumb': 0.3, 'moss': 0.25, 'vine': 0.15}, size=(5, 16),
+                                     direction=d, spread=0.9, speed=(16, 36), gravity=0.0, origin_radius=240)
+    def _make_vines(self):
+        import vines as VN, vineplan, anim, poses as PZ
+        rig = SD.rig()
+        vs = [v for v in vineplan.plan(rig, PZ.grounded(rig, PZ.KNEEL_DORMANT)) if v.root is None]
+        cam = self.S.cam(0.0)
+        wdir = -cam.r * 0.93 - cam.u * 0.37
+        wdir = wdir / np.linalg.norm(wdir) * 26.0
+        self.vineset = VN.VineSet(rig, vs, lambda t: anim.pose_at(self.shot, t), wind=lambda t: tuple(wdir))
+    def fx_behind(self, rgb, f, t, ctx):
+        cv_ = fx.new_canvas(H, W)
+        fx.streak_lines(cv_, direction=(-0.93, 0.37), frame=f, n=26, length=(260, 760), width=(1.2, 3.5))
+        cv_[..., 3] *= 0.35
+        import anim
+        pose = anim.pose_at(self.shot, t)
+        lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
+        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
+            fl.draw(cv_, f, nozzle=noz, direction=(-0.9, 0.42), radius=rad * 1.0, length=rad * 10)
+        return comp.over_straight(rgb, cv_)
+    def fx_front(self, rgb, f, t, ctx):
+        cv_ = fx.new_canvas(H, W)
+        self.debris.draw(cv_, f); self.leaves.draw(cv_, f); self.leaves2.draw(cv_, f)
+        return comp.over_straight(rgb, cv_)
+    def light_buf(self, lb, f, t, ctx):
+        if 'lb' in ctx:
+            lb += ctx['lb']
+
+
+class S00(Base):
+    """Establishing vista: sunrise over the misty forest; the gap in the canopy where mist rises."""
+    painting = 'S00'
+    ground = False
+    vines = False
+    fade_in = 1.5
+    robot_depth = 0.5
+    PAN = 240.0
+    def cam2d(self, t, t_ref=None):
+        u = t / 4.5
+        return np.array([960.0, 520.0]), np.array([-self.PAN * (0.15 * u + 0.85 * ease(u)), 0.0]), 1.0
+    def setup(self):
+        self.flock = birds.circling(n=9, centre=(1050, 380), radius=(420, 90), frames=110, period=150, span=(7, 15), seed=11)
+        self.motes = fx.Motes('S00_motes', (900, 250, 1900, 800), count=90)
+    def sxy(self, x, y, depth, t):
+        k = self.layer_k(depth)
+        a, d, s_ = self.cam2d(t)
+        return x + d[0] * k, y + d[1] * k
+    def fx_mid(self, rgb, f, t, ctx):
+        cv_ = fx.new_canvas(H, W)
+        birds.draw_flock(cv_, self.flock.at(f) if hasattr(self.flock, 'at') else self.flock(f),
+                         light=birds.Light(dir=(0.8, 0.5), depth=-0.5), style='silhouette')
+        return comp.over_straight(rgb, cv_)
+    def light_buf(self, lb, f, t, ctx):
+        sx, sy = self.sxy(1930.0, 300.0, 0.0, t)
+        gx, gy = self.sxy(1250.0, 640.0, 0.55, t)
+        ang = math.degrees(math.atan2(gy - sy, gx - sx))
+        mask = fx.sunbeams(lb, src=(sx, sy), angles=[math.radians(a) for a in (ang - 2.2, ang, ang + 2.5)],
+                           widths=[40, 90, 30], spread=0.02, intensity=0.2, frame=f, scale=0.5,
+                           length=1.1 * math.hypot(gx - sx, gy - sy))
+        if mask.shape != (H, W):
+            mask = cv2.resize(mask.astype(np.float32), (W, H))
+        self.motes.draw(lb, f, mask=np.clip(mask * 3, 0, 1))
+        fx.glow(lb, (sx, sy), 380, colour=(1.0, 0.86, 0.6), intensity=0.35)
 
 
 class S17(Base):

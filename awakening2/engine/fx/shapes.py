@@ -64,16 +64,21 @@ def _curve(g, n=7, length=2.6, bend=0.6):
 
 
 def root(g):
-    """Root fragment: curved tapered stroke, sometimes with a side rootlet."""
-    c = _curve(g, n=9, length=g.uniform(2.6, 3.6), bend=0.7)
-    w = np.linspace(g.uniform(0.45, 0.6), g.uniform(0.08, 0.14), len(c))
+    """Root fragment: thin, S-curved, tapered at both ends, with a rootlet or two."""
+    L = g.uniform(2.2, 3.2)
+    t = np.linspace(-0.5, 0.5, 11) * L
+    k1, k2 = g.uniform(-0.5, 0.5, 2)
+    y = k1 * np.sin(t / L * math.pi * 1.6) * 0.5 + k2 * (t / L) ** 2 * 1.2
+    c = np.stack([t, y], 1)
+    q = np.linspace(0, 1, len(c))
+    w = g.uniform(0.26, 0.36) * np.sin(np.clip(q * 1.05, 0, 1) * math.pi) ** 0.7 * (1.1 - 0.5 * q) + 0.02
     parts = [(stroke_poly(c, w), 'main')]
-    if g.random() < 0.6:
-        k = int(g.integers(2, 5))
-        d = np.array([g.uniform(-0.2, 0.3), g.choice([-1, 1]) * g.uniform(0.7, 1.1)])
-        b = np.stack([c[k] + d * s for s in np.linspace(0, 1, 5)], 0)
-        b[:, 0] += np.linspace(0, 0.3, 5) ** 2
-        parts.append((stroke_poly(b, np.linspace(w[k] * 0.55, 0.05, 5)), 'main'))
+    for _ in range(int(g.integers(1, 3))):
+        kk = int(g.integers(3, 8))
+        d = np.array([g.uniform(-0.1, 0.4), g.choice([-1, 1]) * g.uniform(0.5, 0.9)])
+        bb = np.stack([c[kk] + d * s_ for s_ in np.linspace(0, 1, 5)], 0)
+        bb[:, 0] += np.linspace(0, 0.25, 5) ** 2
+        parts.append((stroke_poly(bb, np.linspace(w[kk] * 0.5, 0.02, 5)), 'main'))
     return parts
 
 
@@ -94,19 +99,21 @@ def vine(g):
 
 
 def bark(g):
-    """Bark chip: elongated, jagged ends, two grain lines."""
-    L = g.uniform(1.6, 2.2)
-    Wd = g.uniform(0.45, 0.65)
-    top = np.stack([np.linspace(-L, L, 6), -Wd + g.uniform(-0.08, 0.08, 6)], 1)
-    bot = np.stack([np.linspace(L, -L, 6), Wd + g.uniform(-0.08, 0.08, 6)], 1)
-    endr = np.array([[L + g.uniform(0.05, 0.3), g.uniform(-0.3, 0.3)]])
-    endl = np.array([[-L - g.uniform(0.05, 0.3), g.uniform(-0.3, 0.3)]])
-    p = np.concatenate([top, endr, bot, endl], 0)
-    parts = [(p, 'main')]
-    for yy in (-0.15, 0.2):
-        ln = np.stack([np.linspace(-L * 0.75, L * 0.7, 6), yy + g.uniform(-0.05, 0.05, 6)], 1)
-        parts.append((stroke_poly(ln, np.full(6, 0.09)), 'grain'))
-    return parts
+    """Bark: a curled, irregular sliver tapered at both ends, with one grain line."""
+    L = g.uniform(1.4, 2.0)
+    t = np.linspace(-1, 1, 12)
+    bend = g.uniform(0.25, 0.55) * g.choice([-1, 1])
+    mid = np.stack([t * L * 0.5, bend * (t ** 2 - 0.4)], 1)
+    q = (t + 1) / 2
+    w = g.uniform(0.32, 0.46) * np.sin(q * math.pi) ** 0.8 * (1 + 0.25 * np.sin(q * 7 + g.uniform(0, 6)))
+    n = np.stack([-np.gradient(mid[:, 1]), np.gradient(mid[:, 0])], 1)
+    n /= np.linalg.norm(n, axis=1, keepdims=True) + 1e-9
+    jag = g.uniform(-0.05, 0.05, (len(t), 2))
+    top = mid + n * (w[:, None] * 0.5) + jag[:, :1] * n
+    bot = mid - n * (w[:, None] * 0.5) * g.uniform(0.6, 1.0) + jag[:, 1:] * n
+    p = np.concatenate([top, bot[::-1]], 0)
+    ln = mid[2:-2] + n[2:-2] * 0.04
+    return [(p, 'main'), (stroke_poly(ln, np.full(len(ln), 0.06)), 'grain')]
 
 
 KINDS = {'clod': clod, 'crumb': crumb, 'pebble': pebble, 'moss': moss_chunk, 'root': root,

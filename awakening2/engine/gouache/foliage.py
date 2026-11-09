@@ -90,7 +90,7 @@ def paint_mass(cv, G, rng, stops, pos=None, leaf=10.0, density=1.0, aspect=0.5, 
                rim=None, rim_amt=0.0, tip=None, tip_amt=0.15, edge_leaves=1.0,
                underpaint=True, droop=0.35, size_dark=1.35, size_lit=0.75, bristle=0.2, rag=0.3,
                edge=0.28, split=0.08, bands=3, region=None, opacity=1.0, fringe=1.0,
-               lit_cut=None, jit=(0.03, 0.08, 0.05), mode='over', orient='radial'):
+               lit_cut=None, jit=(0.03, 0.08, 0.05), mode='over', orient='radial', rim_vary=0.0):
     """Paint the clusters of G with leaf dabs.
 
     stops/pos   value ramp (0 = deepest shadow .. 1 = sunlit top).
@@ -225,13 +225,35 @@ def paint_mass(cv, G, rng, stops, pos=None, leaf=10.0, density=1.0, aspect=0.5, 
                  mode=mode)
     # 4. sun rim along edges that face the sun
     if rim is not None and rim_amt > 0:
-        band = (cb > 0.25) & (cb < 0.7) & (facing > 0.35)
-        nr = int(rim_amt * band.sum() / (leaf * 0.9))
+        if rim_vary > 0:
+            # per-cluster rim: some clusters unlit, others thin or broad, the rim's colour and the
+            # part of the edge it sits on (rotated facing direction) change from clump to clump
+            nb_ = len(b['x'])
+            rr_ = np.random.default_rng(int(rng.integers(1 << 30)))
+            k_on = rr_.random(nb_) > 0.35 * rim_vary
+            k_w = rr_.uniform(0.5, 1.6, nb_)
+            k_rot = rr_.normal(0, 0.55 * rim_vary, nb_)
+            k_hue = rr_.uniform(0, 1, nb_)
+            cidr_ = np.maximum(cidr, 0)
+            rot_ = k_rot[cidr_]
+            sx2, sy2 = sx * np.cos(rot_) - sy * np.sin(rot_), sx * np.sin(rot_) + sy * np.cos(rot_)
+            facing_r = np.clip(nx * sx2 + ny * sy2, 0, 1)
+            thr = 0.55 - 0.45 * np.clip(k_w[cidr_] - 0.5, 0, 1.1) / 1.1
+            band = (cb > 0.22) & (cb < 0.45 + 0.3 * k_w[cidr_] / 1.6) & (facing_r > thr) & k_on[cidr_] & (cidr >= 0)
+        else:
+            band = (cb > 0.25) & (cb < 0.7) & (facing > 0.35)
+        nr = int(rim_amt * band.sum() / (leaf * (0.6 if rim_vary > 0 else 0.9)))
         if nr > 0:
             px, py = _sample_inside(band, nr, rng, (0, 0, ww, hh))
             nr = len(px)
             f = facing[py, px]
-            cols = jitter(np.broadcast_to(rim, (nr, 3)), rng, dl=0.04, dc=0.1, dh=0.06)
+            if rim_vary > 0:
+                hk = k_hue[np.maximum(cidr[py, px], 0)]
+                base_rim = ramp([C(255, 236, 190), np.asarray(rim, np.float32), C(250, 170, 120)], hk)
+                cols = jitter(base_rim, rng, dl=0.04, dc=0.1, dh=0.04)
+                f = np.maximum(f, 0.4)
+            else:
+                cols = jitter(np.broadcast_to(rim, (nr, 3)), rng, dl=0.04, dc=0.1, dh=0.06)
             onx, ony = nx[py, px], ny[py, px]
             ang = np.arctan2(ony, onx) + rng.normal(0, 0.7, nr)
             dabs(cv, px + x0 - cv.m + onx * leaf * 0.2, py + y0 - cv.m + ony * leaf * 0.2,

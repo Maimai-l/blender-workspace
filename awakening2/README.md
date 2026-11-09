@@ -155,3 +155,13 @@ vines yet; the rise is a simple blend between three poses.
 - **Sound:** re-scored for the 79.5 s cut: a music-box opening over the vista, the full theme
   landing on the cut to the tracking flight, the roar flying away, a chime as it crosses the sun.
 - The flight painting is in place, so the tracking shot's clouds stream past.
+
+### v6 (16:20)
+- **Launch (S14):** the robot stays in frame on its flame column for longer before it exits the
+  top, so the hero is never lost in the blast.
+- **Engines:** the bells point down and the glow sits inside the flame, so the lit bells no
+  longer read as a second pair of eyes on the robot's back.
+- **Flight (S16A):** the head turns toward the sun and the arms sweep back during the climb.
+- **Eyes (S07):** the lids open in two stages (crack, hold, open), each held on 2s.
+- **QA:** every version is checked for card edges and missing-background bands
+  (`tools/check_edges.py`; v1 had 9 suspicious frames, v4–v6 have none).

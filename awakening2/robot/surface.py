@@ -18,7 +18,7 @@ import warden as WD
 MOSS, SOIL, WOOD = R.MOSS, R.SOIL, R.WOOD
 FOLIAGE = 13
 CACHE = os.environ.get('AW2_MESH_CACHE', '/home/user/aw2_cache/meshes')
-SURF_VERSION = '8'
+SURF_VERSION = '9'
 
 
 def rng_for(name):
@@ -27,12 +27,12 @@ def rng_for(name):
 
 # how much moss each part carries (clump count, radius range)
 MOSS_PLAN = {
-    'roof_L': (60, (0.55, 1.35)), 'roof_R': (52, (0.5, 1.25)),
+    'roof_L': (40, (0.5, 1.4)), 'roof_R': (30, (0.45, 1.3)),
     'pauldron_L': (26, (0.45, 1.1)), 'pauldron_R': (20, (0.4, 1.0)),
     'head': (10, (0.3, 0.6)), 'torso': (22, (0.4, 0.95)),
     'forearm_L': (16, (0.4, 0.85)), 'forearm_R': (10, (0.35, 0.7)),
-    'thigh_L': (14, (0.45, 0.9)), 'shin_L': (8, (0.35, 0.7)), 'shin_R': (9, (0.35, 0.7)),
-    'foot_L': (8, (0.35, 0.7)), 'foot_R': (7, (0.3, 0.6)), 'hand_R': (5, (0.3, 0.55)),
+    'thigh_L': (14, (0.45, 0.9)), 'shin_L': (13, (0.35, 0.75)), 'shin_R': (15, (0.35, 0.75)),
+    'foot_L': (14, (0.35, 0.75)), 'foot_R': (12, (0.3, 0.7)), 'hand_R': (8, (0.3, 0.6)),
     'hand_L': (4, (0.3, 0.5)), 'pelvis': (10, (0.35, 0.75)), 'upperarm_L': (5, (0.3, 0.55)),
     'upperarm_R': (4, (0.3, 0.5)), 'thigh_R': (6, (0.35, 0.7)),
 }
@@ -356,12 +356,12 @@ DECAL_PARTS = {'torso': 1.0, 'pelvis': 1.0, 'head': 0.7, 'pauldron_R': 1.1, 'pau
                'shin_L': 1.0, 'foot_R': 0.9, 'foot_L': 0.9, 'roof_R': 0.7, 'roof_L': 0.7}
 
 DECAL_COLS = {   # (light, shadow) by decal label, for PAINT parts
-    FADE: (WD.hexc('cf8466'), WD.hexc('784044')),
+    FADE: (WD.hexc('b77a63'), WD.hexc('6c4240')),     # sun-faded paint: lighter, greyer, same hue
     LICHEN: (WD.hexc('b9c19a'), WD.hexc('6a7466')),
-    CHIP: (WD.hexc('5e5a57'), WD.hexc('34303c')),
-    RUST: (WD.hexc('a3552f'), WD.hexc('5f2d33')),
-    STREAK: (WD.hexc('8e4a31'), WD.hexc('552a33')),
-    PRIMER: (WD.hexc('9b4636'), WD.hexc('5e2938')),
+    CHIP: (WD.hexc('5e5a57'), WD.hexc('34303c')),     # bare iron
+    RUST: (WD.hexc('8c4a28'), WD.hexc('4c2a24')),     # rust: browner and more orange than the paint
+    STREAK: (WD.hexc('7a3f27'), WD.hexc('472624')),
+    PRIMER: (WD.hexc('8b4436'), WD.hexc('512a2c')),
 }
 ROOF_DECAL_COLS = {  # verdigris roof: chips show dark bronze, "rust" is pale green patina
     FADE: (WD.hexc('a6cbb9'), WD.hexc('5b8189')),

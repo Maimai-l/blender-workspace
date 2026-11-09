@@ -114,6 +114,14 @@ compilation (cached in `__pycache__` afterwards).
 - `forest.character()` — individual features for near trunks: knot holes with lit lips,
   bracket fungi, a hollow between buttress roots, ivy in distinct climbing bands, moss
   cushions on the root flare (`giant(..., traits=dict(...))`; S08, S09).
+- `imprint.py` — `paint_imprint()`: depressions pressed into the floor (round 6, S17):
+  bowls and capsules in a foreshortened ground frame -> height field with a raised soil
+  lip -> sun lighting with a cast shadow from the far rim -> flat painted soil planes,
+  contour-following strokes, crumbs, a pool of light, broken roots with pale cut ends and
+  rootlets, torn moss in irregular groups (some overhanging), flowers on the rim.
+- `ground.fern(..., body=1)` — opaque two-tone frond bodies under the leaflets, curved
+  light stems (no thin dark spokes), used in S13. `paint_mass(..., rim_vary=1)` varies the
+  rim per clump (on/off, width, colour, position), used in S06.
 - `layers.py` — `Painting`: per-layer grain, PNG + running flat composite + json.
 - `shots/sNN.py` — one composition per shot (`build(outdir)`).
 

@@ -45,8 +45,9 @@ def build(outdir, quick=False):
     for x in np.linspace(-120, 2040, 16):
         top = 690 + 110 * np.sin(x / 260 + 1.0) + rng.normal(0, 40)
         layered_mass(b, rng, x + rng.normal(0, 40), top + 60, rng.uniform(90, 140), flat=0.8, droop=0.2)
-    leafy_mass(cv, rng, b, 0.3, C(255, 214, 180), (0.0, -0.3, -0.9), (0.0, -1.0), 8, density=0.9, trans_amt=1.0,
-               rim_amt=1.0, lz=-0.8,
+    leafy_mass(cv, rng, b, 0.3, C(255, 214, 180), (0.0, -0.3, -0.9), (0.0, -1.0), 8, density=0.9, trans_amt=0.6,
+               rim_vary=1.0,
+               rim_amt=0.9, lz=-0.8,
                stops=[C(76, 66, 102), C(96, 94, 116), C(124, 128, 108), C(206, 182, 112), C(255, 216, 142)])
     P.add('canopy_far', 0.4, cv, 'distant crowns along the bottom, glowing edges')
 
@@ -72,7 +73,8 @@ def build(outdir, quick=False):
             if ((x - OPEN[0]) / OPEN[2]) ** 2 + ((y - OPEN[1]) / OPEN[3]) ** 2 < 1:
                 continue
             layered_mass(b, rng, x, y, R * rng.uniform(0.6, 1.0), flat=0.7, droop=0.25)
-    leafy_mass(cv, rng, b, 0.0, HAZE, (0.0, -0.3, -0.85), (0.0, -1.0), 13, density=0.9, trans_amt=1.0, rim_amt=1.2,
+    leafy_mass(cv, rng, b, 0.0, HAZE, (0.0, -0.3, -0.85), (0.0, -1.0), 13, density=0.9, trans_amt=0.55, rim_amt=1.0,
+               rim_vary=1.0,
                lz=-0.8, stops=[C(30, 34, 56), C(42, 58, 70), C(64, 92, 76), C(150, 150, 82), C(236, 204, 112)])
     for i in range(8):
         x = rng.choice([rng.uniform(250, 650), rng.uniform(1280, 1680)])

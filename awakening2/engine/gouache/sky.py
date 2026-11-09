@@ -171,7 +171,7 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
                  soft=0.035, noise_amt=0.1, rag=0.6, strokes=1.0, stroke_size=None, rim=None, rim_amt=1.0,
                  wisps=0.0, wisp_col=None, opacity=1.0, edge_px=1.2, sun2=None, leafy_edge=0.0, leaf_cols=None,
                  soft_base=0.0, region=None, leaf_px=None, G=None, glob=0.55, rim_point=None,
-                 brush_edge=0.0):
+                 brush_edge=0.0, form=0.05, stroke_dl=0.025, stroke_op=(0.2, 0.45)):
     """Ghibli-style masses painted as big flat value planes (not dabs): the dome shading of
     the blobs is cut into 3-4 planes with hard-ish, noise-meandering terminators (shadow ->
     mid -> lit -> crown highlight), the silhouette is a crisp painted edge, a few broad
@@ -224,7 +224,7 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
     lab = lab + (L[2] - lab) * m2[..., None]
     lab = lab + (L[3] - lab) * (m3 * 0.85)[..., None]
     # keep a little form inside each plane
-    lab[..., 0] += (v - 0.5) * 0.05
+    lab[..., 0] += (v - 0.5) * form
     rgb = np.clip(from_oklab(lab), 0, 1)
     # crisp, slightly ragged silhouette
     cr = _cv2.GaussianBlur(c, (0, 0), 1.0)
@@ -249,10 +249,10 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
             bx = np.where(cidp >= 0, G['b']['x'][np.maximum(cidp, 0)] + cv.m - x0, px)
             by = np.where(cidp >= 0, G['b']['y'][np.maximum(cidp, 0)] + cv.m - y0, py)
             ang = np.arctan2(py - by, px - bx) + np.pi / 2 + rng.normal(0, 0.25, len(px))
-            colp = jitter(rgb[py, px], rng, dl=0.025, dc=0.08, dh=0.03)
+            colp = jitter(rgb[py, px], rng, dl=stroke_dl, dc=0.08 + stroke_dl, dh=0.03)
             dabs(cv, px + x0 - cv.m, py + y0 - cv.m, ss * rng.uniform(0.6, 1.5, len(px)), colp,
                  aspect=rng.uniform(0.25, 0.45, len(px)), angle=ang, shape='flat', edge=0.45, rag=0.3,
-                 bristle=0.35, opacity=rng.uniform(0.2, 0.45, len(px)) * opacity, mode='lock', rng=rng)
+                 bristle=0.35, opacity=rng.uniform(*stroke_op, len(px)) * opacity, mode='lock', rng=rng)
     # leafy edge (for foliage masses painted in planes): sparse leaf marks along the silhouette
     if leafy_edge > 0:
         band = (cr > 0.25) & (cr < 0.7)
@@ -334,7 +334,7 @@ def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, und
 
 
 def plane_cloud(cv, rng, cx, base_y, w, h, cols, kind='cumulus', light3=(0.55, -0.75, 0.3), rim=None, wisps=0.3,
-                opacity=1.0, strokes=0.6, lobes=None, soft_base=0.0):
+                opacity=1.0, strokes=0.6, lobes=None, soft_base=0.0, **kw):
     b = sculpted_blobs(rng, cx, base_y, w, h, kind=kind, lobes=lobes)
     return paint_planes(cv, rng, b, cols, light3=light3, rim=rim, wisps=wisps, opacity=opacity, strokes=strokes,
-                        soft_base=soft_base)
+                        soft_base=soft_base, **kw)

@@ -323,8 +323,12 @@ def _draw_rivets(rgb, ps, camS, mats, style, L, lit, ss, inkc):
                 continue
             lt = bool(lit[iy, ix])
             base = rgb[iy, ix].copy()
+            if not lt:
+                # in shadow a rivet is just a small soft dark dot (no ring)
+                cv2.circle(rgb, (int(x * 4), int(y * 4)), max(1, int(r * 0.55 * 4)), (base * 0.72).tolist(), -1, cv2.LINE_AA, 2)
+                continue
             # a ring in a darker shade of the local paint, the head in the paint, a highlight toward the light
-            cv2.circle(rgb, (int(x * 4), int(y * 4)), int(r * 4), (base * 0.55).tolist(), -1, cv2.LINE_AA, 2)
+            cv2.circle(rgb, (int(x * 4), int(y * 4)), int(r * 4), (base * 0.6).tolist(), -1, cv2.LINE_AA, 2)
             cv2.circle(rgb, (int(x * 4), int(y * 4)), max(1, int(r * 0.62 * 4)), base.tolist(), -1, cv2.LINE_AA, 2)
             if lt:
                 hx = x - r * 0.25; hy = y - r * 0.3

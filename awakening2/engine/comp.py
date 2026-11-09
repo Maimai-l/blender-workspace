@@ -128,7 +128,7 @@ def s_curve(x, c=1.12, pivot=0.48):
     return np.where(x < pivot, pivot * (x / pivot) ** c, 1 - (1 - pivot) * ((1 - x) / (1 - pivot)) ** c)
 
 
-def grade(rgb, lift=(0.015, 0.012, 0.035), gain=(1.03, 1.0, 0.95), gamma=1.0, sat=1.1, contrast=1.12,
+def grade(rgb, lift=(0.015, 0.012, 0.035), gain=(1.03, 1.0, 0.95), gamma=1.0, sat=1.04, contrast=1.12,
           warm_hi=(1.03, 0.99, 0.92), cool_lo=(0.94, 0.97, 1.06)):
     x = np.clip(rgb, 0, 1.5)
     lum = x @ np.array([0.299, 0.587, 0.114], np.float32)
@@ -184,7 +184,7 @@ def paper(rgb, amount=0.025):
     return rgb * (1 + _PAPER[..., None] * amount)
 
 
-def finish(rgb, frame, vig=0.2, grain_amt=0.0035, paper_amt=0.008, do_bloom=True, **gk):
+def finish(rgb, frame, vig=0.2, grain_amt=0.0, paper_amt=0.008, do_bloom=True, **gk):
     if do_bloom:
         rgb = bloom(rgb)
     rgb = grade(rgb, **gk)

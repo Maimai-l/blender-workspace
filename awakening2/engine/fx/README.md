@@ -103,17 +103,21 @@ fx.SoilPour(name, emitter, start, end, rate=22, strands=5, size=(2, 8), gravity=
             ground=None, veil=True, strand_width=(10, 24)).draw(canvas, frame)
 ```
 * Pieces: soil clods, crumbs (tiny = flat dark specks), pebbles, moss chunks (soil + lumpy moss
-  cap), root fragments (tapered, with rootlets), vine bits with leaves, bark chips with grain.
+  cap), root fragments (thin S-curves tapered at both ends, with rootlets), vine bits with
+  leaves, bark (curled irregular slivers tapered at both ends, one grain line; never
+  rectangular). Bark and root pieces are drawn at 0.65x the size range. Outlines are coloured
+  (brown for soil and wood, dark green for plants) and thin: 0.8-1.4 px.
   Ink outline + lit/shade; ballistic with gravity, bounces and settles on `ground`; rotation
   and positions held on 2s; the larger pieces (`trails` fraction) drag a short tapered two-tone
   dust streak along their path that thins out over ~30 frames.
 * **Pouring soil**: `emitter(frame) -> ((x0, y0), (x1, y1))` (or a point, or an array indexed
   by frame) — pass the projected robot edge per frame. Soil spills from a few points along
-  the edge (flow pulses per spill point) as irregular **clumps** (`strand_width` = clump size)
-  that fall, split into 3–5 pieces and shed falling streams of crumbs and powder; every piece
-  drags a tapered dark streak; a small dust puff marks each break, a thin billowing veil hangs
-  behind (`veil_opacity`) and dust kicks up where clumps land on `ground`. No continuous
-  sheets (round 2). Emitter velocity is inherited (`inherit`).
+  the edge as at most 3 concentrated **streams** (round 4; `strands` caps them, `strand_width` =
+  stream width): each a continuous falling column of clumps that stay together near the edge,
+  stretched by their fall, with a lumpy two-tone core; lower down the column breaks into smaller
+  bits and near `ground` into powder with dust puffs; gaps between streams; very few stray
+  crumbs (`rate` x .03); a thin billowing veil behind each stream (`veil_opacity`); dust kicks
+  up where the streams land. Lines are thin and brown. Emitter velocity is inherited (`inherit`).
 * `add_piece(batch, kind, parts, pos, angle, size, light)` to place single pieces yourself.
 
 ## 3. Leaves (`leaves.py`)
@@ -161,6 +165,9 @@ ring.draw(canvas, frame, part='front')    # near half
   short-lived radial **speed lines**, and a **pressure band** of broken brush arcs re-drawn
   every drawing; optional `mist` (opacity, e.g. .55) adds translucent floor-mist billows shoved
   out ahead of the wall.
+* Shockwave read (round 4): ahead of the dust races a wide translucent ground-hugging band of
+  flattened-grass streaks (R..1.28R) led by a thin bright pressure line (~1.29R), slightly broken
+  and re-drawn on 2s. The wall uses ~0.55x `slots` heads, so there are fewer, larger masses.
 
 ## 5. Engine flames (`flame.py`)
 
@@ -210,10 +217,12 @@ tr.draw(canvas, frame, points, births=None, light_buf=light)
 ```
 * `points`: the trail history in **current** screen space, oldest first (newest = the robot);
   `births`: the frame each point was laid (default: one per frame ending now).
-* Ribbon (rose rim, orange edge, gold, white core), widest just behind the head, tapering to
-  the tail and dying after `life` frames; cel mist billows (lilac shadows, peach, warm white)
-  born along it, swelling, rolling outward, sinking a little and breaking up; some billows
-  overlap the ribbon edges; glow along the core and a head glow in the light buffer.
+* Ribbon (round 4): white-gold core with a soft gold edge - no thin coloured fringe lines -
+  lumpy edges, widest just behind the head, tapering, and breaking into three thin wisps over the
+  oldest third (it dissolves at the tail). Mist: uneven lumps of strongly varied size (a few big,
+  many medium, some small), many stretched 1.5-3x along the path, hugging the ribbon, with soft
+  light-lilac shadows biased toward the light (no hard purple halves) and wisps where they break
+  up; glow along the core and a head glow in the light buffer.
   Designed to read at thumbnail size against a gold sky (value contrast from the lilac shadows
   and the white core).
 
@@ -260,8 +269,8 @@ seconds) and are cached in `__pycache__`.
 | dust (puff + rolling ground dust + small puff) | 43–60 | 75–105 |
 | debris (46-piece burst + soil pour + pebble hops) | 85–90 | 165–195 |
 | leaves (26 falling + 34 blown) | 16–18 | 20–24 |
-| wind ring, high angle (56 slots, 700 grass strokes, 60 leaves, mist) | 175–245 | 255–345 |
-| wind ring, eye level | 150–170 | 330–345 |
+| wind ring, high angle (56 slots, 700 grass strokes, 60 leaves, mist; round 4 crowns + shock band) | 400–450 | 500–690 |
+| wind ring, eye level (round 4) | 700–800 | ~1100 |
 | engine flames (2 bells + glow) | 23–31 | 31–48 |
 | launch scene (mean over hold / smear / impact / multi frames) | 150 | 600 |
 | … single calls: smear_stretch / smear_multi / impact_frame | ~340 / ~440 / ~390 | |

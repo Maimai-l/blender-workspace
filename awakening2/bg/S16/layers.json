@@ -68,8 +68,8 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.42,
-      "note": "the far sea of clouds"
+      "coverage": 0.425,
+      "note": "the far sea of clouds: irregular cumulus of varied scale in perspective"
     },
     {
       "name": "clouds_mid",
@@ -84,7 +84,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.092,
+      "coverage": 0.084,
       "note": "sculpted cumulus banks rising from the sea (right half)"
     },
     {
@@ -100,7 +100,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.129,
+      "coverage": 0.102,
       "note": "big near cumulus at the bottom right"
     },
     {
@@ -116,19 +116,19 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.048,
+      "coverage": 0.057,
       "note": "forest canopy tops at the bottom-left edge (the launch point of the trail)"
     }
   ],
-  "seconds": 15.5,
+  "seconds": 15.6,
   "layer_seconds": {
-    "sky": 3.4,
-    "high_clouds": 1.6,
-    "ridge": 2.2,
-    "cloud_sea": 2.7,
-    "clouds_mid": 1.6,
-    "clouds_near": 1.7,
-    "fg": 1.6
+    "sky": 3.3,
+    "high_clouds": 1.5,
+    "ridge": 1.8,
+    "cloud_sea": 4.1,
+    "clouds_mid": 1.3,
+    "clouds_near": 1.6,
+    "fg": 1.5
   },
   "sun": [
     2010.0,

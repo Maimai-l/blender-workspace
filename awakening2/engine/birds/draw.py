@@ -656,8 +656,13 @@ _CACHE_ORDER = []
 def _ckey(pose, x, y, scale, facing, light, kw):
     try:
         pk = tuple(sorted((k, round(v, 5) if isinstance(v, float) else v) for k, v in pose.items()))
-        kk = tuple(sorted((k, v if not isinstance(v, (list, np.ndarray)) else tuple(np.ravel(v)))
-                          for k, v in kw.items()))
+        def _h(v):
+            if isinstance(v, dict):
+                return tuple(sorted((a, _h(b)) for a, b in v.items()))
+            if isinstance(v, (list, np.ndarray)):
+                return tuple(np.ravel(v))
+            return v
+        kk = tuple(sorted((k, _h(v)) for k, v in kw.items()))
         return (pk, round(x % 1.0, 4), round(y % 1.0, 4), round(float(scale), 4), facing,
                 (light or DEFAULT_LIGHT).key(), kk)
     except TypeError:

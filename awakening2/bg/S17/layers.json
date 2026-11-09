@@ -52,7 +52,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.976,
+      "coverage": 0.958,
       "note": "mist between far and mid trees; glow behind the robot"
     },
     {
@@ -69,7 +69,7 @@
       ],
       "blend": "normal",
       "coverage": 0.71,
-      "note": "mid trunks + crowns rimming the gap, perch branches, clearing floor (robot kneels on it) + the mound with the knee/hand imprints, flowers, broken vines"
+      "note": "mid trunks + crowns rimming the gap, perch branches, clearing floor (robot kneels on it) + the imprint: deep knee hollow, shin trough, three-fingered hand print, torn moss and roots, flowers at the rim, light pooling in the knee hollow"
     },
     {
       "name": "mist_mid",
@@ -84,7 +84,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.897,
+      "coverage": 0.853,
       "note": "warm glowing mist behind the robot; the robot goes above this layer"
     },
     {
@@ -100,7 +100,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.733,
+      "coverage": 0.445,
       "note": "stronger sunbeams through the gap onto the empty clearing"
     },
     {
@@ -136,16 +136,16 @@
       "note": "foreground: overhanging leaves at the top, vines, ferns in the bottom corners"
     }
   ],
-  "seconds": 8.7,
+  "seconds": 9.6,
   "layer_seconds": {
-    "sky": 0.8,
-    "far": 1.0,
-    "mist_far": 0.7,
-    "mid": 1.5,
-    "mist_mid": 1.0,
-    "beams": 1.2,
-    "near": 1.2,
-    "fg": 0.9
+    "sky": 0.9,
+    "far": 1.2,
+    "mist_far": 0.9,
+    "mid": 1.7,
+    "mist_mid": 1.1,
+    "beams": 1.1,
+    "near": 1.1,
+    "fg": 1.1
   },
   "source": "S01 end frame (rows 1860-2900)",
   "sun": [

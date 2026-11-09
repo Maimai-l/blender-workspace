@@ -180,7 +180,7 @@ class WindRing:
         ids, PX, PY, RR, BR, PH, Z, GB = [], [], [], [], [], [], [], []
         self._gy, self._lead = [], []
         l = core.unit(self.light)
-        K = self.slots
+        K = max(10, int(round(self.slots * 0.55)))       # fewer, larger masses
         R = self.R(age)
         spd = self.speed(age)
         if self.horizon is not None:
@@ -308,6 +308,84 @@ class WindRing:
             C = (float(np.mean(PX)), float(np.mean(PY)))
             paint_groups(canvas, groups, holes, self.mist_pal, self.light, C, self.height * 3.0,
                          line=0, opacity=self.mist * fade * self.opacity, local=0.6, vert=0.3)
+
+    def _shock(self, age, part, canvas):
+        """The shockwave front racing ahead of the dust: a wide translucent ground-hugging band
+        of flattened-grass streaks and a thin bright pressure line at its leading edge."""
+        spd = self.speed(age)
+        if spd < 0.06 or age < 1:
+            return
+        R = self.R(age)
+        drawing = age // max(self.on, 1)
+        g = core.rng('windshock', self.name, drawing)
+        fade = min(1.0, spd * 3.0)
+        band = PolyBatch()
+        # translucent band fill (an annulus on the ground, ahead of the wall)
+        nseg = 90
+        for half in (-1, 1):
+            if (part == 'back' and half > 0) or (part == 'front' and half < 0):
+                continue
+            phis = np.linspace(0, math.pi, nseg // 2 + 1) * half
+            phis = phis[np.array([self.visible(R * 1.3, p_) for p_ in phis])]
+            if len(phis) < 2:
+                continue
+            xo, yo, _ = self.project(R * 1.28 * (1 + 0.02 * np.sin(phis * 7 + drawing)), phis)
+            xi, yi, _ = self.project(np.full(len(phis), R * 1.0), phis)
+            poly = np.concatenate([np.stack([xo, yo], 1), np.stack([xi, yi], 1)[::-1]], 0)
+            band.add(poly, palettes.GRASS['lit'], alpha=0.16 * fade)
+        # flattened grass streaks racing outward across the band (vectorised quads)
+        G = palettes.GRASS
+        n = 420
+        phi = g.uniform(0, TAU, n)
+        r0 = R * g.uniform(1.0, 1.27, n)
+        L = R * g.uniform(0.04, 0.1, n) * (0.6 + 0.4 * spd)
+        wd0 = g.uniform(1.4, 3.2, n) * self.line_width / 3.0
+        tone = g.random(n) < 0.6
+        s0 = np.sin(phi)
+        keep = np.ones(n, bool)
+        if part == 'back':
+            keep &= s0 < 0
+        elif part == 'front':
+            keep &= s0 >= 0
+        if self.horizon is not None:
+            keep &= (self.Z0 - (r0 + L) * s0) > self.near * self.Z0 * 1.05
+        phi, r0, L, wd0, tone = phi[keep], r0[keep], L[keep], wd0[keep], tone[keep]
+        if len(phi):
+            x0, y0, sc0 = self.project(r0, phi)
+            x1, y1, sc1 = self.project(r0 + L, phi)
+            dx, dy = x1 - x0, y1 - y0
+            nn = np.hypot(dx, dy) + 1e-9
+            px, py = -dy / nn, dx / nn
+            w0 = wd0 * sc0 * 0.5
+            w1 = wd0 * sc1 * 0.12
+            quads = np.stack([np.stack([x0 + px * w0, y0 + py * w0], 1), np.stack([x1 + px * w1, y1 + py * w1], 1),
+                              np.stack([x1 - px * w1, y1 - py * w1], 1), np.stack([x0 - px * w0, y0 - py * w0], 1)], 1)
+            for qd, tn in zip(quads, tone):
+                band.add(qd, G['lit'] if tn else G['mid'], alpha=0.6 * fade)
+        band.draw(canvas, self.opacity)
+        # the thin bright pressure line at the leading edge, nearly closed, slightly broken
+        line = PolyBatch()
+        a0 = g.uniform(0, TAU)
+        k = 0
+        while k < 9:
+            span = g.uniform(0.5, 0.95)
+            gap = g.uniform(0.03, 0.12)
+            phi = a0 + np.linspace(0, span, 24)
+            a0 += span + gap
+            k += 1
+            mid = float(phi[12])
+            if (part == 'back' and math.sin(mid) >= 0) or (part == 'front' and math.sin(mid) < 0):
+                continue
+            ok = np.array([self.visible(R * 1.3, p_) for p_ in phi])
+            if ok.sum() < 3:
+                continue
+            phi = phi[ok]
+            rr = R * (1.29 + 0.006 * np.sin(phi * 9 + drawing))
+            x, y, sc = self.project(rr, phi)
+            q = np.linspace(0, 1, len(phi))
+            wd = (1.2 + 1.8 * np.sin(np.pi * q) ** 0.6) * sc * self.line_width / 3.0 * (0.6 + 0.4 * fade)
+            line.add(core.stroke_poly(np.stack([x, y], 1), wd), palettes.WIND_LINE, alpha=0.95 * fade)
+        line.draw(canvas, self.opacity)
 
     def _grass(self, age, batch):
         l = core.unit(self.light)
@@ -443,6 +521,7 @@ class WindRing:
             if self.band:
                 self._band(age, ground, pt)
             ground.draw(canvas, self.opacity)
+            self._shock(age, pt, canvas)
             self._mist(canvas, age, pt, drawing)
             ids, PX, PY, RR, BR, PH, Z, GB = self._wall(age, pt)
             if ids:

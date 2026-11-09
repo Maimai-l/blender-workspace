@@ -107,7 +107,7 @@ class _LeafSet:
         self.tint = np.clip(1 + g.normal(0, 0.07, (count, 3)) + g.normal(0, 0.06, (count, 1)), 0.75, 1.2)
         self.g = g
 
-    def paint(self, canvas, items, light, sunlit=None, ink=1.2):
+    def paint(self, canvas, items, light, sunlit=None, ink=1.1):
         """items: (z, i, x, y, ang, flip, scale)."""
         if not items:
             return canvas
@@ -120,7 +120,7 @@ class _LeafSet:
                 continue
             sl = float(sunlit(x, y)) if sunlit is not None else 0.0
             add_leaf(b, self.outline[i], (x, y), ang, L, flip, palettes.LEAF[self.col[i]], light,
-                     ink * max(0.7, min(1.4, L / 26)), sl, curl=float(self.curl[i]),
+                     min(1.4, ink * max(0.75, min(1.2, L / 30))), sl, curl=float(self.curl[i]),
                      bend=float(self.bend[i]), tint=self.tint[i])
         b.draw(canvas)
         return canvas

@@ -104,7 +104,7 @@ class VineSet:
         pts_all = self.step_to(fh)
         H, W = canvas.shape[:2]
         cols = colours or dict(stem=(0.24, 0.33, 0.20), leaf=(0.46, 0.60, 0.30), leaf_sh=(0.22, 0.36, 0.26),
-                              leaf_hi=(0.72, 0.78, 0.42), ink=(0.16, 0.14, 0.11))
+                              leaf_hi=(0.72, 0.78, 0.42), ink=(0.13, 0.22, 0.14))     # dark green colour line
         lx, ly = light
         ink_strokes, stem_strokes, leaves = [], [], []
         for v, P in zip(self.vines, pts_all):
@@ -130,9 +130,9 @@ class VineSet:
                 pts = ink.resample(ink.smooth_chain(pts, 1.0), 3.0)
                 if len(pts) < 2:
                     continue
-                wpx = float(np.clip(cam.fpx * v.width / np.mean(q[run, 2]) * scale, 1.0, 9.0))
+                wpx = float(np.clip(cam.fpx * v.width / np.mean(q[run, 2]) * scale, 1.0, 6.0))
                 tpr = np.linspace(1.0, 0.45, len(pts)).astype(np.float32)
-                ink_strokes.append((pts, (tpr * (wpx + 1.6)).astype(np.float32)))
+                ink_strokes.append((pts, (tpr * (wpx + 0.7)).astype(np.float32)))
                 stem_strokes.append((pts, (tpr * wpx).astype(np.float32)))
             L = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
             nleaf = int(L[-1] / v.leaf_every)
@@ -192,7 +192,7 @@ def _leaf(canvas, c, ang, size, fill, inkc, hi=None):
     pp = np.round((poly - [x0, y0]) * 16).astype(np.int32)
     cv2.fillPoly(m, [pp], 1.0, cv2.LINE_AA, shift=4)
     mi = np.zeros_like(m)
-    cv2.polylines(mi, [pp], True, 1.0, max(1, int(size * 0.06) + 1), cv2.LINE_AA, shift=4)
+    cv2.polylines(mi, [pp], True, 1.0, max(1, int(size * 0.022) + 1), cv2.LINE_AA, shift=4)
     sub = canvas[y0:y1, x0:x1]
     fc = np.ones_like(m)[..., None] * np.asarray(fill, np.float32)
     if hi is not None:

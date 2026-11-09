@@ -53,17 +53,26 @@ class Shot:
         return SD.camera(self.shot, t)
 
     def shake(self, f):
+        """Camera shake, changing on 2s: a light rumble over shot['shake'] = (a, b, amp) plus
+        decaying jolts at shot['impacts'] = [(t, amp), ...]."""
+        import math
+        fq = (f // 2) * 2
+        tq = fq / SD.FPS
+        x = y = 0.0
         sh = self.shot.get('shake')
-        if not sh:
-            return 0.0, 0.0
-        a, b, amp = sh
-        t = f / SD.FPS
-        if t < a or t > b:
-            return 0.0, 0.0
-        env = min(1.0, (t - a) / 0.25) * min(1.0, (b - t) / 0.4)
-        env *= self.fx.shake_gain(t) if hasattr(self.fx, 'shake_gain') else 1.0
-        rng = np.random.default_rng(1000 + f)          # new offset every frame (on 1s)
-        return float(rng.normal(0, amp * env)), float(rng.normal(0, amp * env * 0.7))
+        if sh:
+            a, b, amp = sh
+            if a <= tq <= b:
+                env = min(1.0, (tq - a) / 0.25) * min(1.0, (b - tq) / 0.4)
+                env *= self.fx.shake_gain(tq) if hasattr(self.fx, 'shake_gain') else 1.0
+                rng = np.random.default_rng(1000 + fq)
+                x += float(rng.normal(0, amp * env * 0.55)); y += float(rng.normal(0, amp * env * 0.4))
+        for ti, amp in self.shot.get('impacts', ()):
+            if tq >= ti:
+                d = tq - ti
+                k = amp * math.exp(-d / 0.28) * math.cos(2 * math.pi * d / 0.17)
+                x += k * 0.3; y += k
+        return x, y
 
     # ---------------------------------------------------------------- robot
     def drawing_time(self, t):

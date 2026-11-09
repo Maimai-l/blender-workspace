@@ -218,16 +218,51 @@ def sdf_forearm(p):
     return SU(a, U(b1, b2, cuff), 0.04)
 
 
+HAND_VERSION = '2'
+
+
+def _finger(p, base, d1, d2, w):
+    """A two-segment mechanical finger: capsule segments with a groove at the joint, a joint pin,
+    and an armour plate on the back of each segment."""
+    a = np.asarray(base, np.float32); b = a + np.asarray(d1, np.float32); c = b + np.asarray(d2, np.float32)
+    seg1 = sd_capsule(p, a, a + (b - a) * 0.86, w)
+    seg2 = sd_capsule(p, b + (c - b) * 0.14, c, w * 0.88)
+    joint = sd_sphere(p, b, w * 0.7)
+    d = U(seg1, seg2, joint)
+    # plates on the back (-Y side) of each segment
+    for p0, p1, ww in ((a, b, w), (b, c, w * 0.88)):
+        mid = (p0 + p1) * 0.5 + np.array([0, -ww * 0.55, 0], np.float32)
+        ln = float(np.linalg.norm(p1 - p0)) * 0.42
+        plate = sd_box(p, tuple(mid), (ww * 1.02, ww * 0.42, ln), r=ww * 0.25)
+        d = SU(d, plate, 0.05)
+    return d
+
+
 def sdf_hand(p):
-    palm = sd_box(p, (0, 0.15, -0.85), (1.08, 0.8, 0.95), r=0.42)
-    knuck = sd_capsule(p, (-0.75, 0.55, -1.55), (0.75, 0.55, -1.55), 0.5)
-    f1 = sd_capsule(p, (0.62, 0.7, -1.75), (0.68, 1.05, -2.85), 0.39)
-    f2 = sd_capsule(p, (-0.02, 0.75, -1.8), (-0.02, 1.1, -3.0), 0.4)
-    f3 = sd_capsule(p, (-0.66, 0.68, -1.75), (-0.74, 1.0, -2.75), 0.37)
-    th = sd_capsule(p, (0.95, 0.45, -0.65), (1.38, 1.0, -1.45), 0.38)
-    d = SU(palm, knuck, 0.25)
+    palm = sd_box(p, (0, 0.15, -0.85), (1.08, 0.8, 0.95), r=0.36)
+    back = sd_box(p, (0, -0.55, -0.9), (0.95, 0.22, 0.78), r=0.15)      # an armour plate on the back of the hand
+    knuck = sd_capsule(p, (-0.75, 0.5, -1.62), (0.75, 0.5, -1.62), 0.42)
+    f1 = _finger(p, (0.66, 0.62, -1.78), (0.04, 0.24, -0.62), (0.02, 0.22, -0.52), 0.36)
+    f2 = _finger(p, (0.0, 0.66, -1.82), (0.0, 0.25, -0.68), (0.0, 0.22, -0.56), 0.37)
+    f3 = _finger(p, (-0.66, 0.6, -1.78), (-0.05, 0.22, -0.6), (-0.03, 0.2, -0.48), 0.34)
+    th = _finger(p, (0.95, 0.42, -0.62), (0.26, 0.32, -0.44), (0.18, 0.26, -0.34), 0.34)
+    d = SU(palm, knuck, 0.2)
+    d = SU(d, back, 0.08)
     d = U(d, f1, f2, f3)
-    return SU(d, th, 0.18)
+    return SU(d, th, 0.12)
+
+
+def mat_hand(o, m):
+    # the back of the hand and the finger plates carry the body's paint; joints and palm stay iron
+    out = m.copy()
+    out[o[:, 1] < 0.18] = PAINT
+    return out
+
+
+def panel_hand(o):
+    # segment lines across the fingers and the back plate outline
+    seg = np.digitize(o[:, 2], [-2.36, -2.0, -1.55]).astype(np.int32)
+    return seg + (o[:, 1] < -0.33).astype(np.int32) * 10
 
 
 def sdf_thigh(p):
@@ -277,7 +312,7 @@ def build(voxel=0.06, head_voxel=0.03):
     r.add_pair('pauldron', 'upperarm_R', (0.15, 0, 0.35), sdf_pauldron, (-2.0, -2.8, -0.8), (3.0, 2.8, 2.6), v, PAINT, version=VERSION)
     r.add_pair('elbow', 'upperarm_R', (0, 0, -4.2), sdf_elbow, (-1.2, -1.2, -1.2), (1.2, 1.2, 1.2), v, METAL, version=VERSION)
     r.add_pair('forearm', 'upperarm_R', (0, 0, -4.2), sdf_forearm, (-2.0, -2.0, -5.0), (2.0, 2.0, 0.9), v, PAINT, version=VERSION)
-    r.add_pair('hand', 'forearm_R', (0, 0.1, -4.75), sdf_hand, (-1.6, -1.0, -3.6), (2.0, 1.8, 0.3), v * 0.8, METAL, version=VERSION)
+    r.add_pair('hand', 'forearm_R', (0, 0.1, -4.75), sdf_hand, (-1.6, -1.1, -3.6), (2.0, 1.8, 0.3), v * 0.7, METAL, version=VERSION + HAND_VERSION)
     r.add_pair('thigh', 'pelvis', (1.62, 0, -0.65), sdf_thigh, (-1.7, -1.7, -3.5), (1.7, 1.7, 1.5), v, PAINT, version=VERSION)
     r.add_pair('shin', 'thigh_R', (0, 0.1, -3.05), sdf_shin, (-2.0, -2.0, -3.3), (2.0, 2.0, 1.3), v, PAINT, version=VERSION)
     r.add_pair('ankle', 'shin_R', (0, -0.05, -3.0), sdf_anklejoint, (-1.2, -1.2, -1.2), (1.2, 1.2, 1.2), v, METAL, version=VERSION)
@@ -306,7 +341,7 @@ PALETTE = {
 }
 
 STAND = {'torso': (-12, 0, 0), 'head': (10, 0, 0), 'upperarm_R': (6, 10, 0), 'forearm_R': (12, 0, 0),
-         'thigh_R': (0, 3, 0), 'lid_R': (-25, 0, 0)}
+         'thigh_R': (0, 3, 0), 'lid_R': (-25, 10, 0)}
 
 KNEEL = {'_root': None,
          'thigh_R': (6, 0, 0), 'shin_R': (-100, 0, 0), 'foot_R': (45, 0, 0),
@@ -383,7 +418,8 @@ def panel_forearm(o):
 def style_fns(rig):
     """matfn / panelfn dicts keyed by part index for cel.render."""
     P = rig.parts
-    mf = {P['head'].index: mat_head, P['torso'].index: mat_torso}
+    mf = {P['head'].index: mat_head, P['torso'].index: mat_torso,
+          P['hand_R'].index: mat_hand, P['hand_L'].index: mat_hand}
     pf = {P['torso'].index: panel_torso}
     for side in ('R', 'L'):
         pf[P['roof_' + side].index] = panel_roof
@@ -392,6 +428,7 @@ def style_fns(rig):
         pf[P['thigh_' + side].index] = panel_thigh
         pf[P['forearm_' + side].index] = panel_forearm
         pf[P['lid_' + side].index] = panel_lid
+        pf[P['hand_' + side].index] = panel_hand
     return mf, pf
 
 

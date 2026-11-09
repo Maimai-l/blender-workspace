@@ -13,19 +13,19 @@ DUST_DRY = pal('#8a7584', '#d1ad80', '#f7e6bd', '#655061')    # paler, for the w
 DUST_DARK = pal('#5e4b5c', '#9a7660', '#d9b88c', '#3f2f3c')   # soil dust from the rise
 SMOKE = pal('#56505f', '#857c88', '#b8adae', '#3c3644')       # engine sputter smoke
 STEAM = pal('#9b98b4', '#d8d2d6', '#fbf6ec', '#7b789a')       # pale exhaust / mist
-TRAIL_MIST = pal('#9a88c4', '#f3c7b6', '#fff7ea', '#7a68a6')  # climax trail mist (cool shadows)
+TRAIL_MIST = pal('#c4b4dc', '#f7dfcf', '#fffaf0', '#a898c8')  # climax trail mist: soft lilac shadows
 VEIL = pal('#8d7a86', '#bea084', '#e8d2aa', '#6f5b69')        # thin dust veil behind soil
 
 # --- debris: lit, shade, ink ------------------------------------------------------------------
 INK = hexc('#23161d')
-DEBRIS = {
-    'clod':   dict(lit=hexc('#8f6548'), shade=hexc('#4c3743'), ink=hexc('#22151b')),
-    'crumb':  dict(lit=hexc('#7d583f'), shade=hexc('#463240'), ink=hexc('#22151b')),
-    'pebble': dict(lit=hexc('#b0a39b'), shade=hexc('#6c6478'), ink=hexc('#272230')),
-    'moss':   dict(lit=hexc('#a3b957'), shade=hexc('#4d6d4f'), ink=hexc('#1f2e22')),
-    'root':   dict(lit=hexc('#a07a58'), shade=hexc('#5b4049'), ink=hexc('#26171c')),
-    'vine':   dict(lit=hexc('#86a650'), shade=hexc('#3f5e49'), ink=hexc('#1c2a1f')),
-    'bark':   dict(lit=hexc('#8b7363'), shade=hexc('#4f4352'), ink=hexc('#241b22')),
+DEBRIS = {      # coloured lines (brown for soil and wood, dark green for plants), never black
+    'clod':   dict(lit=hexc('#8f6548'), shade=hexc('#4c3743'), ink=hexc('#3b2622')),
+    'crumb':  dict(lit=hexc('#7d583f'), shade=hexc('#463240'), ink=hexc('#3b2622')),
+    'pebble': dict(lit=hexc('#b0a39b'), shade=hexc('#6c6478'), ink=hexc('#45404d')),
+    'moss':   dict(lit=hexc('#a3b957'), shade=hexc('#4d6d4f'), ink=hexc('#2c4429')),
+    'root':   dict(lit=hexc('#a07a58'), shade=hexc('#5b4049'), ink=hexc('#46302a')),
+    'vine':   dict(lit=hexc('#86a650'), shade=hexc('#3f5e49'), ink=hexc('#2c4429')),
+    'bark':   dict(lit=hexc('#8b7363'), shade=hexc('#4f4352'), ink=hexc('#43342f')),
 }
 
 # --- leaves: front lit/shade, back lit/shade, ink, vein ---------------------------------------
@@ -45,8 +45,8 @@ FLAME = [hexc('#fffdf2'), hexc('#ffe46b'), hexc('#ffa036'), hexc('#c4482c')]
 FLAME_LINE = hexc('#8e2f26')
 
 # --- trail ribbon -----------------------------------------------------------------------------
-TRAIL = dict(core=hexc('#fffef6'), gold=hexc('#ffe9a6'), edge=hexc('#ff9a62'),
-             rim=hexc('#c7577a'))
+TRAIL = dict(core=hexc('#fffef6'), gold=hexc('#ffe2a2'), edge=hexc('#ffc98a'),
+             rim=hexc('#f3b493'))
 
 # --- wind / grass -----------------------------------------------------------------------------
 GRASS = dict(lit=hexc('#d6e39a'), mid=hexc('#9fbd66'), shade=hexc('#5d7f5a'))

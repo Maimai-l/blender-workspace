@@ -19,6 +19,13 @@ W, H = comp.W, comp.H
 BG = os.path.join(ROOT, 'bg')
 
 
+# the small bird: a blue-and-white flycatcher palette on the white-eye model, so it reads against moss
+BIRD_PAL = {'olive': '#2f5fa8', 'forehead': '#3d74c4', 'coverts': '#2c5698', 'edge': '#5a8fd6',
+            'flight': '#22304e', 'tail': '#26406e', 'tail_under': '#d9d6cf', 'yellow': '#f1ede2',
+            'white': '#f4f2ea', 'buff': '#dcd8cc', 'undertail': '#efece4', 'ring': '#3d74c4',
+            'lores': '#1c2236', 'thigh': '#dcd8cc'}
+
+
 def have(p):
     return os.path.exists(os.path.join(BG, p, 'layers.json'))
 
@@ -264,7 +271,13 @@ class Base:
         if self.fade_out:
             a_, b_ = self.fade_out
             if t > a_:
-                fade = min(fade, 1 - ease((t - a_) / (b_ - a_)))
+                fo = 1 - ease((t - a_) / (b_ - a_))
+                # fade out through a cool dark, not a muddy olive: desaturate and cool as it darkens
+                lum = rgb.mean(-1, keepdims=True)
+                cool = lum * np.array([0.78, 0.88, 1.12], np.float32)
+                k = 1 - fo
+                rgb = rgb * (1 - k) + cool * k
+                fade = min(fade, fo)
         return rgb * fade
 
     def robot_extra(self, robot_rgb, a, rgb, f, t, ctx):
@@ -299,6 +312,7 @@ class S01(Base):
     ref_t = 7.9
     win0 = (0.0, 2900 - 1040)
     robot_depth = 0.45
+    parallax = 0.08                   # the tilt is a pan down one tall painting (little parallax)
     behind = ('sky', 'far', 'mist_far', 'mid', 'mist_mid')
     fade_in = None
     light_az, light_el = 118, 38
@@ -319,7 +333,7 @@ class S01(Base):
         self.leaves.draw(cv_, f)
         st = self.bird.state(f) if hasattr(self.bird, 'state') else None
         if st is not None:
-            birds.draw_state(cv_, st, birds.Light(dir=(0.8, 0.5), depth=-0.4))
+            birds.draw_state(cv_, st, birds.Light(dir=(0.8, 0.5), depth=-0.4), palette_overrides=BIRD_PAL)
         return comp.over_straight(rgb, cv_)
 
     def light_buf(self, lb, f, t, ctx):
@@ -356,7 +370,7 @@ class S02(Base):
         if st is None:
             return rgb
         cv_ = fx.new_canvas(H, W)
-        birds.draw_state(cv_, st, birds.Light(dir=(0.75, 0.55), depth=-0.25, shadow_mul=(0.85, 0.85, 1.0)))
+        birds.draw_state(cv_, st, birds.Light(dir=(0.75, 0.55), depth=-0.25, shadow_mul=(0.85, 0.85, 1.0)), palette_overrides=BIRD_PAL)
         return comp.over_straight(rgb, cv_)
 
     def light_buf(self, lb, f, t, ctx):
@@ -480,7 +494,7 @@ class S04(Base):
             C = r3d.xform_points(M, np.array([[0, 3.3, 4.35]], np.float32))[0]
             Nw = M[:3, :3] @ np.array([0, 1.0, 0], np.float32)
             parts_ok = [SD.rig().parts[n].index for n in ('grille', 'torso')]
-            st['core_light'] = (C, Nw, 2.6 + 2.2 * g, (1.0, 0.68, 0.32), min(1.0, 0.4 + 0.6 * g), parts_ok)
+            st['core_light'] = (C, Nw, 3.4 + 3.0 * g, (1.0, 0.68, 0.32), min(1.0, 0.5 + 0.6 * g), parts_ok)
         else:
             st['emissive'] = {WD.GLOW: np.array([0.20, 0.13, 0.15], np.float32)}
         return st
@@ -489,8 +503,9 @@ class S04(Base):
         g = self.glow_level(self.S.drawing_time(t))
         if g > 0:
             q = project(ctx['cam'], SD.A['chest'])
-            fx.glow(lb, (float(q[0]) + ctx['shake'][0], float(q[1]) + ctx['shake'][1]), 300 * (0.6 + g),
-                    colour=(1.0, 0.72, 0.36), intensity=0.5 * g)
+            c = (float(q[0]) + ctx['shake'][0], float(q[1]) + ctx['shake'][1])
+            fx.glow(lb, c, 360 * (0.6 + g), colour=(1.0, 0.70, 0.34), intensity=0.8 * g)
+            fx.glow(lb, c, 110 * (0.6 + g), colour=(1.0, 0.95, 0.80), intensity=0.55 * g)
 
 
 class S05(Base):
@@ -574,7 +589,7 @@ class S07(S03):
     """Face: the lids crack open, the eyes flicker alive; the small bird flees."""
     painting = 'S03'
     fallback = ('S01', (0.0, 300.0), 1.0, 5)
-    light_az, light_el = -35, 10        # the same low sunrise ray as S03: the face stays lit
+    light_az, light_el = 145, 28        # backlit: the face in shadow so the waking eyes carry the shot
     def glow(self, tq):
         if tq < 1.3: return 0.0
         seq = [(1.3, 0.35), (1.42, 0.0), (1.5, 0.6), (1.62, 0.2), (1.7, 0.85), (2.0, 1.0)]
@@ -601,16 +616,18 @@ class S07(S03):
         if st is None:
             return rgb
         cv_ = fx.new_canvas(H, W)
-        birds.draw_state(cv_, st, birds.Light(dir=(-0.7, 0.6), depth=0.2))
+        birds.draw_state(cv_, st, birds.Light(dir=(-0.7, 0.6), depth=0.2), palette_overrides=BIRD_PAL)
         return comp.over_straight(rgb, cv_)
     def light_buf(self, lb, f, t, ctx):
-        g = self.glow(self.S.drawing_time(t))
+        tq = self.S.drawing_time(t)
+        g = self.glow(tq)
         if g > 0:
+            import warden as WD, anim
+            pose = anim.pose_at(self.shot, tq)
             for side in (1, -1):
-                import warden as WD
                 ex, ey, ez = WD.EYE_C
-                q = project(ctx['cam'], SD.anchor(SD.K, 'head', (side * ex, ey + 0.3, ez)))
-                fx.glow(lb, (float(q[0]), float(q[1])), 260, colour=(1.0, 0.75, 0.35), intensity=0.6 * g)
+                q = project(ctx['cam'], SD.anchor(pose, 'head', (side * ex, ey + 0.3, ez)))
+                fx.glow(lb, (float(q[0]), float(q[1])), 220, colour=(1.0, 0.75, 0.35), intensity=0.5 * g)
     def beam(self, t):
         return S03.beam(self, 6.0)
 
@@ -694,7 +711,8 @@ class S09(Rise):
 class S10(Base):
     painting = 'S10'
     fallback = ('S11', (0.0, 0.0), 1.0, 2)
-    redraw_on_camera = True
+    redraw_on_camera = False          # the tilt is a 2D pan of the cel and the painted layers
+    parallax = 0.1
     robot_depth = 0.6
     ground = False
     light_az, light_el = 150, 68      # from the canopy gap above: the upturned face catches it
@@ -760,7 +778,9 @@ class S12(Base):
     robot_depth = 0.55
     light_az, light_el = 158, 30
     def setup(self):
-        self.flames = [fx.EngineFlame(f'S12_e{i}', ignite=int(3.0 * 24), sputters=[(int(2.4 * 24), .32), (int(2.6 * 24), .5), (int(2.8 * 24), .28)],
+        # the two engines cough at different moments (two identical flashes side by side read as eyes)
+        sp = [[(int(2.35 * 24), .32), (int(2.75 * 24), .45)], [(int(2.55 * 24), .5), (int(2.9 * 24), .3)]]
+        self.flames = [fx.EngineFlame(f'S12_e{i}', ignite=int(3.0 * 24) + i * 2, sputters=sp[i],
                                       diamonds=True, smoke=True, sparks=True) for i in range(2)]
         self.dust = fx.GroundDust('S12_dust', start=(960, 1000), direction=(1, 0), frame0=int(3.0 * 24), distance=900, duration=24, height=120,
                                   palette=fx.palettes.DUST_DARK)
@@ -835,9 +855,9 @@ class S14(Base):
     def setup(self):
         cam = self.S.cam(0.0)
         g = project(cam, (0, 0, 0))
-        self.blast = fx.DustPuff('S14_blast', origin=(float(g[0]), float(g[1]) + 40), frame0=7, size=560, spread=3.8,
-                                 life=40, ground=float(g[1]) + 70, aspect=0.45, arms=1.2, direction=(0, -1),
-                                 palette=fx.palettes.DUST_DARK)
+        self.blast = fx.DustPuff('S14_blast', origin=(float(g[0]), float(g[1]) + 40), frame0=7, size=380, spread=3.8,
+                                 life=30, ground=float(g[1]) + 70, aspect=0.45, arms=1.2, direction=(0, -1),
+                                 palette=fx.palettes.DUST)
         self.veil = fx.DustVeil('S14_veil', origin=(float(g[0]), float(g[1]) + 50), frame0=8, width=1700, height=300,
                                 life=56, palette=fx.palettes.DUST_DARK, opacity=0.55, ground=float(g[1]) + 70)
         self.ring = fx.GroundDust('S14_ringL', start=(float(g[0]), float(g[1]) + 60), direction=(-1, 0), frame0=8,
@@ -895,7 +915,6 @@ class S14(Base):
         return robot_rgb + rgb * (1 - a[..., None])
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
-        self.veil.draw(cv_, f)
         self.ring.draw(cv_, f); self.ring2.draw(cv_, f)
         self.blast.draw(cv_, f)
         self.debris.draw(cv_, f)
@@ -913,6 +932,9 @@ class S15(Base):
     painting = 'S11'
     ground = False
     vines = False
+    haze_auto = False
+    haze = 0.0
+    wrap = 0.12
     redraw_on_camera = True
     robot_depth = 0.3
     light_az, light_el = 0, 70
@@ -931,8 +953,8 @@ class S15(Base):
         self.t_cross = tc
         self.burst = fx.LeafBurst('S15_burst', origin=(960, 470), frame0=fc, count=110, direction=(0, 1), spread=3.1,
                                   speed=(10, 30), size=(16, 34), origin_radius=300)
-        self.twigs = fx.DebrisBurst('S15_twigs', origin=(960, 470), frame0=fc, count=46,
-                                    kinds={'bark': 0.35, 'root': 0.25, 'vine': 0.25, 'moss': 0.15}, size=(8, 22),
+        self.twigs = fx.DebrisBurst('S15_twigs', origin=(960, 470), frame0=fc, count=36,
+                                    kinds={'vine': 0.5, 'moss': 0.3, 'crumb': 0.2}, size=(6, 16),
                                     direction=(0, 1), spread=3.0, speed=(10, 26), gravity=0.8, origin_radius=260)
         self.fall = fx.LeafFall('S15_fall', region=(0, -300, 1920, 900), frame0=fc + 6, count=40, size=(16, 30), spiral=0.8)
         self.flames = [fx.EngineFlame(f'S15_e{i}', ignite=-40, sputters=[]) for i in range(2)]
@@ -961,10 +983,14 @@ class S15(Base):
         cv_ = fx.new_canvas(H, W)
         self.burst.draw(cv_, f); self.twigs.draw(cv_, f); self.fall.draw(cv_, f)
         return comp.over_straight(rgb, cv_)
+    def fx_behind(self, rgb, f, t, ctx):
+        # the sky glow sits behind the robot: it reads as a dark rim-lit silhouette against the gap
+        g = np.zeros((H, W, 3), np.float32)
+        fx.glow(g, (960, 470), 600, colour=(1.0, 0.85, 0.5), intensity=0.3 + 0.3 * ease((t - 0.6) / 0.6))
+        return 1 - (1 - np.clip(rgb, 0, 1)) * (1 - np.clip(g, 0, 1))
     def light_buf(self, lb, f, t, ctx):
         if 'lb' in ctx:
             lb += ctx['lb']
-        fx.glow(lb, (960, 470), 600, colour=(1.0, 0.85, 0.5), intensity=0.3 + 0.3 * ease((t - 0.6) / 0.6))
 
 
 class S16B(Base):
@@ -1004,13 +1030,15 @@ class S16B(Base):
             M = SD.s16_root(x)
             P.append(r3d.xform_points(M, np.array([[0, -2.5, 3.0]], np.float32))[0])
         q = cam.project(np.array(P, np.float32))
-        return q[:, :2], len(ts)
+        return q, len(ts)
     def fx_behind(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
         lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
-        pts, n = self.trail_points(t, ctx['cam'])
+        q, n = self.trail_points(t, ctx['cam'])
         births = np.arange(f - n + 1, f + 1)
-        self.trail.draw(cv_, f, pts, births=births, light_buf=lb)
+        # perspective: the trail is wide where it passes near the camera, thin at the far robot
+        sc = np.clip(230.0 / np.maximum(q[:, 2], 1.0), 0.1, 1.5)
+        self.trail.draw(cv_, f, q[:, :2], births=births, light_buf=lb, scales=sc)
         # engine flames from the two bells, streaming back along the path (on 1s)
         cam = ctx['cam']
         M = SD.s16_root(t); M2 = SD.s16_root(t - 0.2)
@@ -1090,6 +1118,7 @@ class S16A(Base):
         return np.float32([[1, 0, 0], [0, 1, 0]])
     def setup(self):
         self.flames = [fx.EngineFlame(f'S16A_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+        self.trail = fx.LightTrail('S16A_trail', width=70, life=200, mist=True, mist_size=0.9, light=(0.6, -0.8), mist_every=4)
         d = (-0.93, 0.37)
         self.leaves = fx.LeafBurst('S16A_leaves', origin=(1000, 420), frame0=0, count=70, direction=d,
                                    spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=260, wind=(-0.7, 0.28))
@@ -1113,8 +1142,18 @@ class S16A(Base):
         import anim
         pose = anim.pose_at(self.shot, t)
         lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
-        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
-            fl.draw(cv_, f, nozzle=noz, direction=(-0.9, 0.42), radius=rad * 1.0, length=rad * 10)
+        nz = Engines.nozzles(pose, ctx['cam'])
+        # the trail of light and mist starts here: it streams away behind the engines
+        c = np.mean([n[0] for n in nz], axis=0)
+        d = np.array([-0.93, 0.37], np.float32)
+        k = np.arange(0, 170)
+        pts = (c[None, :] + d[None, :] * (k[:, None] * 14.0))[::-1].astype(np.float32)
+        births = (f - k)[::-1]
+        tr = fx.new_canvas(H, W)
+        self.trail.draw(tr, f, pts, births=births, light_buf=lb)
+        rgb = comp.over_straight(rgb, tr)
+        for fl, (noz, dd, rad, z) in zip(self.flames, nz):
+            fl.draw(cv_, f, nozzle=noz, direction=(-0.9, 0.42), radius=rad * 1.25, length=rad * 18)
         return comp.over_straight(rgb, cv_)
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
@@ -1167,13 +1206,14 @@ class S17(Base):
     fallback = ('S01', (0.0, 2900 - 1040), 1.0, 0)
     behind = ('sky', 'far', 'mist_far', 'mid', 'mist_mid')
     ground = False
-    fade_out = (5.0, 7.5)
+    fade_out = (5.4, 7.5)
+    grade_kw = dict(gain=(0.93, 0.9, 0.86), contrast=1.16)
     def setup(self):
         self.leaves = fx.LeafFall('S17_leaves', region=(300, -400, 1700, 1000), frame0=0, count=34, size=(14, 28),
                                   spiral=0.9, preroll=200, fall=(0.9, 1.6))
         self.motes = fx.Motes('S17_motes', (300, 0, 1700, 1000), count=220)
-        self.track = birds.landing(x=1010, y=930, scale=62, facing=-1, t_flare=int(3.0 * 24), t_touch=int(3.5 * 24),
-                                   t_hop=None, t_chirp=int(4.6 * 24), t_end=180)
+        self.track = birds.landing(x=1000, y=905, scale=112, facing=-1, t_flare=int(2.6 * 24), t_touch=int(3.1 * 24),
+                                   t_hop=None, t_chirp=int(4.2 * 24), t_end=180)
         self.beam_mask = None
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
@@ -1183,7 +1223,7 @@ class S17(Base):
         self.leaves.draw(cv_, f, sunlit=(lambda x, y: float(bm[int(np.clip(y, 0, H - 1)), int(np.clip(x, 0, W - 1))]) if bm is not None else None))
         st = self.track.state(f)
         if st is not None:
-            birds.draw_state(cv_, st, birds.Light(dir=(0.8, 0.5), depth=-0.4))
+            birds.draw_state(cv_, st, birds.Light(dir=(0.8, 0.5), depth=-0.4), palette_overrides=BIRD_PAL)
         return comp.over_straight(rgb, cv_)
     def light_buf(self, lb, f, t, ctx):
         if 'lb' in ctx:

@@ -32,13 +32,14 @@ def pal(d, haze, stops=None):
 
 
 def leafy_mass(cv, rng, blobs, d, haze, L3, sun2, leaf, density=0.9, trans_amt=0.6, rim_amt=0.7, stops=None,
-               under=0.35, droop=0.45, edge_leaves=1.0, vnoise=0.15, tip_amt=0.1, lz=None):
+               under=0.35, droop=0.45, edge_leaves=1.0, vnoise=0.15, tip_amt=0.1, lz=None, rim_vary=0.0,
+               trans_vary=0.0):
     lz = L3[2] if lz is None else lz
     G = render_gbuffer(cv, blobs, light3=(L3[0], L3[1], lz), wrap=0.5, under=under)
     paint_mass(cv, G, rng, pal(d, haze, stops), leaf=leaf, density=density, trans=aerial(TRANS, d * 0.6, haze),
                trans_amt=trans_amt, rim=aerial(RIM, d * 0.4, haze), rim_amt=rim_amt,
                tip=aerial(C(255, 226, 150), d * 0.5, haze), tip_amt=tip_amt, sun2=sun2, droop=droop,
-               vnoise=vnoise, edge_leaves=edge_leaves)
+               vnoise=vnoise, edge_leaves=edge_leaves, rim_vary=rim_vary)
     return G
 
 

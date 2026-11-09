@@ -12,6 +12,9 @@ if [ $# -gt 0 ]; then
   echo "bg done $(date)" >> $LOG
 fi
 cd /c/Users/blender/Documents/awakening2/code/tools
+# build the robot meshes once (cache), so the workers don't all build the same meshes at once
+"$PY" -c "import sys; sys.path[:0]=['../engine','../robot','../shots']; import build; build.make()" >> $LOG 2>&1
+echo "meshes ready $(date)" >> $LOG
 FD=/c/Users/blender/Documents/awakening2/frames_$NAME
 mkdir -p $FD/_done
 rm -f $FD/_done/${NAME}_*

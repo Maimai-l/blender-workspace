@@ -17,6 +17,7 @@ from ..layers import Painting
 from ..foliage import Blobs, render_gbuffer, paint_mass, vine
 from ..atmos import beams, glow, dapple
 from ..ground import flowers, fern
+from ..imprint import paint_imprint
 
 W, H, M = 1920, 1040, 48
 Y0 = 1860                       # S01 end frame top
@@ -72,48 +73,58 @@ def build(outdir, quick=False):
         cv = load_crop(os.path.join(src, L['file']), m_src)
         name = L['name']
         if name == 'mid':
-            # the mound of moss and soil where it knelt, the knee and hand imprints
-            b = Blobs()
-            for i in range(26):
-                x = rng.normal(950, 170)
-                y = rng.normal(905, 26)
-                r = rng.uniform(30, 70)
-                b.add(x, y, r * 1.4, r * 0.5, light=rng.uniform(0.85, 1.1), hue=rng.normal(0, 0.08),
-                      val=rng.normal(0, 0.06), rng=rng, lumpy=0.25)
-            G = render_gbuffer(cv, b, light3=(L3[0], L3[1], 0.3), wrap=0.5, under=0.5)
-            paint_mass(cv, G, rng, [C(64, 50, 54), C(118, 92, 74), C(156, 132, 96), C(118, 146, 80), C(196, 200, 112)],
-                       leaf=11, density=0.9, sun2=SUN2, droop=0.2, vnoise=0.25, shape='flat', aspect=0.55,
-                       rim=C(255, 220, 150), rim_amt=0.4, edge_leaves=0.6)
-            imprint(cv, rng, KNEE[0], KNEE[1], 120, 34)
-            imprint(cv, rng, HAND[0], HAND[1], 95, 28)
-            for k in range(4):                                  # finger grooves fanning forward
-                fx = HAND[0] - 66 + k * 44
-                imprint(cv, rng, fx + (k - 1.5) * 6, HAND[1] + 40 + abs(k - 1.5) * 4, 20, 8)
-            # torn moss tufts and broken vines lying around
-            for i in range(7):
-                x = rng.uniform(720, 1300)
-                y = rng.uniform(860, 990)
-                a0 = rng.uniform(-0.3, 0.3)
-                pts = np.array([[x, y], [x + 60 * np.cos(a0), y + rng.normal(0, 10)],
-                                [x + 130 * np.cos(a0), y + rng.normal(0, 14)]], np.float32)
-                stroke(cv, catmull(pts, n=20), taper(20, 1.0, 0.3, 3.0), C(70, 64, 56), bristle=0.3, rng=rng)
-                k = 8
-                lx = np.linspace(pts[0, 0], pts[-1, 0], k) + rng.normal(0, 6, k)
-                ly = np.linspace(pts[0, 1], pts[-1, 1], k) + rng.normal(0, 6, k)
-                dabs(cv, lx, ly, rng.uniform(12, 18, k), jitter(C(70, 110, 70), rng, k, dl=0.06), aspect=0.5,
-                     shape='leaf', angle=rng.uniform(0, 6.28, k), split=0.1, rng=rng)
-            flowers(cv, rng, rng.normal(960, 220, 70), rng.normal(900, 40, 70), rng.uniform(5, 9, 70))
-            dapple(cv, rng, rng.uniform(760, 1250, 10), rng.uniform(860, 980, 10), rng.uniform(40, 80, 10),
-                   C(232, 214, 128), flatten=0.25, opacity=(0.45, 0.8), cluster=7, mode='lock')
-            note = L['note'] + ' + the mound with the knee/hand imprints, flowers, broken vines'
+            # floor: a little darker and richer overall, cool dark foreground
+            Xf, Yf = cv.coords()
+            cv.multiply(0.88)
+            cv.lock_tint(C(28, 38, 58), (smoothstep(880, 1060, Yf) * 0.45).astype(np.float32))
+            # the imprint where the robot knelt (ground frame: gx right, gz toward the camera)
+            O = (1000.0, 905.0)
+            shapes = [
+                dict(kind='ellipse', c=(110, 30), r=(130, 120), depth=1.0),                    # knee hollow
+                dict(kind='capsule', a=(170, 0), b=(330, -120), r0=62, r1=46, depth=0.55),   # shin trough
+                dict(kind='ellipse', c=(350, -170), r=(58, 85), depth=0.5),                  # toe dig
+                dict(kind='ellipse', c=(-215, -60), r=(118, 106), depth=0.75),               # palm
+            ]
+            palm = np.array([-215.0, -60.0])
+            for tip in [(-420, 95), (-310, 225), (-160, 260)]:                              # three fingers
+                d_ = np.array(tip) - palm
+                st = palm + d_ / np.hypot(*d_) * 80
+                shapes.append(dict(kind='capsule', a=tuple(st), b=tip, r0=38, r1=31, depth=0.85, dig=0.8))
+            paint_imprint(cv, rng, O, shapes, squash=0.34, box=(520, 740, 1480, 1040), sun=(0.45, -0.7, 0.55),
+                          light_pool=(125, 45, 62, 50),
+                          roots=[((30, -95), (60, -40), 9), ((215, -40), (185, 5), 7), ((-150, -120), (-170, -75), 6),
+                                 ((-300, -10), (-255, 20), 6)],
+                          flower_n=26, rim_moss=1.0)
+            # scattered flowers and clods thrown out around it
+            flowers(cv, rng, rng.normal(1000, 300, 14), rng.normal(900, 50, 14), rng.uniform(5, 9, 14))
+            note = L['note'] + ' + the imprint: deep knee hollow, shin trough, three-fingered hand print, torn ' \
+                'moss and roots, flowers at the rim, light pooling in the knee hollow'
         elif name == 'beams':
-            angs = np.radians([100, 104, 108, 112])
-            beams(cv, rng, (SUN[0], SUN[1]), angs, 3000, [110, 170, 90, 150], C(255, 240, 196), opacity=0.42,
+            angs = np.radians([101, 106, 111])
+            beams(cv, rng, (SUN[0], SUN[1]), angs, 3000, [90, 140, 80], C(255, 240, 196), opacity=0.32,
                   spread_w=1.2, streak=0.55, start_fade=0.4, end_len=0.98)
-            glow(cv, 1000, 760, 520, C(255, 240, 204), 0.18, squash=0.6)
+            # the beam that lands on the imprint (strongest at the floor)
+            top = np.array([1060.0, -60.0])
+            bot = np.array([1120.0, 915.0])
+            n_ = 16
+            t_ = np.linspace(0, 1, n_)
+            P_ = top[None] * (1 - t_[:, None]) + bot[None] * t_[:, None]
+            stroke(cv, P_, 70 + 150 * t_, C(255, 238, 190), opacity=0.08 + 0.3 * t_ ** 1.5, edge=0.9, bristle=0.6,
+                   rag=0.2, spacing=8.0, rng=rng)
+            glow(cv, 1120, 915, 160, C(255, 236, 190), 0.3, squash=0.4)
             note = 'stronger sunbeams through the gap onto the empty clearing'
         else:
             note = L['note']
+            if name in ('mist_far', 'mist_mid'):
+                cv.img *= 0.72                                      # less cream veil
+            elif name == 'near':
+                Xn, Yn = cv.coords()
+                cv.multiply(0.86)
+                cv.lock_tint(C(24, 32, 50), (smoothstep(700, 1060, Yn) * 0.35).astype(np.float32))
+            elif name == 'fg':
+                cv.multiply(0.72)
+            elif name == 'far':
+                cv.multiply(0.94)
         P.add(name, L['depth'], cv, note)
     P.save(source='S01 end frame (rows 1860-2900)', sun=[SUN[0], SUN[1]], knee=list(KNEE), hand=list(HAND))
     return P

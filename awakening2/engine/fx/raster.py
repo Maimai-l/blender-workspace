@@ -669,6 +669,25 @@ def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
             WC[q, 11] = math.sin(D[d, 9])
             WC[q, 12] = k
             WC[q, 13] = R * max(D[d, 7], D[d, 8]) * (1.0 + abs(D[d, 3])) + 1.0
+        # per-lobe extents covering its shape and its two tone discs (row / column culling)
+        EX = np.empty((nd_, 4), np.float64)
+        for d in range(d0, d1):
+            q = d - d0
+            Rm = WC[q, 13]
+            xa = min(D[d, 0], WC[q, 6])
+            xb = max(D[d, 0], WC[q, 6])
+            ya = min(D[d, 1], WC[q, 7])
+            yb = max(D[d, 1], WC[q, 7])
+            if D[d, 6] > 0.0:
+                xa = min(xa, WC[q, 8])
+                xb = max(xb, WC[q, 8])
+                ya = min(ya, WC[q, 9])
+                yb = max(yb, WC[q, 9])
+            EX[q, 0] = xa - Rm
+            EX[q, 1] = xb + Rm
+            EX[q, 2] = ya - Rm
+            EX[q, 3] = yb + Rm
+        act = np.empty(nd_, np.int64)
         for y in range(y0, y1):
             py = y + oy + 0.5
             gcut = 1.0
@@ -678,6 +697,14 @@ def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
                     continue
                 if gcut > 1.0:
                     gcut = 1.0
+            na = 0
+            for d in range(d0, d1):
+                q = d - d0
+                if D[d, 2] >= 0.35 and EX[q, 2] <= py <= EX[q, 3]:
+                    act[na] = d
+                    na += 1
+            if na == 0:
+                continue
             for x in range(x0, x1):
                 px = x + ox + 0.5
                 cs = 0.0
@@ -685,11 +712,12 @@ def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
                 cl = 0.0
                 best = -1e9
                 bnd = 0.0
-                for d in range(d0, d1):
-                    R = D[d, 2]
-                    if R < 0.35:
-                        continue
+                for ai in range(na):
+                    d = act[ai]
                     q = d - d0
+                    if px < EX[q, 0] or px > EX[q, 1]:
+                        continue
+                    R = D[d, 2]
                     Rm = WC[q, 13]
                     Rm2 = Rm * Rm
                     dx = px - D[d, 0]

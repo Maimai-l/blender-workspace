@@ -36,7 +36,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.239,
+      "coverage": 0.238,
       "note": "distant crowns along the bottom, glowing edges"
     },
     {
@@ -52,15 +52,15 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.361,
+      "coverage": 0.371,
       "note": "near canopy: readable leaf clumps with warm rims, branches reaching into the sky"
     }
   ],
-  "seconds": 13.9,
+  "seconds": 13.3,
   "layer_seconds": {
-    "sky": 1.6,
+    "sky": 1.8,
     "canopy_far": 1.6,
-    "canopy": 10.3
+    "canopy": 9.5
   },
   "sun": [
     1180.0,

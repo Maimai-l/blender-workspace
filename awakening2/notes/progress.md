@@ -135,6 +135,23 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   then KNEEL_WAKE lids -22), edge/seam check in QA (tools/check_edges.py; v1 had 9, v4 has 0).
   Tried and dropped: a dissolving trail echo in the S17 sky (read as a power line).
 
+- 15:52 v5 complete -> delivered/committed 15:56. 15:52 v6 rendering (frames_v6): S14 slower exit,
+  bells down, S16A head turn, S07 two-stage eyes.
+- 16:00 review of v4 (notes/review_v4.md): MK 6.1 vs ours 5.8; top problems: toy-like robot
+  (colour jumps, decals, mittens, overgrowth only on top), CG motion (3D tilts, shake on 1s,
+  boiling grain), climax hero lost (S14 blob, S15 ghost, S16A static). Helpers: BG round 6
+  (S13 cube bug, S00 texture, S16B cloud sea, S06 rims, S17 imprint), FX round 4 (soil streams,
+  trail ribbon, shockwave, debris shapes, thin coloured outlines).
+- 16:10 v7 changes in the sandbox (tested): one red-brown colour family (build.PAL, decals,
+  sat 1.04), no grain, shake on 2s + impact jolts (render_shot.shake, shot 'impacts'), S01/S10
+  flat 2D tilts (parallax 0.08/0.1, S10 no redraw), S07 backlit + head follows the bird
+  (KNEEL_WAKE_LOOK), S04 brighter core halo, S15 glow behind the robot + leaf/twig debris + no
+  haze, S16A long flames + trail from the engines, blue-and-white bird (BIRD_PAL), gentle lids
+  (ry +-10 everywhere), S09 low 3/4 front camera, S17 darker + cool fade + bird 112 px,
+  segmented hands (HAND_VERSION 2, painted backs), heavier silhouette line (SIL 5.0, DETAIL 1.2),
+  green thin vine lines, more moss on legs/feet/hand, S14 smaller lighter blast without veil,
+  uint8 layer cache + cel cache 3 (PC memory ~1.9 GB/worker -> 8 workers fit).
+
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.
 2. v3: `pc.py sync`, then `pc.py pipeline v3 --workers 7` (no bg regen needed), encode, QA.

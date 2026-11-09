@@ -51,19 +51,32 @@ def ground(cv, rng, y_h, y_b, x0, x1, col_far, col_mid, col_near, light=None, li
 FERN_KINDS = ('sword', 'lady', 'bracken', 'hart', 'maidenhair')
 
 
+def frond_body(cv, rng, P, width, pal, a0, sun2, opacity=1.0):
+    """Opaque frond body painted in two planes (the half facing the light lighter) under the
+    leaflets, so a fern never reads as a lacy, see-through card."""
+    sx, sy = sun2
+    nx, ny = -np.sin(a0), np.cos(a0)                 # +side normal of the frond direction
+    facing = nx * sx + ny * sy
+    dark = mix(pal['dark'], pal['mid'], 0.45)
+    lit = mix(pal['mid'], pal['lit'], 0.45)
+    c1, c2 = (dark, lit) if facing > 0 else (lit, dark)
+    stroke(cv, P, width, c1, opacity=opacity, color2=c2, load2=0.75, edge=0.3, bristle=0.35, rag=0.45, rng=rng)
+
+
+
 def fern(cv, rng, x, y, size, pal=None, sun2=(0.6, -0.8), n_fronds=None, spread=1.0, lean=0.0,
-         light=1.0, depth=0.0, haze=None, opacity=1.0, droop=1.0, up=1.0, kind='sword'):
+         light=1.0, depth=0.0, haze=None, opacity=1.0, droop=1.0, up=1.0, kind='sword', body=0.0):
     """Fern plant rooted at (x, y), frond length ~size. kind: sword (narrow alternate
     pinnae), lady (lacy, pinnae of tiny leaflets), bracken (triangular, divided pinnae),
     hart (undivided strap fronds), maidenhair (fans of round leaflets on dark stems)."""
     pal = pal or FERN
     if kind != 'sword':
         return fern_kind(cv, rng, x, y, size, kind, pal=pal, sun2=sun2, n_fronds=n_fronds, spread=spread,
-                         lean=lean, light=light, depth=depth, haze=haze, opacity=opacity, droop=droop)
+                         lean=lean, light=light, depth=depth, haze=haze, opacity=opacity, droop=droop, body=body)
     if depth > 0 and haze is not None:
         pal = {k: aerial(v, depth, haze) for k, v in pal.items()}
     nf = n_fronds or int(rng.integers(6, 11))
-    angs = -np.pi / 2 + lean + np.linspace(-1.25, 1.25, nf) * spread + rng.normal(0, 0.12, nf)
+    angs = -np.pi / 2 + lean + np.linspace(-1.25, 1.25, nf) * spread + rng.normal(0, 0.12 + 0.2 * body, nf)
     order = np.argsort(np.abs(angs + np.pi / 2))[::-1]          # outer (low) fronds first
     sx, sy = sun2
     for j in order:
@@ -82,7 +95,13 @@ def fern(cv, rng, x, y, size, pal=None, sun2=(0.6, -0.8), n_fronds=None, spread=
         tang = np.gradient(P, axis=0)
         ta = np.arctan2(tang[:, 1], tang[:, 0])
         lit_frond = np.clip(0.5 + 0.5 * (np.cos(a0) * sx + np.sin(a0) * sy) * 0.6, 0, 1) * light
-        stem_c = mix(pal['dark'], pal['mid'], 0.35 + 0.3 * lit_frond)
+        if body > 0:
+            tb = np.linspace(0, 1, len(P))
+            prof_b = np.sin(np.pi * np.clip(tb * 1.1, 0, 1)) ** 0.7 * (1 - 0.6 * tb)
+            frond_body(cv, rng, P, (size * 0.16 * prof_b * 1.5 + 2) * body, pal, a0, sun2, opacity)
+            stem_c = mix(pal['mid'], pal['lit'], 0.35)
+        else:
+            stem_c = mix(pal['dark'], pal['mid'], 0.35 + 0.3 * lit_frond)
         stroke(cv, P, taper(len(P), 1.0, 0.2, max(size * 0.012, 1.2)), stem_c, bristle=0.2, rag=0.1,
                opacity=opacity, rng=rng)
         # pinnae: alternate leaflets, longest a third of the way, shrinking to the tip
@@ -105,7 +124,7 @@ def fern(cv, rng, x, y, size, pal=None, sun2=(0.6, -0.8), n_fronds=None, spread=
 
 
 def fern_kind(cv, rng, x, y, size, kind, pal=None, sun2=(0.6, -0.8), n_fronds=None, spread=1.0, lean=0.0,
-              light=1.0, depth=0.0, haze=None, opacity=1.0, droop=1.0):
+              light=1.0, depth=0.0, haze=None, opacity=1.0, droop=1.0, body=0.0):
     pal = dict(pal or FERN)
     shift = {'lady': (0.04, 1.1, -0.12), 'bracken': (-0.01, 0.95, 0.1), 'hart': (-0.02, 1.15, 0.05),
              'maidenhair': (0.03, 1.05, -0.05)}[kind]
@@ -113,9 +132,9 @@ def fern_kind(cv, rng, x, y, size, kind, pal=None, sun2=(0.6, -0.8), n_fronds=No
     if depth > 0 and haze is not None:
         pal = {k: aerial(v, depth, haze) for k, v in pal.items()}
     ramp4 = [pal['dark'], pal['mid'], pal['lit'], pal['tip']]
-    nf = n_fronds or {'lady': int(rng.integers(7, 12)), 'bracken': int(rng.integers(3, 6)),
+    nf = n_fronds or {'lady': int(rng.integers(7, 12)), 'bracken': int(rng.integers(5, 9)),
                       'hart': int(rng.integers(6, 12)), 'maidenhair': int(rng.integers(5, 9))}[kind]
-    angs = -np.pi / 2 + lean + np.linspace(-1.25, 1.25, nf) * spread + rng.normal(0, 0.15, nf)
+    angs = -np.pi / 2 + lean + np.linspace(-1.25, 1.25, nf) * spread + rng.normal(0, 0.15 + 0.25 * body, nf)
     order = np.argsort(np.abs(angs + np.pi / 2))[::-1]
     sx, sy = sun2
     for j in order:
@@ -126,6 +145,9 @@ def fern_kind(cv, rng, x, y, size, kind, pal=None, sun2=(0.6, -0.8), n_fronds=No
         a = a0
         side = np.sign(np.cos(a0)) or 1.0
         arch = {'lady': 0.07, 'bracken': 0.05, 'hart': 0.12, 'maidenhair': 0.1}[kind] * droop
+        if body > 0:
+            arch = arch + rng.uniform(0.04, 0.1)          # curved, never ruler-straight stems
+            L = L * rng.uniform(0.8, 1.15)
         for i in range(k):
             a += side * arch * (i / k) * (1 + abs(np.cos(a0))) + rng.normal(0, 0.035)
             pts.append(pts[-1] + L / k * np.array([np.cos(a), np.sin(a)], np.float32))
@@ -145,7 +167,18 @@ def fern_kind(cv, rng, x, y, size, kind, pal=None, sun2=(0.6, -0.8), n_fronds=No
                    color2=pal['lit'], load2=0.35)
             stroke(cv, P[idx], np.maximum(w * 0.08, 1.0), pal['dark'], opacity=0.6 * opacity, bristle=0.2, rng=rng)
             continue
-        stem_c = pal['dark'] if kind == 'maidenhair' else mix(pal['dark'], pal['mid'], 0.35 + 0.3 * lit_frond)
+        if body > 0 and kind in ('lady', 'bracken'):
+            tb = np.linspace(0, 1, len(P))
+            if kind == 'bracken':
+                prof_b = np.clip(1.05 - tb, 0, 1) * np.clip(tb * 6, 0, 1)
+                wb_ = size * 0.42 * prof_b * 1.6 + 2
+            else:
+                prof_b = np.sin(np.pi * np.clip(tb * 0.95 + 0.05, 0, 1)) ** 0.9
+                wb_ = size * 0.2 * prof_b * 1.6 + 2
+            frond_body(cv, rng, P, wb_ * body, pal, a0, sun2, opacity)
+            stem_c = mix(pal['mid'], pal['lit'], 0.35)
+        else:
+            stem_c = pal['dark'] if kind == 'maidenhair' else mix(pal['dark'], pal['mid'], 0.35 + 0.3 * lit_frond)
         stroke(cv, P, taper(len(P), 1.0, 0.2, max(size * (0.008 if kind == 'maidenhair' else 0.012), 1.0)), stem_c,
                bristle=0.2, rag=0.1, opacity=opacity, rng=rng)
         if kind == 'maidenhair':

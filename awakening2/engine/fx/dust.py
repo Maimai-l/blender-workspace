@@ -106,7 +106,8 @@ class _Billow:
                 ld = np.asarray(lead[j], np.float64)
                 nl = float(np.hypot(ld[0], ld[1]))
                 ld = ld / nl if nl > 1e-9 else None
-            crown = near_ground and r0 > 3.0
+            crown = r0 > 3.0                       # grounded: crown on top; airborne: all round
+            air = not near_ground
             if core_r > 0.6:
                 # the main mass: flattened and widened where it sits on the ground; with a crown
                 # it is shape-only, so its tones (and the scalloped terminator) come from the lobes
@@ -120,7 +121,7 @@ class _Billow:
                 rc = r0 * 0.38 * (1 - 0.4 * b)
                 lobes.append((x0 + cr * 0.08, y0 - cr * 0.84 * 0.62, rc, self.wp[i, 2] + wpd, 1.08, 0.92, 0.0,
                               0, 0, 0, 1.0))
-                for k in range(self.ncrown[i]):
+                for k in range(min(self.ncrown[i], 4 + int(r0 / 14.0))):     # small billows: fewer lobes
                     side = 1.0 if k % 2 == 0 else -1.0
                     u = (self.cu0[i, k] + roll) % 1.0
                     # bud at the top centre -> full size -> absorbed at the base corner
@@ -128,20 +129,26 @@ class _Billow:
                     sr = r0 * self.csize[i, k] * grow * (1 - 0.35 * b)
                     if sr < 0.6:
                         continue
-                    ang = -math.pi / 2 + side * (0.12 + u * (math.pi / 2 + 0.25))
+                    if air:
+                        ang = -math.pi / 2 + side * (0.12 + u * (math.pi - 0.24))
+                        sr *= (0.8 + 0.3 * max(0.0, -math.sin(ang)))     # bigger on top, smaller below
+                    else:
+                        ang = -math.pi / 2 + side * (0.12 + u * (math.pi / 2 + 0.25))
                     ca, sa = math.cos(ang), math.sin(ang)
-                    re = cr / math.sqrt((ca / 1.14) ** 2 + (sa / 0.84) ** 2)     # core edge at ang
+                    ex, ey = (1.0, 1.0) if air else (1.14, 0.84)
+                    re = cr / math.sqrt((ca / ex) ** 2 + (sa / ey) ** 2)     # core edge at ang
                     rho = re - sr * 0.3 + 0.6 * b ** 1.3 * r0
                     bx = x0 + rho * ca
                     by = y0 + rho * sa
-                    by = min(by, gj - sr * 0.45)
+                    if not air:
+                        by = min(by, gj - sr * 0.45)
                     low = math.sin(ang) > -0.2                 # side lobes below the shoulder: no lit cap
                     lobes.append((bx, by, sr, self.cwp[i, k] + wpd * 1.3, 1.0, self.csq[i, k], ang, 0, 0, 0,
                                   0.5 if low else 1.0))
                 # belly lobes inside the mass (shade only, no lit cap): the mid tone reaches down
                 # and the violet underside ends in a scalloped edge instead of one big arc
                 shrink = (1 - 0.95 * b ** 1.2)
-                for kb, tb in enumerate((-0.74, -0.3, 0.12, 0.58)):
+                for kb, tb in enumerate((-0.74, -0.3, 0.12, 0.58) if r0 > 30 else (-0.4, 0.4)):
                     rb = r0 * (0.36, 0.22, 0.31, 0.25)[(kb + i) % 4] * shrink
                     if rb < 0.8:
                         continue
@@ -149,7 +156,7 @@ class _Billow:
                                   y0 + cr * (0.06 + 0.1 * ((kb + i) % 3)), rb, self.wp[i, 1] + kb + wpd,
                                   1.0, 0.9, 0.0, 0, 0, 0, 0.5))
                 # a lumpy skirt: two small squashed lobes at the base corners (borrowed tones)
-                for side in (-1.0, 1.0):
+                for side in ((-1.0, 1.0) if (not air and r0 > 20) else ()):
                     sr = r0 * (0.3 if side > 0 else 0.22) * shrink
                     if sr < 0.8:
                         continue

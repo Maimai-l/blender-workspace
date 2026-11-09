@@ -12,8 +12,9 @@ import poses as PZ
 H_ = WD.hexc
 # (light, shadow, deep, high, sky-fill)
 PAL = {
-    WD.PAINT: (H_('bf5a3c'), H_('662d2e'), None, H_('e58b58'), H_('874446')),
-    WD.LIDS: (H_('b14e36'), H_('582828'), None, H_('da8050'), H_('7a3a3e')),
+    # one oxidised red-brown family: lit, shadow, deep shadow, highlight, sky fill (same hue, capped saturation)
+    WD.PAINT: (H_('a35844'), H_('5a3030'), H_('3c2226'), H_('c27a5d'), H_('774440')),
+    WD.LIDS: (H_('94503f'), H_('4f2a2b'), H_('361e22'), H_('b46f55'), H_('6a3c3a')),
     WD.ROOF: (H_('79ad9f'), H_('3b5c6e'), None, H_('a9d1b6'), H_('5d8a93')),
     WD.METAL: (H_('77706a'), H_('393545'), H_('2a2733'), None, H_('59576a')),
     WD.BRASS: (H_('d4a862'), H_('7a5a4c'), None, H_('f2d08a'), H_('a08068')),
@@ -76,7 +77,7 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
                  lens_fn=lambda o, l: WD.eye_colour(o, 0.0, l), lens_mat=WD.LENS,
                  emissive={WD.GLOW: WD.hexc('3a2a30')}, flowers=fl, tufts=tufts,
                  soft_mats=(WD.MOSS, SF.FOLIAGE), tuft_mats=(WD.MOSS, SF.FOLIAGE), rivets=rivets, sprouts=sprouts,
-                 widths={ink.SIL: 4.3, ink.OCC: 3.2, ink.PART: 2.0, ink.CREASE: 1.4, ink.DETAIL: 0.95})
+                 widths={ink.SIL: 5.0, ink.OCC: 3.5, ink.PART: 2.2, ink.CREASE: 1.6, ink.DETAIL: 1.2})
     return rig, style
 
 

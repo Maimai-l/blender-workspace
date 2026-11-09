@@ -132,29 +132,35 @@ def build(outdir, quick=False):
     cv.over(mix(body, HAZE, (tt * 0.55)[..., None]), a_)
     slope = np.gradient(np.convolve(ridge, np.ones(9) / 9, mode='same'))
     face = np.clip(slope / 2.0, 0, 1)                                   # right-facing slopes face the sun
-    depth = (60 + 140 * noise1d(300, 9, rng)) * face
-    dx = np.interp(X[0], xs, depth, left=0, right=0)[None, :]
-    # facet edges run diagonally down-left (gullies): shear the facet depth with height
-    shear = (noise1d(300, 5, rng) - 0.5) * 80
-    sx = np.interp(X[0], xs, shear, left=0, right=0)[None, :]
-    lit = (Y - rx) < (dx + sx * (Y - rx) / 200.0)
-    litc = mix(aerial(col_lit, 0.05, HAZE), HAZE, (tt * 0.35)[..., None])
-    cv.over(litc, (a_ * lit * (dx > 8)).astype(np.float32) * 0.92)
-    # a few broad strokes along the fall lines, and dark gully strokes
-    for i in range(0, 300, 6):
-        if face[i] < 0.2:
+    litc0 = aerial(col_lit, 0.05, HAZE)
+    # the sunlit faces: many curved, irregular brush strokes running down the fall lines
+    for i in range(0, 300, 2):
+        if face[i] < 0.12 or rng.random() < 0.25:
             continue
-        x0, y0 = xs[i], ridge[i] + 6
-        L = depth[i] * rng.uniform(0.6, 1.1)
-        stroke(cv, [[x0, y0], [x0 - L * 0.35, y0 + L * 0.5], [x0 - L * 0.6, y0 + L]], rng.uniform(10, 22),
-               jitter(mix(litc[0, 0], body, rng.uniform(0.0, 0.5)), rng, 1, dl=0.02)[0], opacity=rng.uniform(0.25, 0.5),
-               edge=0.4, bristle=0.5, rag=0.3, mode='lock', rng=rng)
-    for i in range(10, 290, 37):
-        x0, y0 = xs[i], ridge[i] + 4
-        L = rng.uniform(60, 160)
-        stroke(cv, [[x0, y0], [x0 - L * 0.4 + rng.normal(0, 8), y0 + L * 0.55], [x0 - L * 0.7, y0 + L]],
-               taper(3, 1.0, 0.2, rng.uniform(4, 8)), aerial(C(120, 104, 160), 0.1, HAZE), opacity=0.6, bristle=0.3,
-               rag=0.4, mode='lock', rng=rng)
+        x0, y0 = xs[i] + rng.normal(0, 3), ridge[i] + rng.uniform(2, 10)
+        L = (40 + 150 * rng.random() ** 0.7) * (0.5 + face[i])
+        n = 5
+        t = np.linspace(0, 1, n)
+        bend = rng.normal(0, 0.25)
+        px = x0 - L * (0.55 + bend) * t + np.cumsum(rng.normal(0, 4, n))
+        py = y0 + L * t + np.cumsum(rng.normal(0, 3, n))
+        k = float(np.clip(0.3 + 0.7 * face[i] - 0.25 * rng.random(), 0, 1))
+        col = jitter(mix(body, litc0, k), rng, 1, dl=0.025, dc=0.08, dh=0.03)[0]
+        stroke(cv, np.stack([px, py], 1), taper(n, 0.7, 0.15, rng.uniform(9, 24)), col,
+               opacity=rng.uniform(0.45, 0.85), edge=0.35, bristle=0.55, rag=0.4, mode='lock', rng=rng)
+    # shadow-side texture: cooler strokes on the left-facing slopes
+    for i in range(0, 300, 3):
+        if face[i] > 0.05 or rng.random() < 0.4:
+            continue
+        x0, y0 = xs[i], ridge[i] + rng.uniform(4, 30)
+        L = rng.uniform(40, 140)
+        n = 4
+        t = np.linspace(0, 1, n)
+        px = x0 + L * 0.45 * t + np.cumsum(rng.normal(0, 4, n))
+        py = y0 + L * t
+        stroke(cv, np.stack([px, py], 1), taper(n, 0.6, 0.2, rng.uniform(8, 18)),
+               jitter(mix(body, aerial(C(118, 104, 164), 0.1, HAZE), 0.5), rng, 1, dl=0.02)[0],
+               opacity=rng.uniform(0.3, 0.6), edge=0.4, bristle=0.55, rag=0.4, mode='lock', rng=rng)
     # warm rim along the sunlit crest
     crest = np.stack([xs, ridge + 2], 1)
     seg = np.arange(0, 300, 2)
@@ -166,32 +172,47 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- cloud sea (far)
     cv = P.layer('cloud_sea', 0.3)
-    for (r0, r1, lf, dd) in [(0, 8, 9, 0.38), (8, 16, 17, 0.22)]:
+    # a continuous painted cloud deck first (so gaps between mounds show cloud, not sky)
+    from ..soft import mist_strokes
+    Yd = cv.ys()[:, None] * np.ones((1, cv.shape[1]), np.float32)
+    deck = smoothstep(628, 660, Yd)
+    tdeck = np.clip((Yd - 640) / 400, 0, 1)
+    dcol = mix(mix(np.broadcast_to(planes(0.3)[2], Yd.shape + (3,)), planes(0.2)[1], (tdeck * 0.6)[..., None]),
+               planes(0.2)[0], (tdeck ** 2 * 0.5)[..., None])
+    cv.over(dcol, deck.astype(np.float32))
+    for (y0d, y1d, n_, wdt) in [(632, 700, 120, (14, 40)), (690, 830, 120, (24, 70)), (820, 1060, 110, (40, 110))]:
+        mist_strokes(cv, rng, -200, W + 200, y0d, y1d, planes(0.2)[3], planes(0.2)[0], n_,
+                     light=lambda x, y: np.clip(0.25 + 0.6 * (x / W) - 0.3 * ((y - 640) / 400), 0, 1), width=wdt,
+                     length=(300, 900), opacity=(0.25, 0.55), profile='flat')
+    # irregular cumulus mounds of varied scale, receding in perspective (not rows of blocks)
+    for band, (y0b, y1b, s0, s1, dd) in enumerate([(615, 690, 0.25, 0.55, 0.36), (680, 800, 0.45, 1.0, 0.28),
+                                                   (780, 960, 0.8, 1.7, 0.2)]):
         b = Blobs()
-        for row in range(r0, r1):
-            t = row / 15
-            y = 615 + 430 * t ** 1.4
-            r = 24 + 130 * t ** 1.6
-            n = int(W / (r * 1.5)) + 3
-            for x in np.linspace(-r, W + r, n) + rng.normal(0, r * 0.4, n):
-                # gaps in the sea show the shadowed lower layer
-                if rng.random() < 0.12:
-                    continue
-                b.add(x, y + rng.normal(0, r * 0.2), r * rng.uniform(1.2, 2.2), r * rng.uniform(0.42, 0.62),
-                      rot=rng.normal(0, 0.05), light=rng.uniform(0.8, 1.05), val=rng.normal(0, 0.05), rng=rng,
-                      lumpy=0.12)
-        paint_planes(cv, rng, b, planes(dd), light3=(0.6, -0.75, 0.3), th=(0.32, 0.52, 0.8), rim=C(255, 246, 214),
-                     rim_amt=0.6, strokes=0.35, noise_amt=0.08)
+        x = -200.0
+        items = []
+        while x < W + 200:
+            sc = float(np.exp(rng.uniform(np.log(s0), np.log(s1))))
+            w_ = 260 * sc * rng.uniform(0.6, 1.4)
+            h_ = w_ * rng.uniform(0.18, 0.42)
+            yb = rng.uniform(y0b, y1b)
+            items.append((yb, x + w_ / 2, w_, h_))
+            x += w_ * rng.uniform(0.45, 0.85)
+        items.sort(key=lambda t: t[0])
+        for yb, cx, w_, h_ in items:
+            sculpted_blobs(rng, cx, yb, w_, h_, kind='cumulus' if rng.random() < 0.65 else 'strato', blobs=b)
+        paint_planes(cv, rng, b, planes(dd), light3=(0.6, -0.7, 0.35), th=(0.3, 0.52, 0.8), soft=0.09, wrap=0.6,
+                     rim=C(255, 246, 214), rim_amt=0.6, strokes=0.6, stroke_size=10 + 8 * band, noise_amt=0.05,
+                     wisps=0.4, form=0.0)
     yy = cv.ys()[:, None]
     cv.lock_tint(HAZE, (smoothstep(760, 600, yy) * 0.45 * np.ones((1, cv.shape[1]))).astype(np.float32))
-    P.add('cloud_sea', 0.3, cv, 'the far sea of clouds')
+    P.add('cloud_sea', 0.3, cv, 'the far sea of clouds: irregular cumulus of varied scale in perspective')
 
     # ---------------------------------------------------------------- mid cumulus (right, below the diagonal)
     cv = P.layer('clouds_mid', 0.5)
     for (cx, by, w_, h_, kind) in [(1300, 830, 520, 170, 'cumulus'), (2120, 800, 640, 200, 'cumulus'),
                                    (850, 880, 520, 90, 'strato')]:
         plane_cloud(cv, rng, cx, by, w_, h_, planes(0.1), kind=kind, light3=(0.65, -0.7, 0.3), rim=C(255, 246, 214),
-                    wisps=0.4)
+                    wisps=0.4, soft=0.08, wrap=0.6, form=0.0)
     P.add('clouds_mid', 0.5, cv, 'sculpted cumulus banks rising from the sea (right half)')
 
     # ---------------------------------------------------------------- near cumulus (bottom right)
@@ -199,7 +220,7 @@ def build(outdir, quick=False):
     for (cx, by, w_, h_, kind) in [(1760, 1120, 900, 330, 'cumulus'), (2330, 1080, 520, 360, 'cumulus'),
                                    (1120, 1110, 520, 170, 'strato')]:
         plane_cloud(cv, rng, cx, by, w_, h_, planes(0.0), kind=kind, light3=(0.65, -0.7, 0.3), rim=C(255, 248, 222),
-                    wisps=0.5)
+                    wisps=0.5, soft=0.08, wrap=0.6, form=0.0)
     P.add('clouds_near', 0.75, cv, 'big near cumulus at the bottom right')
 
     # ---------------------------------------------------------------- canopy tops (bottom left)

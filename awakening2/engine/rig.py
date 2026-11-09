@@ -29,6 +29,7 @@ class Part:
         self.mat = mat; self.mirror_of = mirror_of; self.version = version
         self.mesh = None
         self.index = -1
+        self.world = False          # True: fixed in the world (ground growth), ignores the root
 
 
 class Rig:
@@ -93,7 +94,9 @@ class Rig:
                 if rr is not None:
                     r = (rr[0], -rr[1], -rr[2])     # mirror the rotation
             L = mat4(rot_matrix(*r), p.joint)
-            if p.parent is None or p.parent == '':
+            if p.world:
+                mats[nm] = L
+            elif p.parent is None or p.parent == '':
                 mats[nm] = rootM @ L
             else:
                 mats[nm] = mats[p.parent] @ L

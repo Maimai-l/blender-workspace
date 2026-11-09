@@ -152,6 +152,28 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   green thin vine lines, more moss on legs/feet/hand, S14 smaller lighter blast without veil,
   uint8 layer cache + cel cache 3 (PC memory ~1.9 GB/worker -> 8 workers fit).
 
+- 16:20 **v6 delivered + pushed** (deliver/awakening2_v6.mp4, qa/v6, edge check 0). MP4 was 93 MB:
+  GitHub refuses files over 100 MB, so `pc.py encode` now uses CRF 19 and re-encodes 2 steps
+  lighter when the video is over 88 MB.
+- 16:23 v7 rendering on the PC (frames_v7, 7 workers; BG round 6 regenerated first: S00, S06,
+  S13, S16, S17). v7 = the 16:10 list + FX round 4 (soil streams, trail ribbon, pressure band,
+  curled bark) + S16B perspective trail (thin at the far robot, wide near the camera) + staggered
+  S12 sputters + thinner vine leaf lines. Waiter: tools/pc_wait_fill.sh v7 frames_v7 (fixed to
+  ignore *.tmp.png and to accept >= NEED).
+- v8 in the sandbox (tested on S01/S05/S08/S09/S04/S07/S12): **ground growth** (world-fixed moss
+  mounds with grass and flowers around the knee, both feet and the hand: `surface.add_ground_growth`,
+  rig parts with `world=True`, skipped in S15/S16A/S16B via style `skip_parts`), a **ground fade**
+  (cel alpha dissolves below 0.3 m so nothing has a hard line on the painted floor), rise dust
+  puffs start ON the ground under the contact (no more airborne ball), **armour plate seams**
+  (torso flank plates in two rows, helmet cap, pauldron lames, thigh/shin/upperarm bands) with
+  **rivet rows** along them. Mesh prebuild step added to tools/pc_pipeline.sh.
+
+- 16:52 **v7 delivered** (65 MB; no grain + CRF 19), qa/v7 (edge check 0). Reviewer on v7 running
+  -> notes/review_v7.md. v8 rendering on the PC (frames_v8): ground growth + ground fade, plate
+  seams + rivet rows, fewer rust streaks, S07 blink, wider lids in PUSH_UP, rise puffs on the ground,
+  FX round 5 (soil streams as ragged sheets, no chopsticks, broken contact sprays; S14 blast keeps
+  one mass via main=True), S16A trail glow 0.3 (no glare over the robot), S14 focus lines shorter.
+
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.
 2. v3: `pc.py sync`, then `pc.py pipeline v3 --workers 7` (no bg regen needed), encode, QA.

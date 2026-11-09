@@ -42,9 +42,17 @@ def sync():
         if '__pycache__' in n or n.endswith(('.png', '.jpg', '.mp4', '.wav', '.npz', '.pyc')):
             return None
         return ti
+    snap = os.environ.get('AW2_FX_SNAPSHOT')      # ship a frozen engine/fx while a helper edits the live one
+    def filt2(ti):
+        if snap and (ti.name == 'engine/fx' or ti.name.startswith('engine/fx/')):
+            return None
+        return filt(ti)
     with tarfile.open(tgz, 'w:gz') as tf:
         for d in ('engine', 'robot', 'shots', 'tools'):
-            tf.add(os.path.join(ROOT, d), arcname=d, filter=filt)
+            tf.add(os.path.join(ROOT, d), arcname=d, filter=filt2)
+        if snap:
+            tf.add(snap, arcname='engine/fx', filter=filt)
+            print('engine/fx from snapshot', snap)
         tf.add(os.path.join(ROOT, 'audio', 'cues.json'), arcname='audio/cues.json')
     pcx.put(tgz, PCROOT + '\\aw2code.tgz')
     print(sh(f'cd {U} && mkdir -p code && tar xzf aw2code.tgz -C code && echo synced'))
@@ -120,7 +128,7 @@ def status(name):
              f'grep -l FAILED _done/{name}_*.log 2>/dev/null; tail -n 3 _done/{name}_*.out 2>/dev/null | tail -20'))
 
 
-def encode(version, crf=18, fdir='frames', overrides=None):
+def encode(version, crf=19, fdir='frames', overrides=None):
     sys.path.insert(0, os.path.join(ROOT, 'tools'))
     cues = json.load(open(os.path.join(ROOT, 'audio', 'cues.json')))
     lines = []
@@ -140,6 +148,11 @@ def encode(version, crf=18, fdir='frames', overrides=None):
     pcx.wait_file(PCROOT + f'\\enc_{version}.done', timeout_s=1800)
     local_v = os.path.join(SCRATCH, f'aw2_{version}_video.mp4')
     pcx.fetch(PCROOT + f'\\deliver\\aw2_{version}_video.mp4', local_v)
+    if os.path.getsize(local_v) > 88 * 2 ** 20 and crf < 26:
+        # GitHub rejects files over 100 MB: re-encode a little lighter
+        print('video', os.path.getsize(local_v) // 2 ** 20, 'MB; re-encoding at crf', crf + 2)
+        sh(f'rm -f {U}/enc_{version}.done')
+        return encode(version, crf + 2, fdir, overrides)
     mux(local_v, version)
 
 

@@ -165,3 +165,34 @@ vines yet; the rise is a simple blend between three poses.
 - **Eyes (S07):** the lids open in two stages (crack, hold, open), each held on 2s.
 - **QA:** every version is checked for card edges and missing-background bands
   (`tools/check_edges.py`; v1 had 9 suspicious frames, v4–v6 have none).
+
+### v7 (16:50)
+Fixes from the second independent review (`notes/review_v4.md`: benchmark 6.1, ours 5.8; the
+robot read as a red vinyl toy, the film moved like CG, and the hero vanished at the climax).
+- **One colour model for the robot:** an oxidised red-brown family (lit, shadow, deep shadow,
+  highlight and sky fill share one hue, saturation capped), rust and primer decals in the same
+  family, a 4 % lower saturation in the grade. No more maroon-in-one-shot, pumpkin-in-the-next.
+- **Line hierarchy:** the silhouette is the heaviest line (5 px), interior lines thinner (detail
+  1.2 px), vines and leaves get thin dark-green colour lines instead of heavy outlines.
+- **Motion:** camera shake only on impacts, on 2s, decaying (`impacts` per shot); no screen
+  grain at all (the paper texture lives in the painted layers); S01 and S10 move as flat
+  painted layers (2D tilt), not a 3D camera.
+- **Story beats:** a blue-and-white bird that stands out from the moss; S07 backlit so the
+  waking eyes carry the shot, and the head follows the bird as it flies off; a brighter
+  heartbeat halo on the chest furnace; S09 seen from a low three-quarter front angle; lids
+  that tilt up at the outer corners in every shot (kind, not angry).
+- **The robot:** segmented mechanical fingers with painted backs (no mittens), moss on the
+  legs, feet and hands (not only on top surfaces).
+- **Climax:** S15 draws the robot as a dark rim-lit shape in front of the glow with leaves and
+  twigs only; S16A gets long jet flames and the trail starting at the engines; S14's blast is
+  smaller and lighter so the robot stays readable; S12's two engines sputter at different
+  moments (two simultaneous flashes read as eyes on its back).
+- **Ending:** a darker clearing with a lit imprint (knee hollow, hand print, torn roots), the bird
+  hopping into it at 112 px, and a cool fade to black.
+- **Backgrounds (round 6):** S13's "cube" (a bracken fern drawn with straight spokes) repainted,
+  a canopy band around the top view; S00 repainted with flat brush-stroked crowns and broken
+  ridges; S16B's cloud sea as painted cumulus at varied scales; S06 rims vary per clump.
+- **Effects (round 4):** soil pours in streams, the trail is a white-gold ribbon with lumpy
+  edges that dissolves into wisps (no colour fringe), a pressure band of flattened grass leads
+  the ring of wind, curled bark and S-curve roots, thin coloured outlines on debris.
+  The S16B trail now has perspective: thin at the far robot, wide where it passes the camera.

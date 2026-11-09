@@ -17,7 +17,8 @@ PAPER = (0.95, 0.93, 0.87)
 def draw_view(rig, style, pose, cam, light, vset=None, seed=1, glow=0.0):
     st = dict(style)
     st.update(light=light, ss=2, seed=seed, lens_fn=lambda o, l, g=glow: WD.eye_colour(o, g, l))
-    rgba, ps = cel.render(rig, pose, cam, st, return_passes=True)
+    skip = tuple(n for n in rig.order if getattr(rig.parts[n], 'world', False))   # no ground growth on the sheet
+    rgba, ps = cel.render(rig, pose, cam, st, return_passes=True, skip=skip)
     img = cel.on_paper(rgba, PAPER)
     if vset is not None:
         cv_ = np.zeros((cam.H, cam.W, 4), np.float32)
@@ -45,7 +46,7 @@ def main():
     sheet = Image.new('RGB', (len(tiles) * W + 2 * pad, H + 230), tuple(int(c * 255) for c in PAPER))
     d = ImageDraw.Draw(sheet)
     d.text((pad, 18), 'THE WARDEN  —  final model sheet', fill=(70, 40, 35), font=ImageFont.truetype(F_B, 46))
-    d.text((pad, 74), 'height 21 m standing / 13 m kneeling.  Vermilion lacquer over dark iron, verdigris shrine-roof carapace, '
+    d.text((pad, 74), 'height 21 m standing / 13 m kneeling.  Oxidised red-brown lacquer over dark iron, riveted plates, verdigris shrine-roof carapace, '
                       'brass fittings, amber lamp-eyes behind lid shutters, furnace grille in the chest, twin engine bells under the roof.',
            fill=(90, 70, 60), font=ImageFont.truetype(F_R, 22))
     for i, (img, label) in enumerate(tiles):

@@ -32,6 +32,7 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
     rig = WD.build(voxel=voxel, head_voxel=head_voxel)
     rig.build_meshes(verbose=False)
     flowers = SF.add_growth(rig, voxel=growth_voxel)
+    flowers.update(SF.add_ground_growth(rig))
     mats_k = rig.world_mats(PZ.grounded(rig, PZ.KNEEL_DORMANT))
     dec = SF.Decals(rig, SF.DECAL_PARTS, mats_k)
     mf, pf = WD.style_fns(rig)
@@ -39,7 +40,7 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
     tufts = []
     rng = SF.rng_for('tufts')
     for nm in rig.order:
-        if not (nm.startswith('moss_') or nm == 'foliage'):
+        if not (nm.startswith('moss_') or nm.startswith('gmoss_') or nm == 'foliage'):
             continue
         m = rig.parts[nm].mesh
         tri = m.V[m.F]
@@ -50,19 +51,20 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
         P = np.einsum('nk,nkd->nd', w, tri[idx]).astype(np.float32)
         N = np.einsum('nk,nkd->nd', w, m.N[m.F[idx]]).astype(np.float32)
         N /= np.linalg.norm(N, axis=1, keepdims=True)
-        tufts.append((rig.parts[nm].parent, P, N))   # anchored to the parent part's frame (same as moss)
+        anchor = nm if rig.parts[nm].world else rig.parts[nm].parent
+        tufts.append((anchor, P, N))   # anchored to the parent part's frame (same as moss); world growth to itself
     fl = [(p, F) for p, F in flowers.items()]
     rivets = make_rivets(rig)
     # grass sprouts from the moss (part-local anchors): height, blade count, lean
     sprouts = []
     rng2 = SF.rng_for('sprouts')
     for nm in rig.order:
-        if not nm.startswith('moss_'):
+        if not (nm.startswith('moss_') or nm.startswith('gmoss_')):
             continue
         m = rig.parts[nm].mesh
         tri = m.V[m.F]
         area = 0.5 * np.linalg.norm(np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1)
-        n = int(area.sum() * 1.6)
+        n = int(area.sum() * (3.2 if nm.startswith('gmoss_') else 1.6))
         if n == 0:
             continue
         idx = rng2.choice(len(m.F), size=n, p=area / area.sum())
@@ -71,7 +73,7 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
         N = np.einsum('nk,nkd->nd', w, m.N[m.F[idx]]).astype(np.float32)
         N /= np.linalg.norm(N, axis=1, keepdims=True)
         R = np.stack([rng2.uniform(0.35, 0.95, n), rng2.integers(3, 8, n), rng2.random(n)], -1).astype(np.float32)
-        sprouts.append((rig.parts[nm].parent, P, N, R))
+        sprouts.append((nm if rig.parts[nm].world else rig.parts[nm].parent, P, N, R))
     style = dict(pal=PAL, matfn=mf, panelfn=pf, decals=dec, decal_cols=SF.DECAL_COLS,
                  roof_decal_cols=SF.ROOF_DECAL_COLS, decal_mats=(WD.PAINT, WD.LIDS), roof_mats=(WD.ROOF,),
                  lens_fn=lambda o, l: WD.eye_colour(o, 0.0, l), lens_mat=WD.LENS,
@@ -111,4 +113,28 @@ def make_rivets(rig):
             rows('forearm_' + side, np.stack([np.cos(a3) * 1.45, np.sin(a3) * 1.45, np.full_like(a3, z)], -1))
         zz = np.linspace(-0.3, -2.6, 6)
         rows('shin_' + side, np.stack([np.full_like(zz, 0.55 * sx), np.full_like(zz, 1.3), zz], -1))
+
+    def seam(part, cond, key, spacing):
+        # rivets picked from the mesh along a seam: vertices where cond holds, ordered by key, spaced out
+        m = rig.parts[part].mesh
+        V, N = m.V, m.N
+        idx = np.where(cond(V))[0]
+        if len(idx) == 0:
+            return
+        idx = idx[np.argsort(key(V[idx]))]
+        pick = [idx[0]]
+        for i in idx[1:]:
+            if np.linalg.norm(V[i] - V[pick[-1]]) >= spacing:
+                pick.append(i)
+        pick = np.array(pick)
+        out.append((part, V[pick] + N[pick] * 0.02, N[pick]))
+    # torso flank plates: a row beside each vertical seam and along the row seam
+    for sx in (1, -1):
+        seam('torso', lambda V, sx=sx: (np.abs(V[:, 0] - sx * 2.95) < 0.05) & (V[:, 1] > -0.6) & (V[:, 2] > 2.8) & (V[:, 2] < 6.35),
+             lambda V: V[:, 2], 0.5)
+    seam('torso', lambda V: (np.abs(V[:, 2] - 4.65) < 0.04) & ((np.abs(V[:, 0]) > 2.85) | (V[:, 1] < -1.1)),
+         lambda V: np.arctan2(V[:, 0], V[:, 1]), 0.5)
+    # the helmet cap
+    seam('head', lambda V: (np.abs(V[:, 2] - 2.33) < 0.03) & (V[:, 1] < 1.5),
+         lambda V: np.arctan2(V[:, 0], V[:, 1]), 0.36)
     return out

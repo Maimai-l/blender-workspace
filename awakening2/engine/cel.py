@@ -47,6 +47,8 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
     sc, mats = rig.scene(pose, extra=extra, skip=skip)
     if mats_out is not None:
         mats_out.update(mats)
+    if skip:
+        mats = {k: v for k, v in mats.items() if k not in skip}     # nothing anchored to skipped parts
     ps = r3d.render_passes(sc, camS)
     m = ps['mask']
     H, W = m.shape
@@ -239,6 +241,15 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
     if style.get('flowers'):
         _draw_flowers(rgb, a, ps, camS, mats, style, L, ss, inkc)
 
+    gf = style.get('ground_fade')        # (z0, z1): what touches the ground dissolves into the painted floor
+    if gf is not None and m.any():
+        z = np.where(m, ps['wpos'][..., 2], 1e3)
+        f = np.clip((z - gf[0]) / max(gf[1] - gf[0], 1e-6), 0.0, 1.0)
+        f = (f * f * (3 - 2 * f)).astype(np.float32)
+        if (f < 1).any():
+            r = int(2.5 * ss)
+            f = cv2.erode(f, np.ones((2 * r + 1, 2 * r + 1), np.uint8))   # carry the fade over the outline
+            a = a * f
     rgba = np.concatenate([rgb * a[..., None], a[..., None]], -1)
     out = look.downsample(rgba, ss)
     if return_passes:

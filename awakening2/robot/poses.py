@@ -26,6 +26,7 @@ KNEEL_DORMANT = dict(
 KNEEL_STIR = dict(KNEEL_DORMANT, head=(-6, 0, 5), torso=(-22.5, 0, -3.5), lid_R=(-44, 10, 0), lid_L=(-44, -10, 0))
 KNEEL_WAKE = dict(KNEEL_DORMANT, head=(0, 0, 4), torso=(-21, 0, -3), lid_R=(-22, 10, 0), lid_L=(-22, -10, 0))
 KNEEL_WAKE_LOOK = dict(KNEEL_WAKE, head=(7, 0, 17), torso=(-20, 0, 1))      # follows the bird as it flies off
+KNEEL_WAKE_BLINK = dict(KNEEL_WAKE, lid_R=(-64, 10, 0), lid_L=(-64, -10, 0))     # a slow blink as the bird goes
 
 # rise: 1) the right hand plants and pushes, torso pitches forward over it
 RISE_PUSH = dict(KNEEL_DORMANT, torso=(-38, 0, -8), head=(-6, 0, 0), pelvis=(-10, 0, 0),
@@ -91,7 +92,7 @@ def grounded(rig, pose, yaw=0.0, x=0.0, y=0.0, extra_z=0.0, pitch=0.0):
     zmin = 1e9
     for nm in rig.order:
         p = rig.parts[nm]
-        if p.mesh is None:
+        if p.mesh is None or getattr(p, 'world', False):
             continue
         V = p.mesh.V[::7]
         W = r3d.xform_points(mats[nm], V)
@@ -112,7 +113,7 @@ PUSH_PLANT = dict(KNEEL_WAKE, pelvis=(-10, 0, 0), torso=(-36, 0, -9), head=(-14,
 PUSH_UP = dict(KNEEL_WAKE, pelvis=(2, 0, 0), torso=(-12, 0, -4), head=(-30, 0, 0),
                upperarm_R=(30, -16, 0), forearm_R=(0, 0, 0), hand_R=(40, 0, 0),
                upperarm_L=(22, 12, 0), forearm_L=(36, 0, 0), hand_L=(10, 0, 0),
-               lid_R=(-26, 10, 0), lid_L=(-26, -10, 0))
+               lid_R=(-16, 10, 0), lid_L=(-16, -10, 0))      # eyes wide during the effort (no lit crescents)
 STAND_RISE = dict(STAND_HUNCH, torso=(-26, 0, 0), head=(-14, 0, 0), pelvis=(-8, 0, 0),
                   thigh_R=(24, 3, 0), shin_R=(-34, 0, 0), foot_R=(10, 0, 0),
                   thigh_L=(26, -3, 0), shin_L=(-36, 0, 0), foot_L=(10, 0, 0))

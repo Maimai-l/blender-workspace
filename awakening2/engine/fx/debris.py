@@ -229,12 +229,12 @@ class SoilPour:
         self.on = on
         self.veil = veil
         self.ground = ground
-        self.maxage = maxage
+        self.maxage = max(maxage, 44)
         self.veil_size = veil_size
         self.veil_opacity = veil_opacity
         self.scatter = scatter
         self.land_size = veil_size * 1.2 if land_size is None else land_size
-        self.kinds = {'crumb': 0.66, 'clod': 0.22, 'moss': 0.05, 'root': 0.05, 'vine': 0.02} if kinds is None else kinds
+        self.kinds = {'crumb': 0.72, 'clod': 0.24, 'moss': 0.04} if kinds is None else kinds
         g = core.rng('pour', name)
         ns = int(min(max(strands, 1), 3))
         self.su = np.sort((np.arange(ns) + g.uniform(0.25, 0.75, ns)) / ns) * 0.84 + 0.08
@@ -258,14 +258,80 @@ class SoilPour:
         pulse = 0.55 + 0.45 * math.sin(b * 0.23 + self.sflow0[s]) * math.sin(b * 0.071 + self.sflow0[s] * 2)
         return ramp * max(0.0, pulse)
 
-    def _emit(self, b, u):
+    def _layout(self):
+        """Streams sized from the emitter segment: ~40 px of ledge per stream, 30-80 px wide."""
+        if getattr(self, '_laid', False):
+            return
+        p0, p1 = self.em(self.start)
+        Le = float(np.hypot(p1[0] - p0[0], p1[1] - p0[1]))
+        g = core.rng('pour_layout', self.name)
+        n = int(np.clip(round(Le / 55.0), 1, len(self.su)))
+        if Le < 1.0:
+            n = 1
+        self.su = np.sort((np.arange(n) + g.uniform(0.3, 0.7, n)) / n)
+        base = max(Le * 0.85 / n, float(self.sw.min()))
+        widths = base * np.array([1.25, 0.7, 1.05])[:n] * g.uniform(0.9, 1.1, n)     # unequal streams
+        self.sw_eff = np.clip(widths, 6.0, 140.0)
+        # the sheet hangs ~5-7 widths before it tears: frames to fall that far
+        drop = self.sw_eff * g.uniform(3.2, 4.6, n)
+        self.sheet_len = np.clip(np.sqrt(2 * drop / max(self.g, 1e-3)), 8, 30).astype(int)
+        self.sw = self.sw_eff
+        self._laid = True
+
+    def _sheet_poly(self, batch, C, Wd, B, s, l, cpal, line, drawing):
+        """A ragged, tapering two-tone sheet along the hanging centreline C (top first)."""
+        n = len(C)
+        if n > 2:
+            Cs = core.chaikin(C, 1, closed=False)
+            Ws = np.interp(np.linspace(0, 1, len(Cs)), np.linspace(0, 1, n), Wd)
+            Bs = np.interp(np.linspace(0, 1, len(Cs)), np.linspace(0, 1, n), np.array(B, np.float64))
+        else:
+            Cs, Ws, Bs = C, Wd, np.array(B, np.float64)
+        nrm, _ = core.polyline_normals(Cs)
+
+        def hn(b, side):
+            return ((math.sin(b * 12.9898 + s * 78.233 + side * 37.719) * 43758.5453) % 1.0) * 2 - 1
+
+        boil = 0.07 * np.sin(drawing * 1.7 + Bs * 0.9)
+        el = np.array([hn(math.floor(b_), 1) for b_ in Bs]) * 0.36 + boil
+        er = np.array([hn(math.floor(b_), 2) for b_ in Bs]) * 0.36 - boil
+        lump = 1 + 0.3 * np.array([hn(math.floor(b_ / 2), 3) for b_ in Bs])      # bulges along the fall
+        sway = np.array([hn(math.floor(b_ / 3), 4) for b_ in Bs]) * 0.14 * Ws \
+            * np.linspace(0.0, 1.0, len(Cs))                                    # loose material sways
+        Cs = Cs + nrm * sway[:, None]
+        Ws = Ws * lump
+        L = Cs + nrm * (Ws * 0.5 * (1 + el))[:, None]
+        R = Cs - nrm * (Ws * 0.5 * (1 + er))[:, None]
+        # a torn, jagged lower end
+        tip = Cs[-1]
+        down = Cs[-1] - Cs[-2]
+        down = down / max(np.linalg.norm(down), 1e-9)
+        side = np.array([-down[1], down[0]])
+        w_end = Ws[-1]
+        g = core.rng('pour_tip', self.name, s, drawing)
+        jag = [tip + side * w_end * 0.35 + down * w_end * g.uniform(0.2, 0.7),
+               tip + side * w_end * 0.05 + down * w_end * g.uniform(0.0, 0.3),
+               tip - side * w_end * 0.2 + down * w_end * g.uniform(0.3, 0.9)]
+        poly = np.concatenate([L, np.array(jag), R[::-1]], 0)
+        batch.add(poly, cpal['shade'], ink=line, ink_w=1.0)
+        # lit side: a narrower ragged band toward the light
+        sgn = np.sign(np.sum(nrm * l[None, :], 1, keepdims=True))
+        Li = Cs + nrm * sgn * (Ws * 0.08)[:, None]
+        wl = Ws * 0.74 * (1 + 0.45 * el * sgn[:, 0]) * np.linspace(1.0, 0.55, len(Cs))
+        batch.add(core.stroke_poly(Li, wl), cpal['lit'])
+
+    def _emit(self, b, u, inherit=None):
         p0, p1 = self.em(b)
         p0 = np.asarray(p0, np.float64)
         p1 = np.asarray(p1, np.float64)
-        q0, q1 = self.em(b - 1)
+        q0, q1 = self.em(b - 4)
         pos = p0 + (p1 - p0) * u
         prev = np.asarray(q0, np.float64) + (np.asarray(q1, np.float64) - np.asarray(q0, np.float64)) * u
-        return pos, (pos - prev) * self.inherit
+        v = (pos - prev) / 4.0                    # smoothed: the robot moves on 3s with holds
+        sp = float(np.hypot(v[0], v[1]))
+        if sp > 4.0:
+            v = v * (4.0 / sp)
+        return pos, v * (self.inherit if inherit is None else inherit)
 
     def _bits(self, b):
         g = core.rng('pour_bits', self.name, b)
@@ -302,6 +368,7 @@ class SoilPour:
         drawing = fh // max(self.on, 1)
         cpal = palettes.DEBRIS['clod']
         line = cpal['ink']
+        self._layout()
         # ---- thin dust veil behind each stream -------------------------------------------
         if self.veil:
             ids, PX, PY, RR, BR, PH, Z = [], [], [], [], [], [], []
@@ -328,28 +395,50 @@ class SoilPour:
                 paint_groups(canvas, groups, holes, palettes.VEIL, light, C,
                              max(float(np.ptp(PY)), self.veil_size * 3), line=0, opacity=self.veil_opacity,
                              vert=0.15)
-        cores = PolyBatch()
+        sheets = PolyBatch()
         clumps = PolyBatch()
         bits = PolyBatch()
         land, powder = [], []
         ph = self.powder_h
         for s, u in enumerate(self.su):
-            ws = self.sw[s]
-            run = []
-            runs = []
-            for b in range(bmin, bmax + 1):
+            Wt = self.sw_eff[s]
+            T = int(self.sheet_len[s])
+            # ---- 1) the sheet: one ragged mass hanging from the ledge (material of the last T
+            #         frames; it keeps the ledge's velocity, so it hangs instead of trailing) ----
+            C, Wd, B = [], [], []
+            if self.start <= fh <= self.end + T:
+                now, vs = self._emit(min(fh, self.end), float(u), inherit=1.0)
+            for a_ in range(0, T + 1):
+                b = fh - a_
+                if b < self.start or b > self.end:
+                    break
                 fl = self.flow(s, b)
-                g = core.rng('pour_el', self.name, s, b)
-                t = fh - b
-                pos0, v0 = self._emit(b, float(np.clip(u + g.normal(0, 0.008), 0, 1)))
-                v0 = v0 + np.array([g.normal(0, 0.15), g.uniform(0.0, 0.5)])
-                p = pos0 + v0 * t + np.array([0, 0.5 * self.g * t * t])
-                vy = v0[1] + self.g * t
                 if fl < 0.18:
-                    if len(run) >= 2:
-                        runs.append(run)
-                    run = []
+                    break
+                # attached to the ledge as it is now: drops under gravity, lags a little behind the
+                # ledge's (smoothed) motion and stretches when the ledge rises
+                drop = 0.5 * self.g * a_ * a_ + max(0.0, -vs[1]) * a_ * 0.5
+                lag = float(np.clip(-vs[0] * a_ * 0.35, -0.8 * drop - 2, 0.8 * drop + 2))
+                p = now + np.array([lag, drop])
+                if self.ground is not None and p[1] > self.ground - ph * 0.5:
+                    break
+                C.append(p)
+                Wd.append(Wt * (0.55 + 0.45 * fl) * (1 - 0.68 * (a_ / max(T, 1)) ** 0.8))
+                B.append(b)
+            if len(C) >= 2:
+                self._sheet_poly(sheets, np.array(C), np.array(Wd), B, s, l, cpal, line, drawing)
+            # ---- 2) the torn lower end: clumps and crumbs spreading as they fall ------------------
+            for a_ in range(T + 1, self.maxage + 1):
+                b = fh - a_
+                if b < self.start or b > self.end:
                     continue
+                fl = self.flow(s, b)
+                if fl < 0.18:
+                    continue
+                g = core.rng('pour_tear', self.name, s, b)
+                pos0, v0 = self._emit(b, float(np.clip(u + g.normal(0, 0.05), 0, 1)))
+                v0 = v0 + np.array([g.normal(0, 0.35), g.uniform(0.0, 0.6)])
+                p = pos0 + v0 * a_ + np.array([0, 0.5 * self.g * a_ * a_])
                 gd = (self.ground - p[1]) if self.ground is not None else 1e9
                 if gd < 0 or p[1] > H + 40:
                     if gd < 0 and self.ground is not None:
@@ -357,65 +446,33 @@ class SoilPour:
                         if dy > 0:
                             tl = (-v0[1] + math.sqrt(max(v0[1] ** 2 + 2 * self.g * dy, 0))) / self.g
                             land.append((s, b, pos0[0] + v0[0] * tl, tl))
-                    if len(run) >= 2:
-                        runs.append(run)
-                    run = []
                     continue
-                size = ws * fl * g.uniform(0.42, 0.68)
-                tb = 8.0 + 7.0 * g.random()
-                stretch = min(2.8, 1.15 + 0.1 * max(vy, 0.0))
+                spread = (a_ - T) * 0.55
+                vy = v0[1] + self.g * a_
                 if gd < ph:
-                    # powder near the ground
-                    for k in range(3):
-                        q = p + np.array([g.normal(0, size * 0.6), g.normal(0, size * 0.5)])
-                        r = max(1.0, size * g.uniform(0.12, 0.22))
+                    for k in range(2):
+                        q = p + np.array([g.normal(0, Wt * 0.3 + spread), g.normal(0, 4)])
+                        r = max(1.0, Wt * g.uniform(0.04, 0.08))
                         bits.add(shapes.blob(g, n=5, rmin=0.6, rmax=1.0, smooth=0) * r + q, cpal['shade'])
-                    powder.append((s, b, p, size))
-                    if len(run) >= 2:
-                        runs.append(run)
-                    run = []
+                    powder.append((s, b, p, Wt * 0.3))
                     continue
-                if t < tb:
-                    poly = shapes.blob(g, n=7, rmin=0.68, rmax=1.0, smooth=1)
-                    poly[:, 1] *= stretch
-                    poly = core.rot(poly, g.normal(0, 0.15)) * size + p
-                    R = size * stretch
-                    term = (p[0] + l[0] * 0.6 * R, p[1] + l[1] * 0.6 * R, 1.05 * R)
-                    clumps.add(poly, cpal['lit'], cpal['shade'], line, 1.0 if size > 3 else 0.0, term)
-                    run.append((p[0], p[1], size))
-                else:
-                    if len(run) >= 2:
-                        runs.append(run)
-                    run = []
-                    tt = t - tb
-                    for k in range(int(g.integers(2, 5))):
-                        q = p + np.array([g.normal(0, 1.0) * (size * 0.5 + tt * 0.35), g.normal(0, 0.4) * tt * 0.3])
-                        sz = size * g.uniform(0.3, 0.55)
-                        poly = shapes.blob(g, n=6, rmin=0.6, rmax=1.0, smooth=0)
-                        poly[:, 1] *= min(2.0, stretch * 0.9)
-                        poly = core.rot(poly, g.uniform(0, 6.28)) * sz + q
-                        if sz > 2.6:
-                            term = (q[0] + l[0] * 0.6 * sz, q[1] + l[1] * 0.6 * sz, 1.05 * sz)
-                            bits.add(poly, cpal['lit'], cpal['shade'], line, 1.0, term)
-                        else:
-                            bits.add(poly, cpal['shade'])
-            if len(run) >= 2:
-                runs.append(run)
-            # the continuous core of each stream: a tapered column through its young clumps
-            for rn in runs:
-                A = np.array(rn)
-                wid = A[:, 2] * 1.55
-                wid[0] *= 0.55
-                wid[-1] *= 0.35
-                pts = A[:, :2]
-                if len(pts) > 2:
-                    pts = core.chaikin(pts, 1, closed=False)
-                    wid = np.interp(np.linspace(0, 1, len(pts)), np.linspace(0, 1, len(wid)), wid)
-                cores.add(core.stroke_poly(pts, wid), cpal['shade'], ink=line, ink_w=1.0)
-                nrm, _ = core.polyline_normals(pts)
-                side = np.sign(np.sum(nrm * l[None, :], 1, keepdims=True))
-                cores.add(core.stroke_poly(pts + nrm * side * wid[:, None] * 0.18, wid * 0.42),
-                          cpal['lit'] * 0.9 + cpal['shade'] * 0.1)
+                near_tear = a_ - T < 6
+                if near_tear or g.random() < 0.4:
+                    q = p + np.array([g.normal(0, 1.0) * (Wt * 0.22 + spread), 0])
+                    sz = Wt * fl * (g.uniform(0.24, 0.42) if near_tear else g.uniform(0.1, 0.24)) \
+                        * (1 - 0.35 * (a_ - T) / self.maxage)
+                    poly = shapes.blob(g, n=7, rmin=0.62, rmax=1.0, smooth=1)
+                    poly[:, 1] *= min(1.8, 1.0 + 0.05 * max(vy, 0.0))
+                    poly = core.rot(poly, g.normal(0, 0.3)) * sz + q
+                    if sz > 2.6:
+                        term = (q[0] + l[0] * 0.6 * sz, q[1] + l[1] * 0.6 * sz, 1.05 * sz)
+                        clumps.add(poly, cpal['lit'], cpal['shade'], line, 1.0, term)
+                    else:
+                        clumps.add(poly, cpal['shade'])
+                for k in range(int(g.random() < 0.45)):
+                    q = p + np.array([g.normal(0, Wt * 0.35 + spread * 1.3), g.normal(0, 6)])
+                    r = max(1.0, Wt * g.uniform(0.03, 0.07))
+                    bits.add(shapes.blob(g, n=5, rmin=0.6, rmax=1.0, smooth=0) * r + q, cpal['shade'])
         # ---- very few stray crumbs ------------------------------------------------------------
         for b in range(bmin, bmax + 1):
             g = core.rng('pour_stray', self.name, b)
@@ -465,9 +522,9 @@ class SoilPour:
             C = (float(np.mean(PX)), float(np.mean(PY)))
             paint_groups(canvas, groups, holes, palettes.DUST, light, C, self.land_size * 3,
                          line=1.5, opacity=0.95)
-        cores.draw(canvas)
-        clumps.draw(canvas)
         bits.draw(canvas)
+        clumps.draw(canvas)
+        sheets.draw(canvas)
         return canvas
 
     def _streak(self, batch, p, v, size, cpal):

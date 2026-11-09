@@ -219,6 +219,92 @@ def add_growth(rig, voxel=0.035):
 
 
 # ----------------------------------------------------------------------------
+# ground growth: the forest floor has grown up around the knee, the feet and the
+# hand during the centuries of kneeling. World-fixed parts (they stay on the
+# ground when the robot rises, leaving the imprint as a hollow in the moss).
+# ----------------------------------------------------------------------------
+
+GROUND_CONTACTS = ('shin_R', 'foot_R', 'foot_L', 'hand_R')
+
+
+def plan_ground(rig):
+    """{contact part: lobes (x, y, z, r) in WORLD coords} around each footprint of the kneel."""
+    from scipy.spatial import ConvexHull
+    mats = kneel_mats(rig)
+    out = {}
+    for part in GROUND_CONTACTS:
+        p = rig.parts[part]
+        W = r3d.xform_points(mats[part], p.mesh.V)
+        low = W[W[:, 2] < 0.55]
+        if len(low) < 12:
+            continue
+        xy = low[:, :2].astype(np.float64)
+        hull = xy[ConvexHull(xy).vertices]
+        c = hull.mean(0)
+        rng = rng_for('ground/' + part)
+        # walk the hull perimeter
+        seg = np.roll(hull, -1, 0) - hull
+        ln = np.linalg.norm(seg, axis=1)
+        per = ln.sum()
+        n = int(per / 0.32) + 6
+        L = []
+        for k in range(n):
+            s_ = (k + rng.uniform(-0.3, 0.3)) / n * per
+            i = int(np.searchsorted(np.cumsum(ln), s_ % per))
+            i = min(i, len(hull) - 1)
+            u = (s_ % per - (np.cumsum(ln)[i] - ln[i])) / max(ln[i], 1e-6)
+            q = hull[i] + seg[i] * u
+            o = q - c; o /= np.linalg.norm(o) + 1e-9          # outward (the hull is convex)
+            for j in range(rng.integers(1, 4)):
+                r = rng.uniform(0.32, 0.75)
+                d = rng.uniform(-0.15, 0.55) + (0.35 if j else 0.0) * rng.random()
+                t = np.array([-o[1], o[0]]) * rng.normal(0, 0.18)
+                x, y = q + o * (d + r * 0.35) + t
+                L.append((x, y, -r * rng.uniform(0.25, 0.62), r))
+        # a few stray cushions further out break the ring
+        for k in range(int(per / 0.9) + 3):
+            a = rng.uniform(0, 2 * np.pi)
+            rr = np.max(np.linalg.norm(hull - c, axis=1)) + rng.uniform(0.6, 1.8)
+            r = rng.uniform(0.25, 0.5)
+            L.append((c[0] + np.cos(a) * rr, c[1] + np.sin(a) * rr, -r * rng.uniform(0.3, 0.6), r))
+        out[part] = np.array(L, np.float32)
+    return out
+
+
+def add_ground_growth(rig, voxel=0.045):
+    """Add world-fixed moss mounds (parts 'gmoss_<contact>'). Returns flower anchors {part: F}."""
+    os.makedirs(CACHE, exist_ok=True)
+    flowers = {}
+    for part, L in plan_ground(rig).items():
+        lo = L[:, :3].min(0) - L[:, 3].max() - 0.1
+        hi = L[:, :3].max(0) + L[:, 3].max() + 0.1
+        lo[2] = max(lo[2], -0.3)                          # nothing below the ground matters
+        m = _mesh_cached('gmoss_' + part, _lobe_sdf(L), lo, hi, voxel)
+        # drop the faces under the ground (never seen, they only cost raster time)
+        keep = (m.V[m.F][:, :, 2] > -0.05).any(1)
+        F = m.F[keep]
+        nm = 'gmoss_' + part
+        p = rig.add(R.Part(nm, None, (0, 0, 0), None, lo, hi, voxel, MOSS))
+        p.world = True
+        p.mesh = r3d.Mesh(m.V, F, m.N, part=p.index, mat=MOSS, name=nm)
+        p.lobes = L
+        rng = rng_for('gflowers/' + part)
+        Fl = []
+        for i in rng.choice(len(L), size=min(len(L), 6), replace=False):
+            x, y, z, r = L[i]
+            top = z + r
+            if top < 0.12:
+                continue
+            kind = int(rng.choice([0, 0, 1, 2]))
+            for j in range(rng.integers(1, 4)):
+                a = rng.uniform(0, 2 * np.pi); d = rng.uniform(0, 0.4) * r
+                Fl.append((x + np.cos(a) * d, y + np.sin(a) * d, top - 0.03, rng.uniform(0.12, 0.2), kind,
+                           float(rng.uniform(0, 6.28))))
+        flowers[nm] = np.array(Fl, np.float32) if Fl else np.zeros((0, 6), np.float32)
+    return flowers
+
+
+# ----------------------------------------------------------------------------
 # decals: designed chipped paint and rust, box-projected in part space
 # ----------------------------------------------------------------------------
 
@@ -308,16 +394,16 @@ class Decals:
                             ox, oy = rng.normal(0, 0.18 / TEXEL, 2)
                             fill(PRIMER, _chip_poly(rng, cx + ox, cy + oy, sz * 1.35))
                             fill(CHIP, _chip_poly(rng, cx + ox, cy + oy, sz))
-                        if nd > 0.35 and rng.random() < 0.85:
-                            L = rng.uniform(0.9, 3.2) / TEXEL
+                        if nd > 0.35 and rng.random() < 0.35:          # only some chips bleed rust (no stripe rows)
+                            L = rng.uniform(0.6, 1.9) / TEXEL
                             fill(STREAK, _streak_poly(rng, cx, cy, ddx / nd, ddy / nd, L, rng.uniform(0.03, 0.08) / TEXEL))
                     elif kind < 0.85:
                         sz = rng.uniform(0.12, 0.4) / TEXEL
                         fill(RUST, _chip_poly(rng, cx, cy, sz))
                         for j in range(rng.integers(2, 5)):
                             fill(CHIP, _chip_poly(rng, cx + rng.normal(0, sz * 0.6), cy + rng.normal(0, sz * 0.6), sz * 0.3))
-                    elif nd > 0.35:
-                        L = rng.uniform(1.0, 3.0) / TEXEL
+                    elif nd > 0.35 and rng.random() < 0.4:
+                        L = rng.uniform(0.8, 2.2) / TEXEL
                         fill(STREAK, _streak_poly(rng, cx, cy, ddx / nd, ddy / nd, L, rng.uniform(0.04, 0.1) / TEXEL))
                 maps.append((cov, lo[u], lo[v], u, v))
             self.maps[p.index] = maps

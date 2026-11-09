@@ -41,6 +41,7 @@ def lerp(a, b, u):
 
 class Base:
     redraw_on_camera = False
+    ground_growth = True          # world-fixed moss mounds around the kneel contacts
     light_az, light_el = 118.0, 38.0
     painting = 'S01'
     fallback = None            # (painting, window(x0,y0), scale, blur) if the painting isn't ready
@@ -188,7 +189,11 @@ class Base:
     eye_glow = None            # after the robot wakes (S07) its eyes stay lit
 
     def style(self, tq, cam):
-        st = dict(light=self.light(cam), seed=int(tq * 24) // 2 + 17, sky_dir=self.sky_dir)
+        st = dict(light=self.light(cam), seed=int(tq * 24) // 2 + 17, sky_dir=self.sky_dir,
+                  ground_fade=(0.0, 0.3))
+        if not self.ground_growth:
+            rg = SD.rig()
+            st['skip_parts'] = [n for n in rg.order if getattr(rg.parts[n], 'world', False)]
         if self.eye_glow is not None:
             import warden as WD
             g = float(self.eye_glow)
@@ -624,6 +629,11 @@ class S07(S03):
         if g > 0:
             import warden as WD, anim
             pose = anim.pose_at(self.shot, tq)
+            # the lids cover the lamps during the blink
+            lid = float(np.asarray(pose.get('lid_R', (-22, 0, 0)))[0])
+            g *= float(np.clip((lid + 64.0) / 42.0, 0.0, 1.0))
+            if g <= 0:
+                return
             for side in (1, -1):
                 ex, ey, ez = WD.EYE_C
                 q = project(ctx['cam'], SD.anchor(pose, 'head', (side * ex, ey + 0.3, ez)))
@@ -643,12 +653,13 @@ class Rise(Base):
             emit = self._emitter(part, loc)
             self.pour_fx.append(fx.SoilPour(f'{self.S.sid}_{name}', emit, start=int(a * 24), end=int(b * 24), rate=9,
                                             strands=3, size=(3, 8), ground=self._ground_y(), veil_opacity=0.22,
-                                            veil_size=22.0))
+                                            veil_size=22.0, kinds={'crumb': .72, 'clod': .24, 'moss': .04}))
         self.puff_fx = []
         for name, part, loc, t0, size in self.puffs:
-            q = self._proj_at(part, loc, t0)
+            # the puff starts ON the ground under the contact (never an airborne ball)
+            q = self._proj_at(part, loc, t0, on_ground=True)
             self.puff_fx.append(fx.DustPuff(f'{self.S.sid}_{name}', origin=(float(q[0]), float(q[1])), frame0=int(t0 * 24),
-                                            size=size * 0.7, ground=self._ground_y(), spread=3.0, life=40, aspect=0.6,
+                                            size=size * 0.6, ground=float(q[1]) + size * 0.08, spread=3.0, life=40, aspect=0.45,
                                             palette=fx.palettes.DUST_DARK,
                                             light=screen_dir(self.S.cam(t0), self.light(self.S.cam(t0)))))
         tree = self._proj_at('roof_L', (-3.2, -0.2, 3.6), 0.0)
@@ -658,11 +669,13 @@ class Rise(Base):
     def _ground_y(self):
         cam = self.S.cam(0.0)
         return float(np.clip(project(cam, (0, 0, 0))[1] + 40, 0, H + 200))
-    def _proj_at(self, part, loc, t):
+    def _proj_at(self, part, loc, t, on_ground=False):
         import anim
         pose = anim.pose_at(self.shot, t)
         mats = SD.rig().world_mats(pose)
         P = r3d.xform_points(mats[part], np.array([loc], np.float32))[0]
+        if on_ground:
+            P = np.array([P[0], P[1], 0.0], np.float32)
         return project(self.S.cam(t), P)
     def _emitter(self, part, loc):
         cache = {}
@@ -693,7 +706,7 @@ class S08(Rise):
     behind = ('sky', 'far', 'mist_far', 'mid', 'mist_mid')
     pours = (('arm', 'forearm_L', (0, 1.2, -2.0), 0.9, 4.4), ('roof', 'roof_R', (5.6, -1.0, -1.2), 1.2, 4.4),
              ('chest', 'torso', (1.5, 3.4, 2.0), 1.6, 4.0))
-    puffs = (('hand', 'hand_R', (0, 0.4, -1.8), 0.6, 220), ('knee', 'shin_R', (0, 0.9, 0.0), 2.4, 260))
+    puffs = (('hand', 'hand_R', (0, 0.4, -1.8), 1.5, 220), ('knee', 'shin_R', (0, 0.9, 0.0), 2.6, 260))
 
 
 class S09(Rise):
@@ -857,7 +870,7 @@ class S14(Base):
         g = project(cam, (0, 0, 0))
         self.blast = fx.DustPuff('S14_blast', origin=(float(g[0]), float(g[1]) + 40), frame0=7, size=380, spread=3.8,
                                  life=30, ground=float(g[1]) + 70, aspect=0.45, arms=1.2, direction=(0, -1),
-                                 palette=fx.palettes.DUST)
+                                 palette=fx.palettes.DUST, main=True)      # the launch keeps one big mass
         self.veil = fx.DustVeil('S14_veil', origin=(float(g[0]), float(g[1]) + 50), frame0=8, width=1700, height=300,
                                 life=56, palette=fx.palettes.DUST_DARK, opacity=0.55, ground=float(g[1]) + 70)
         self.ring = fx.GroundDust('S14_ringL', start=(float(g[0]), float(g[1]) + 60), direction=(-1, 0), frame0=8,
@@ -919,8 +932,8 @@ class S14(Base):
         self.blast.draw(cv_, f)
         self.debris.draw(cv_, f)
         self.leafburst.draw(cv_, f)
-        if 10 <= f <= 22:
-            fx.speed_lines(cv_, (960, 250), f, n=70, inner=(0.3, 0.55))
+        if 10 <= f <= 17:          # a short burst of focus lines with the impact, not a long overlay
+            fx.speed_lines(cv_, (960, 250), f, n=56, inner=(0.34, 0.6), width=(1.5, 10.0), alpha=0.8)
         return comp.over_straight(rgb, cv_)
     def shake_gain(self, t):
         return 0.5 if t < 0.25 else (1.6 if t < 0.8 else 0.8)
@@ -928,6 +941,7 @@ class S14(Base):
 
 class S15(Base):
     """From below: it tears up through the canopy gap; the canopy bursts; leaves rain down."""
+    ground_growth = False
     eye_glow = 1.0
     painting = 'S11'
     ground = False
@@ -995,6 +1009,7 @@ class S15(Base):
 
 class S16B(Base):
     """Golden sky: the robot climbs along a big S-curve to the sun; the trail of light and mist."""
+    ground_growth = False
     eye_glow = 1.0
     painting = 'S16'
     win0 = (400.0, 0.0)
@@ -1075,6 +1090,7 @@ class S16B(Base):
 
 class S16A(Base):
     """Tracking beside the climbing robot: it fills the frame; sky and clouds stream past."""
+    ground_growth = False
     eye_glow = 1.0
     painting = 'S16A'
     fallback = ('S16', (0.0, 120.0), 1.7, 0)
@@ -1118,7 +1134,9 @@ class S16A(Base):
         return np.float32([[1, 0, 0], [0, 1, 0]])
     def setup(self):
         self.flames = [fx.EngineFlame(f'S16A_e{i}', ignite=-40, sputters=[]) for i in range(2)]
-        self.trail = fx.LightTrail('S16A_trail', width=70, life=200, mist=True, mist_size=0.9, light=(0.6, -0.8), mist_every=4)
+        # the trail head sits behind the robot here: a weak glow, or it glares over the body
+        self.trail = fx.LightTrail('S16A_trail', width=70, life=200, mist=True, mist_size=0.9, light=(0.6, -0.8), mist_every=4,
+                                   glow=0.3)
         d = (-0.93, 0.37)
         self.leaves = fx.LeafBurst('S16A_leaves', origin=(1000, 420), frame0=0, count=70, direction=d,
                                    spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=260, wind=(-0.7, 0.28))

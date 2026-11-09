@@ -108,15 +108,16 @@ class Shot:
         st.update(self.fx.style(tq, cam))
         st['ss'] = self.ss
         mats = {}
-        rgba, ps = cel.render(rig, pose, cam, st, return_passes=True, mats_out=mats)
+        skip = tuple(st.pop('skip_parts', ()))
+        rgba, ps = cel.render(rig, pose, cam, st, return_passes=True, mats_out=mats, skip=skip)
         ent = dict(rgba=rgba, cam=cam, pose=pose, mats=mats, light=st['light'], ps_small=_small_passes(ps, self.ss))
         extra = key[1] if isinstance(key, tuple) else ()
         if 'dual' in extra:
             st2 = dict(st)
             st2['light'] = comp.light_from_screen(cam, self.fx.ray_az, self.fx.ray_el)
-            ent['lit_rgba'] = cel.render(rig, pose, cam, st2)
+            ent['lit_rgba'] = cel.render(rig, pose, cam, st2, skip=skip)
         if self.fx.ground:
-            sc, _ = rig.scene(pose)
+            sc, _ = rig.scene(pose, skip=skip)
             m = ps['mask']
             Pw = ps['wpos'][m]
             if len(Pw):

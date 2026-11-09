@@ -55,7 +55,7 @@ frames can be rendered in any order or in parallel.
 ```python
 fx.DustPuff(name, origin, frame0, size=150, direction=(0, -1), spread=2.6, life=40, n=9,
             light=(.55, -.83), palette=fx.palettes.DUST, ground=None, rise=.25, drift=(0, 0),
-            roll=.5, line=2.5, on=2, aspect=.75, arms=.6).draw(canvas, frame)
+            roll=.5, line=2.5, on=2, aspect=.7, arms=.9, main=None, bits=None).draw(canvas, frame)
 fx.GroundDust(name, start, direction, frame0, distance=600, duration=30, height=110, life=26,
               grow=0., ...).draw(canvas, frame)
 ```
@@ -73,6 +73,10 @@ fx.GroundDust(name, start, direction, frame0, distance=600, duration=30, height=
   shade-only belly lobes carry the mid tone down, so the violet underside ends in a scalloped
   terminator above the flat ground cut. Big sideways-moving billows get a spiral curl on the
   leading edge.
+* **Ground-contact spray** (round 5): a flat puff (`aspect < 0.6`, or `main=False`) has no
+  dominant dome - 3-4 clusters of small billows fan out along the ground with gaps between them
+  and uneven heights, small dark bits are thrown out (`bits=True`), and breaking billows trail
+  wisps. `main=True` forces the single-mass design below.
 * **Impact puff**: primaries thrown out in a fan (edge lobes travel farther = ground arms; `aspect`
   flattens the vertical), fast ease-out burst (~full size in 1/6 of the life), slow growth,
   buoyant rise; late in life the mass shrinks, the bumps drift apart and shrink at staggered
@@ -112,12 +116,14 @@ fx.SoilPour(name, emitter, start, end, rate=22, strands=5, size=(2, 8), gravity=
   dust streak along their path that thins out over ~30 frames.
 * **Pouring soil**: `emitter(frame) -> ((x0, y0), (x1, y1))` (or a point, or an array indexed
   by frame) — pass the projected robot edge per frame. Soil spills from a few points along
-  the edge as at most 3 concentrated **streams** (round 4; `strands` caps them, `strand_width` =
-  stream width): each a continuous falling column of clumps that stay together near the edge,
-  stretched by their fall, with a lumpy two-tone core; lower down the column breaks into smaller
-  bits and near `ground` into powder with dust puffs; gaps between streams; very few stray
-  crumbs (`rate` x .03); a thin billowing veil behind each stream (`veil_opacity`); dust kicks
-  up where the streams land. Lines are thin and brown. Emitter velocity is inherited (`inherit`).
+  the edge as a few **sheets** (round 5): about one stream per 55 px of ledge (at most
+  `strands`), 30-80 px wide and unequal, each ONE ragged two-tone mass hanging from the ledge
+  (it keeps ~95 % of the ledge's velocity, so it hangs under a moving ledge instead of trailing
+  as a rod), slightly wider at the top, swaying and thinning as it falls; after falling ~5-7
+  widths it tears into a few clumps, then crumbs, then powder and dust near `ground`; a thin
+  billowing veil behind each stream (`veil_opacity`); very few stray crumbs (`rate` x .03).
+  Lines are thin and brown. The falling clumps inherit `inherit` of the ledge velocity. Default
+  kinds no longer include roots or vines.
 * `add_piece(batch, kind, parts, pos, angle, size, light)` to place single pieces yourself.
 
 ## 3. Leaves (`leaves.py`)

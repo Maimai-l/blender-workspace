@@ -382,7 +382,25 @@ def panel_torso(o):
     door = (np.abs(x) < 1.92) & (z > 2.75) & (z < 6.15) & (y > 2.6)
     side = (x > 0).astype(np.int32)
     back = (y < -1.0) & (z > 3.4)
-    return band * 10 + door * 100 + side * (z < 2.6) + back * 200
+    # riveted armour plates: the flanks are separate plates in two rows, the back plate splits down the spine
+    mid = (z > 2.6) & (z < 6.55)
+    flank = (np.abs(x) > 2.75) & mid & (y > -1.0)
+    row = (z > 4.5) & mid & (flank | back)
+    split = back & (x > 0)
+    return (band + 4 * door + 8 * (side * (z < 2.6)) + 16 * back + 32 * (flank * (1 + side))
+            + 96 * row + 192 * split).astype(np.int32)
+
+
+def panel_head(o):
+    # a helmet cap above the brow, split down the back of the skull
+    x, y, z = o[:, 0], o[:, 1], o[:, 2]
+    cap = z > 2.45
+    back = (y < -0.3) & (x > 0) & (z > 0.9)
+    return (cap.astype(np.int32) + 2 * back).astype(np.int32)
+
+
+def panel_upperarm(o):
+    return (o[:, 2] < -3.0).astype(np.int32)
 
 
 def panel_roof(o):
@@ -394,15 +412,20 @@ def panel_roof(o):
 
 
 def panel_pauldron(o):
-    return np.digitize(o[:, 2], [0.15, 0.95]).astype(np.int32)
+    # three rings of plate; the lower ring is cut into four lames
+    z = o[:, 2]
+    ring = np.digitize(z, [0.15, 0.95]).astype(np.int32)
+    sector = np.floor((np.arctan2(o[:, 1], o[:, 0] - 0.45) + np.pi) / (np.pi / 2)).astype(np.int32) % 4
+    return ring + 3 * sector * (ring == 1)
 
 
 def panel_shin(o):
-    return np.digitize(o[:, 2], [-1.25]).astype(np.int32) + (o[:, 1] > 0.55) * 10
+    return (np.digitize(o[:, 2], [-1.25]).astype(np.int32) + (o[:, 1] > 0.55) * 10
+            + ((o[:, 1] < -0.55) & (o[:, 0] > 0)) * 20)
 
 
 def panel_thigh(o):
-    return (o[:, 1] > 0.5).astype(np.int32)
+    return (o[:, 1] > 0.5).astype(np.int32) + 2 * (o[:, 2] < -1.9)
 
 
 def panel_lid(o):
@@ -420,8 +443,9 @@ def style_fns(rig):
     P = rig.parts
     mf = {P['head'].index: mat_head, P['torso'].index: mat_torso,
           P['hand_R'].index: mat_hand, P['hand_L'].index: mat_hand}
-    pf = {P['torso'].index: panel_torso}
+    pf = {P['torso'].index: panel_torso, P['head'].index: panel_head}
     for side in ('R', 'L'):
+        pf[P['upperarm_' + side].index] = panel_upperarm
         pf[P['roof_' + side].index] = panel_roof
         pf[P['pauldron_' + side].index] = panel_pauldron
         pf[P['shin_' + side].index] = panel_shin

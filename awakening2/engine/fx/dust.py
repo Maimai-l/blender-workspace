@@ -13,7 +13,7 @@ import math
 
 import numpy as np
 
-from . import core, palettes
+from . import core, palettes, shapes
 from .core import Layer, cut_holes, ease_out, held, smoothstep
 
 TAU = 2 * math.pi
@@ -121,13 +121,13 @@ class _Billow:
                 rc = r0 * 0.38 * (1 - 0.4 * b)
                 lobes.append((x0 + cr * 0.08, y0 - cr * 0.84 * 0.62, rc, self.wp[i, 2] + wpd, 1.08, 0.92, 0.0,
                               0, 0, 0, 1.0))
-                for k in range(min(self.ncrown[i], 4 + int(r0 / 14.0))):     # small billows: fewer lobes
+                for k in range(min(self.ncrown[i], 3 + int(r0 / 16.0))):     # small billows: fewer lobes
                     side = 1.0 if k % 2 == 0 else -1.0
                     u = (self.cu0[i, k] + roll) % 1.0
                     # bud at the top centre -> full size -> absorbed at the base corner
                     grow = (0.22 + 0.78 * smoothstep(0.0, 0.32, u)) * (1 - 0.75 * smoothstep(0.8, 1.0, u))
                     sr = r0 * self.csize[i, k] * grow * (1 - 0.35 * b)
-                    if sr < 0.6:
+                    if sr < max(0.6, 3.5):            # no speckle-sized lobes
                         continue
                     if air:
                         ang = -math.pi / 2 + side * (0.12 + u * (math.pi - 0.24))
@@ -142,7 +142,7 @@ class _Billow:
                     by = y0 + rho * sa
                     if not air:
                         by = min(by, gj - sr * 0.45)
-                    low = math.sin(ang) > -0.2                 # side lobes below the shoulder: no lit cap
+                    low = math.sin(ang) > -0.2 or sr < 0.3 * r0   # low or small lobes: no lit cap (no spots)
                     lobes.append((bx, by, sr, self.cwp[i, k] + wpd * 1.3, 1.0, self.csq[i, k], ang, 0, 0, 0,
                                   0.5 if low else 1.0))
                 # belly lobes inside the mass (shade only, no lit cap): the mid tone reaches down
@@ -334,7 +334,7 @@ class DustPuff:
     def __init__(self, name, origin, frame0, size=150.0, direction=(0, -1), spread=2.6, life=40,
                  n=9, light=(0.55, -0.83), palette=None, ground=None, rise=0.25, drift=(0.0, 0.0),
                  roll=0.5, line=2.5, on=2, opacity=1.0, wobble=0.05, sub=(4, 7), bias=0.0,
-                 aspect=0.7, vert=0.45, arms=0.9, texture=0.0):
+                 aspect=0.7, vert=0.45, arms=0.9, texture=0.0, main=None, bits=None):
         self.name = name
         self.origin = np.asarray(origin, np.float64)
         self.frame0 = int(frame0)
@@ -362,24 +362,52 @@ class DustPuff:
         self.dist = size * (0.42 + arms * 0.62 * edge ** 1.5) * g.uniform(0.8, 1.05, n)
         # sizes: one dominant mass near the centre of the fan, then neighbours alternating
         # big / small along the fan so no two neighbouring billows match
-        order = np.argsort(self.ang)
-        main = int(np.argmin(edge))
-        self.rad = np.zeros(n)
-        k = 0
-        for i in order:
-            if i == main:
-                self.rad[i] = size * 0.58
-                continue
-            big = (k % 2 == 0)
-            self.rad[i] = size * (g.uniform(0.3, 0.4) if big else g.uniform(0.13, 0.21)) * (1.0 - 0.3 * edge[i])
-            k += 1
+        self.spray = (aspect < 0.6) if main is None else (not main)
+        self.rk = np.ones(n)
+        if self.spray:
+            # a low, broken spray: clusters of small billows fanning out along the ground with gaps
+            # between them, uneven heights, no single dome
+            kc = 3 + int(n >= 9)
+            uc = (np.arange(kc) + g.uniform(0.25, 0.75, kc)) / kc
+            cl = np.arange(n) % kc
+            u = np.clip(uc[cl] + g.normal(0, 0.035, n), 0.02, 0.98)
+            self.ang = a0 + (u - 0.5) * spread
+            edge = np.abs(u - 0.5) * 2
+            self.dist = size * (0.35 + 0.8 * edge ** 1.2) * g.uniform(0.8, 1.1, n)
+            first = np.zeros(n, bool)
+            first[[int(np.nonzero(cl == c)[0][0]) for c in range(kc) if (cl == c).any()]] = True
+            self.rad = size * np.where(first, g.uniform(0.22, 0.3, n), g.uniform(0.12, 0.22, n)) * (1 - 0.2 * edge)
+            self.rk = g.uniform(0.0, 1.0, n) ** 1.5 * 1.6        # uneven heights
+            main_i = None
+        else:
+            order = np.argsort(self.ang)
+            main_i = int(np.argmin(edge))
+            self.rad = np.zeros(n)
+            k = 0
+            for i in order:
+                if i == main_i:
+                    self.rad[i] = size * 0.58
+                    continue
+                big = (k % 2 == 0)
+                self.rad[i] = size * (g.uniform(0.3, 0.4) if big else g.uniform(0.13, 0.21)) * (1.0 - 0.3 * edge[i])
+                k += 1
         self.aspect = aspect
         self.delay = g.uniform(0, 0.05, n) + 0.04 * edge
         self.brk = g.uniform(-0.08, 0.08, n)
         self.rsign = np.where(np.cos(self.ang) >= 0, 1.0, -1.0)
         self.zj = g.uniform(-0.25, 0.25, n)
-        self.zj[main] = 0.6                                      # the main mass sits in front
+        if main_i is not None:
+            self.zj[main_i] = 0.6                                # the main mass sits in front
         self.bil = _Billow(name, n, sub)
+        # small bits thrown out of the contact
+        self.bits = self.spray if bits is None else bits
+        nb = 18
+        ba = a0 + g.normal(0, spread / 2.6, nb)
+        bs = size * g.uniform(0.035, 0.08, nb)
+        self.bit_v = np.stack([np.cos(ba) * bs, np.sin(ba) * bs * 0.8 - size * 0.02], 1)
+        self.bit_r = np.clip(size * g.uniform(0.012, 0.03, nb), 1.2, 9.0)
+        self.bit_d = g.integers(0, 4, nb)
+        self.bit_tone = g.random(nb) < 0.65
 
     def rows(self, frame):
         fh = held(frame, self.on, self.frame0)
@@ -394,7 +422,7 @@ class DustPuff:
         trav = self.dist[idx] * ease_out(ti, 4.0)
         px = self.origin[0] + np.cos(self.ang[idx]) * trav + self.drift[0] * age
         py = (self.origin[1] + np.sin(self.ang[idx]) * trav * self.aspect
-              - self.rise * self.size * ti ** 1.3 + self.drift[1] * age)
+              - self.rise * self.size * ti ** 1.3 * self.rk[idx] + self.drift[1] * age)
         R = self.rad[idx] * (0.30 + 0.70 * ease_out(ti / 0.16, 2.5)) * (1 + 0.3 * ti)
         brk = smoothstep(0.42, 1.06, ti + self.brk[idx])
         phase = self.rsign[idx] * TAU * self.roll * ti
@@ -413,10 +441,35 @@ class DustPuff:
         rows, holes, op, C = self.rows(frame)
         if not rows:
             return canvas
-        return paint_groups(canvas, rows, holes, self.palette, self.light if light is None else light,
-                            C, self.size, self.line, self.wobble, op, self.bias, self.vert,
-                            texture=self.texture, tex_anchor=self.origin, tex_scale=self.size / 260.0,
-                            wisps=self._wisps)
+        paint_groups(canvas, rows, holes, self.palette, self.light if light is None else light,
+                     C, self.size, self.line, self.wobble, op, self.bias, self.vert,
+                     texture=self.texture, tex_anchor=self.origin, tex_scale=self.size / 260.0,
+                     wisps=self._wisps)
+        if self.bits:
+            self._draw_bits(canvas, frame, op)
+        return canvas
+
+    def _draw_bits(self, canvas, frame, op):
+        fh = held(frame, self.on, self.frame0)
+        age = fh - self.frame0
+        g = core.rng('puffbits', self.name)
+        b = core.PolyBatch()
+        P = np.asarray(self.palette, np.float32)
+        grav = self.size * 0.0035
+        for k in range(len(self.bit_r)):
+            t = age - self.bit_d[k]
+            if t < 0 or t > self.life * 0.7:
+                continue
+            x = self.origin[0] + self.bit_v[k, 0] * t
+            y = self.origin[1] + self.bit_v[k, 1] * t + 0.5 * grav * t * t
+            if self.ground is not None and y > self.ground + 2:
+                continue
+            r = self.bit_r[k] * (1 - 0.6 * t / (self.life * 0.7))
+            if r < 0.8:
+                continue
+            poly = shapes.blob(core.rng('puffbit', self.name, k), n=6, rmin=0.6, rmax=1.0, smooth=1) * r
+            b.add(poly + np.array([x, y]), P[0] if self.bit_tone[k] else P[1], alpha=op)
+        b.draw(canvas)
 
 
 class GroundDust:

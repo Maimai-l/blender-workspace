@@ -202,10 +202,12 @@ def wind_ring(name='FX_ring', segs=96, rsegs=12, seed=None):
     for i in range(segs):
         a = 2 * math.pi * i / segs
         lump = 1 + 0.10 * math.sin(a * 7 + 0.4) + 0.06 * math.sin(a * 13 + 2.0) + 0.04 * (rnd.random() - 0.5)
+        # puffy silhouette: the height varies strongly around the ring, like a row of dust clouds
+        hgt = 0.55 * (0.55 + 0.45 * math.sin(a * 11 + 0.7) * math.sin(a * 23 + 2.1) + 0.25 * math.sin(a * 5))
         for j in range(rsegs):
             b = 2 * math.pi * j / rsegs
             rr = 1.0 + 0.11 * lump * math.cos(b)          # horizontal tube radius 0.11 of the ring radius
-            z = 0.45 * math.sin(b) * (0.75 + 0.25 * math.sin(a * 5 + 1.0))   # vertical half-thickness ~0.45 m: a low skirt
+            z = hgt * math.sin(b) + hgt * 0.6              # sits on the ground, bulging upward
             verts.append(bm.verts.new((math.cos(a) * rr, math.sin(a) * rr, z)))
     for i in range(segs):
         for j in range(rsegs):
@@ -214,9 +216,25 @@ def wind_ring(name='FX_ring', segs=96, rsegs=12, seed=None):
             f = bm.faces.new((a0, b0, b1, a1)); f.smooth = True
     mat = S.cel_material(name + '_mat', (0.96, 0.92, 0.84), line=(0.3, 0.25, 0.2, 1))
     g = S.group_node(mat)
-    g.inputs['Shadow Mul'].default_value = (0.80, 0.78, 0.84, 1)
-    g.inputs['Deep Mul'].default_value = (0.70, 0.68, 0.78, 1)
-    g.inputs['Alpha'].default_value = 0.75
+    g.inputs['Shadow Mul'].default_value = (0.84, 0.82, 0.86, 1)
+    g.inputs['Deep Mul'].default_value = (0.74, 0.72, 0.80, 1)
+    nt = mat.node_tree; n = nt.nodes
+    tc = n.new('ShaderNodeTexCoord'); tc.location = (-900, -200)
+    # darker underside: object z below 0.25 m
+    sep = n.new('ShaderNodeSeparateXYZ'); sep.location = (-700, -200); nt.links.new(tc.outputs['Object'], sep.inputs[0])
+    low = n.new('ShaderNodeMath'); low.operation = 'LESS_THAN'; low.inputs[1].default_value = 0.22; low.location = (-500, -200)
+    nt.links.new(sep.outputs['Z'], low.inputs[0])
+    col = n.new('ShaderNodeMix'); col.data_type = 'RGBA'; col.location = (-300, -100)
+    col.inputs[6].default_value = (0.96, 0.92, 0.84, 1); col.inputs[7].default_value = (0.80, 0.74, 0.76, 1)
+    nt.links.new(low.outputs[0], col.inputs['Factor']); nt.links.new(col.outputs[2], g.inputs['Base Color'])
+    # ragged gaps: hard-thresholded noise around the ring
+    nz = n.new('ShaderNodeTexNoise'); nz.location = (-700, -450); nz.inputs['Scale'].default_value = 14.0; nz.inputs['Detail'].default_value = 2.0
+    nt.links.new(tc.outputs['Object'], nz.inputs['Vector'])
+    gap = n.new('ShaderNodeMath'); gap.operation = 'GREATER_THAN'; gap.inputs[1].default_value = 0.36; gap.location = (-500, -450)
+    nt.links.new(nz.outputs['Fac'], gap.inputs[0])
+    am = n.new('ShaderNodeMath'); am.operation = 'MULTIPLY'; am.location = (-300, -450); am.name = 'AlphaMul'
+    nt.links.new(gap.outputs[0], am.inputs[0]); am.inputs[1].default_value = 0.8
+    nt.links.new(am.outputs[0], g.inputs['Alpha'])
     mat.surface_render_method = 'BLENDED'
     ob = M.finish(bm, name, [mat], coll)
     ob.visible_shadow = False
@@ -227,9 +245,10 @@ def animate_ring(ob, t0, t1, r0=3.0, r1=95.0, z=0.6, alpha=0.9):
     g = S.group_node(mat)
     ob.animation_data_clear(); mat.node_tree.animation_data_clear()
     ob.location = (0, 0.6, z)
+    am = mat.node_tree.nodes['AlphaMul'].inputs[1]
     def k(sec, r, a):
         ob.scale = (r, r, 1); ob.keyframe_insert('scale', frame=F(sec))
-        g.inputs['Alpha'].default_value = a; g.inputs['Alpha'].keyframe_insert('default_value', frame=F(sec))
+        am.default_value = a; am.keyframe_insert('default_value', frame=F(sec))
     k(t0 - 0.01, 0.01, 0.0); k(t0, r0, alpha); k(t0 + (t1 - t0) * 0.35, r0 + (r1 - r0) * 0.55, alpha * 0.85); k(t1, r1, 0.0)
     for fc in C.fcurves(ob):
         for kp in fc.keyframe_points:

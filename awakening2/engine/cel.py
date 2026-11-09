@@ -129,6 +129,26 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
             rgb[sel] = style['lens_fn'](opos[sel], lit[sel])
     for k, col in style.get('emissive', {}).items():
         rgb[mat == k] = np.asarray(col, np.float32)
+    if style.get('glow_fn') is not None:
+        gm = style.get('glow_mat', 4)
+        sel = mat == gm
+        if sel.any():
+            rgb[sel] = style['glow_fn'](opos[sel])
+    if style.get('core_light') is not None and m.any():
+        # light from a source inside the chest: hard-edged warm bands on surfaces that face it
+        C, Nw, R, col, strength, parts_ok = style['core_light']
+        Pv = ps['wpos'] - np.asarray(C, np.float32)
+        dist = np.linalg.norm(Pv, axis=-1) + 1e-6
+        toward = -np.sum(nrm * Pv, -1) / dist
+        front = np.sum(Pv * np.asarray(Nw, np.float32), -1)
+        okp = np.isin(part, list(parts_ok)) | (front > 0.35)
+        hit = m & okp & (toward > 0.15) & (dist < R) & (front > -0.2)
+        hit = look.clean_mask(hit, 1.0 * ss, 1.0 * ss, 10 * ss * ss, 0.7 * ss, valid=m)
+        hit &= ~np.isin(mat, [gm])
+        near = hit & (dist < R * 0.55)
+        c = np.asarray(col, np.float32)
+        rgb[hit] = rgb[hit] * (1 - 0.45 * strength) + c * 0.45 * strength
+        rgb[near] = rgb[near] * (1 - 0.35 * strength) + np.clip(c * 1.15, 0, 1) * 0.35 * strength
 
     # light spill from a glowing source (e.g. the chest core), as a hard cel light shape
     sp = style.get('spill')
@@ -170,21 +190,37 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
     rng = np.random.default_rng(style.get('seed', 0))
     widths = {k: v * ss for k, v in style.get('widths', DEFAULT_WIDTHS).items()}
 
+    soft_any = np.isin(mat, list(style.get('soft_mats', ())))
+
     def wfn(pts, k):
         ix = np.clip(pts[:, 0].astype(int), 0, W - 1); iy = np.clip(pts[:, 1].astype(int), 0, H - 1)
         sh = ~lit[iy, ix]
-        return np.where(sh, 1.15, 0.88).astype(np.float32)
+        w = np.where(sh, 1.22, 0.8).astype(np.float32)
+        # soft materials (moss, leaves) get thinner lines than the metal
+        w = np.where(soft_any[iy, ix], w * style.get('soft_line', 0.62), w)
+        return w.astype(np.float32)
 
     strokes = ink.chains_to_strokes(chains, widths, rng, smooth_sigma=1.2 * ss, step=1.5 * ss,
                                     corner_deg=style.get('corner_deg', 62.0),
                                     taper_px=style.get('taper_px', 10.0) * ss,
                                     wob_amp=style.get('wobble', 0.35) * ss, wob_wl=40.0 * ss,
                                     width_fn=wfn)
-    cov = ink.draw_strokes((H, W), [(s[0], s[1]) for s in strokes])
     inkc = np.asarray(style.get('ink', (0.17, 0.12, 0.12)), np.float32)
     a = m.astype(np.float32)
+    # colour trace: lines that lie on moss / foliage are drawn in a deep green, not the brown ink
+    hard_s, soft_s = [], []
+    for st_ in strokes:
+        pts = st_[0]
+        ix = np.clip(pts[:, 0].astype(int), 0, W - 1); iy = np.clip(pts[:, 1].astype(int), 0, H - 1)
+        (soft_s if soft_any[iy, ix].mean() > 0.5 else hard_s).append((st_[0], st_[1]))
+    cov = ink.draw_strokes((H, W), hard_s)
     rgb = rgb * (1 - cov[..., None]) + inkc * cov[..., None]
     a = np.maximum(a, cov)
+    if soft_s:
+        cov2 = ink.draw_strokes((H, W), soft_s)
+        trace = np.asarray(style.get('soft_ink', (0.13, 0.22, 0.17)), np.float32)
+        rgb = rgb * (1 - cov2[..., None]) + trace * cov2[..., None]
+        a = np.maximum(a, cov2)
 
     if style.get('rivets'):
         _draw_rivets(rgb, ps, camS, mats, style, L, lit, ss, inkc)

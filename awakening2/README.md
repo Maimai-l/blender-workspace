@@ -86,3 +86,11 @@ vines yet; the rise is a simple blend between three poses.
 - Fixes: S01 tilt drift, S10 painting window, S04 framing, bigger bird, less haze and bloom,
   rivets, tufts on the roof tree, S05 camera matched to its painting's horizon, flock between
   the canopy layers.
+
+### v3 (14:40)
+- The face redesigned: a framed furnace grille with four slats as the muzzle (the three slots
+  read as a mouth/nose), eyes that warm up from ember red to gold instead of fading in.
+- Grass sprouting from the moss, rounded painted moss tufts, a warm rim band on the sun side
+  when the sun is behind the subject, an S-curve grade with more saturation.
+- The climax: the robot faces three-quarters toward the camera as it climbs, with engine flames.
+- (The session was paused 13:00–14:36 by a usage limit; the PC finished rendering v3 meanwhile.)

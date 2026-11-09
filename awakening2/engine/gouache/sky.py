@@ -165,3 +165,139 @@ def sculpted_cloud(cv, rng, cx, base_y, w, h, stops, pos=None, kind='cumulus', l
     return paint_clouds(cv, rng, b, stops, pos, light3=light3, leaf=leaf, density=density, rim=rim,
                         rim_amt=rim_amt, edge=0.45, opacity=opacity, wrap=0.5, under=under, bands=4,
                         edge_leaves=0.5, size_dark=1.8, size_lit=1.0, tip=tip, fringe=0.35)
+
+
+def paint_planes(cv, rng, blobs, cols, light3=(0.55, -0.75, 0.3), wrap=0.45, under=0.6, th=(0.3, 0.52, 0.8),
+                 soft=0.035, noise_amt=0.1, rag=0.6, strokes=1.0, stroke_size=None, rim=None, rim_amt=1.0,
+                 wisps=0.0, wisp_col=None, opacity=1.0, edge_px=1.2, sun2=None, leafy_edge=0.0, leaf_cols=None,
+                 soft_base=0.0, region=None):
+    """Ghibli-style masses painted as big flat value planes (not dabs): the dome shading of
+    the blobs is cut into 3-4 planes with hard-ish, noise-meandering terminators (shadow ->
+    mid -> lit -> crown highlight), the silhouette is a crisp painted edge, a few broad
+    form-following strokes add brushwork, a thin bright rim runs along the sun-facing edge
+    and optional soft wisps trail off. cols = (shadow, mid, lit, highlight)."""
+    from .color import oklab, from_oklab
+    import cv2 as _cv2
+    G = render_gbuffer(cv, blobs, light3=light3, wrap=wrap, under=under)
+    cov, sh, cid = G['cov'], G['shade'], G['cid']
+    ys, xs = np.nonzero(cov > 0.02)
+    if len(xs) == 0:
+        return G
+    pad = 8
+    x0, y0 = max(int(xs.min()) - pad, 0), max(int(ys.min()) - pad, 0)
+    x1, y1 = min(int(xs.max()) + pad, cov.shape[1]), min(int(ys.max()) + pad, cov.shape[0])
+    c = cov[y0:y1, x0:x1]
+    hh, ww = c.shape
+    size = float(np.sqrt(max((c > 0.5).sum(), 1)))
+    n1 = fbm(hh, ww, max(size * 0.35, 30), rng, octaves=3) - 0.5
+    n2 = fbm(hh, ww, max(size * 0.08, 8), rng, octaves=2) - 0.5
+    # whole-mass shading (lit crown and sun side, shadowed base) blended with the per-lobe domes,
+    # so lobes read as bumps on one form rather than separate boulders
+    yy = (np.arange(hh, dtype=np.float32)[:, None] + 0.5)
+    xx = (np.arange(ww, dtype=np.float32)[None, :] + 0.5)
+    colsum = np.maximum((c > 0.5).sum(0, keepdims=True), 1)
+    ytop = np.argmax(c > 0.5, axis=0)[None, :].astype(np.float32)
+    ybot = (hh - np.argmax((c > 0.5)[::-1], axis=0))[None, :].astype(np.float32)
+    gv = np.clip((ybot - yy) / np.maximum(ybot - ytop, 1), 0, 1)          # 1 at the top .. 0 at the base
+    s2x = light3[0] / (np.hypot(light3[0], light3[1]) + 1e-6)
+    gx = (xx / ww - 0.5) * s2x
+    vglob = np.clip(0.15 + 0.85 * gv ** 0.8 + 0.25 * gx, 0, 1)
+    v = np.clip(0.45 * sh[y0:y1, x0:x1] + 0.55 * vglob + noise_amt * n1 + noise_amt * 0.4 * n2, 0, 1)
+    L = [oklab(np.asarray(k, np.float32)) for k in cols]
+    m1 = smoothstep(th[0] - soft, th[0] + soft, v)
+    m2 = smoothstep(th[1] - soft, th[1] + soft, v)
+    m3 = smoothstep(th[2] - soft * 0.7, th[2] + soft * 0.7, v)
+    lab = L[0] + (L[1] - L[0]) * m1[..., None]
+    lab = lab + (L[2] - lab) * m2[..., None]
+    lab = lab + (L[3] - lab) * (m3 * 0.85)[..., None]
+    # keep a little form inside each plane
+    lab[..., 0] += (v - 0.5) * 0.05
+    rgb = np.clip(from_oklab(lab), 0, 1)
+    # crisp, slightly ragged silhouette
+    cr = _cv2.GaussianBlur(c, (0, 0), 1.0)
+    edge_noise = (fbm(hh, ww, 14, rng, octaves=2) - 0.5) * rag * 0.35
+    a = np.clip((cr - 0.5 + edge_noise) / max(edge_px * 0.08, 1e-3) * 0.5 + 0.5, 0, 1)
+    if soft_base > 0:
+        # soften the underside edge (flat bases dissolve a little)
+        gy = _cv2.Sobel(_cv2.GaussianBlur(c, (0, 0), 6), _cv2.CV_32F, 0, 1, ksize=3)
+        base = np.clip(-gy * 8, 0, 1) * soft_base
+        a = a * (1 - base) + _cv2.GaussianBlur(c, (0, 0), 10) * base
+    a = (a * opacity).astype(np.float32)
+    cv.over_region(x0, y0, rgb.astype(np.float32), a)
+    # broad form-following strokes, sampling the plane colour (alpha-locked)
+    if strokes > 0:
+        ss = stroke_size or max(size * 0.07, 10)
+        n = int(strokes * (c > 0.5).sum() / (ss * ss * 0.35) * 0.6)
+        if n > 0:
+            sel = np.flatnonzero((c > 0.97).ravel())
+            pick = rng.choice(sel, min(n, len(sel)), replace=False)
+            py, px = np.unravel_index(pick, c.shape)
+            cidp = cid[y0:y1, x0:x1][py, px]
+            bx = np.where(cidp >= 0, G['b']['x'][np.maximum(cidp, 0)] + cv.m - x0, px)
+            by = np.where(cidp >= 0, G['b']['y'][np.maximum(cidp, 0)] + cv.m - y0, py)
+            ang = np.arctan2(py - by, px - bx) + np.pi / 2 + rng.normal(0, 0.25, len(px))
+            colp = jitter(rgb[py, px], rng, dl=0.025, dc=0.08, dh=0.03)
+            dabs(cv, px + x0 - cv.m, py + y0 - cv.m, ss * rng.uniform(0.6, 1.5, len(px)), colp,
+                 aspect=rng.uniform(0.25, 0.45, len(px)), angle=ang, shape='flat', edge=0.45, rag=0.3,
+                 bristle=0.35, opacity=rng.uniform(0.2, 0.45, len(px)) * opacity, mode='lock', rng=rng)
+    # leafy edge (for foliage masses painted in planes): sparse leaf marks along the silhouette
+    if leafy_edge > 0:
+        band = (cr > 0.25) & (cr < 0.7)
+        ne = int(leafy_edge * band.sum() / 6)
+        if ne > 0:
+            sel = np.flatnonzero(band.ravel())
+            pick = rng.choice(sel, min(ne, len(sel)), replace=False)
+            py, px = np.unravel_index(pick, c.shape)
+            gx = _cv2.Sobel(cr, _cv2.CV_32F, 1, 0, ksize=3)
+            gy = _cv2.Sobel(cr, _cv2.CV_32F, 0, 1, ksize=3)
+            nx, ny = -gx[py, px], -gy[py, px]
+            nn = np.hypot(nx, ny) + 1e-6
+            ang = np.arctan2(ny / nn, nx / nn) + rng.normal(0, 0.6, len(px))
+            lc = leaf_cols if leaf_cols is not None else cols[:3]
+            colp = jitter(ramp(lc, np.clip(v[py, px] + rng.normal(0, 0.1, len(px)), 0, 1)), rng, dl=0.03)
+            L_ = max(size * 0.03, 6)
+            dabs(cv, px + x0 - cv.m + nx / nn * L_ * 0.3, py + y0 - cv.m + ny / nn * L_ * 0.3,
+                 L_ * rng.uniform(0.7, 1.3, len(px)), colp, aspect=0.45, angle=ang, shape='leaf', edge=0.25,
+                 rag=0.2, bristle=0.2, split=0.1, opacity=opacity, rng=rng)
+    # thin bright rim along the sun-facing edge
+    if rim is not None and rim_amt > 0:
+        s2 = sun2 if sun2 is not None else (light3[0], light3[1])
+        s2 = np.asarray(s2, np.float32) / (np.hypot(*s2) + 1e-6)
+        gx = _cv2.Sobel(cr, _cv2.CV_32F, 1, 0, ksize=3)
+        gy = _cv2.Sobel(cr, _cv2.CV_32F, 0, 1, ksize=3)
+        gn = np.hypot(gx, gy) + 1e-6
+        nx, ny = -gx / gn, -gy / gn
+        face = nx * s2[0] + ny * s2[1]
+        band = (cr > 0.45) & (cr < 0.85) & (face > 0.25)
+        nr = int(rim_amt * band.sum() / 3)
+        if nr > 0:
+            sel = np.flatnonzero(band.ravel())
+            pick = rng.choice(sel, min(nr, len(sel)), replace=False)
+            py, px = np.unravel_index(pick, c.shape)
+            ang = np.arctan2(ny[py, px], nx[py, px]) + np.pi / 2
+            f = face[py, px]
+            colp = jitter(np.broadcast_to(np.asarray(rim, np.float32), (len(px), 3)), rng, dl=0.02)
+            dabs(cv, px + x0 - cv.m, py + y0 - cv.m, rng.uniform(6, 16, len(px)), colp, aspect=0.22, angle=ang,
+                 edge=0.4, rag=0.2, bristle=0.2, opacity=np.clip(0.4 + 0.6 * f, 0, 1) * opacity, rng=rng)
+    # soft wisps trailing from the sides / base
+    if wisps > 0:
+        wc = wisp_col if wisp_col is not None else cols[1]
+        band = (cr > 0.2) & (cr < 0.6)
+        nw = int(wisps * 40)
+        sel = np.flatnonzero(band.ravel())
+        if len(sel) and nw:
+            pick = rng.choice(sel, min(nw, len(sel)), replace=False)
+            py, px = np.unravel_index(pick, c.shape)
+            colp = jitter(np.broadcast_to(np.asarray(wc, np.float32), (len(px), 3)), rng, dl=0.03)
+            dabs(cv, px + x0 - cv.m + rng.normal(0, size * 0.05, len(px)), py + y0 - cv.m + rng.normal(0, 4, len(px)),
+                 rng.uniform(size * 0.15, size * 0.4, len(px)), colp, aspect=rng.uniform(0.06, 0.14, len(px)),
+                 angle=rng.normal(0, 0.06, len(px)), edge=0.95, rag=0.3, bristle=0.5,
+                 opacity=rng.uniform(0.15, 0.35, len(px)) * opacity, rng=rng)
+    return G
+
+
+def plane_cloud(cv, rng, cx, base_y, w, h, cols, kind='cumulus', light3=(0.55, -0.75, 0.3), rim=None, wisps=0.3,
+                opacity=1.0, strokes=0.6, lobes=None, soft_base=0.0):
+    b = sculpted_blobs(rng, cx, base_y, w, h, kind=kind, lobes=lobes)
+    return paint_planes(cv, rng, b, cols, light3=light3, rim=rim, wisps=wisps, opacity=opacity, strokes=strokes,
+                        soft_base=soft_base)

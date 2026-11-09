@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 BG = os.path.join(ROOT, 'bg')
-SHOTS = {'S01': 's01', 'S11': 's11', 'S16': 's16', 'S08': 's08', 'S03': 's03', 'S02': 's02', 'S12': 's12',
+SHOTS = {'S00': 's00', 'S16A': 's16a', 'S01': 's01', 'S11': 's11', 'S16': 's16', 'S08': 's08', 'S03': 's03', 'S02': 's02', 'S12': 's12',
          'S13': 's13', 'S09': 's09', 'S05': 's05', 'S17': 's17', 'S06': 's06', 'S10': 's10', 'S04': 's04'}
 
 

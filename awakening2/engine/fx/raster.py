@@ -592,3 +592,244 @@ def add_soft_discs(light, D):
                 light[y, x, 0] += D[q, 4] * v
                 light[y, x, 1] += D[q, 5] * v
                 light[y, x, 2] += D[q, 6] * v
+
+
+@njit(cache=True, fastmath=True)
+def _ell(px, py, cx, cy, ca, sa, sx, sy):
+    """Local elliptic coordinates of a pixel: (u, v) in disc units, and |(u, v)|."""
+    dx = px - cx
+    dy = py - cy
+    u = (dx * ca + dy * sa) / sx
+    v = (-dx * sa + dy * ca) / sy
+    return u, v, math.sqrt(u * u + v * v) + 1e-6
+
+
+@njit(cache=True, fastmath=True)
+def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
+    """Billows with designed lobes (v2).
+
+    D columns: cx cy r wa wp ts tl sx sy ang bx by br
+      sx, sy, ang : the lobe is an ellipse (radii r*sx, r*sy, rotated by ang) - squashed bases,
+                    sheared curls
+      bx, by, br  : a bite disc removed from this lobe only (br <= 0: none) - hook-shaped curls
+      ts, tl      : shadow crescent / lit cap depth (fractions of r), unions over the group
+    GP columns: alpha, inner line width, ground cut y (pixels below it are cut flat; 1e9 = none)
+    P rows: shadow, mid, lit, line."""
+    h, w = buf.shape[0], buf.shape[1]
+    G = starts.shape[0] - 1
+    for g in range(G):
+        d0 = starts[g]
+        d1 = starts[g + 1]
+        if d1 <= d0:
+            continue
+        al = GP[g, 0]
+        li = GP[g, 1]
+        gy = GP[g, 2]
+        xmin = 1e18
+        xmax = -1e18
+        ymin = 1e18
+        ymax = -1e18
+        for d in range(d0, d1):
+            R = D[d, 2] * max(D[d, 7], D[d, 8]) * (1.0 + abs(D[d, 3])) + 1.0
+            if D[d, 0] - R < xmin:
+                xmin = D[d, 0] - R
+            if D[d, 0] + R > xmax:
+                xmax = D[d, 0] + R
+            if D[d, 1] - R < ymin:
+                ymin = D[d, 1] - R
+            if D[d, 1] + R > ymax:
+                ymax = D[d, 1] + R
+        if ymax > gy + 1.0:
+            ymax = gy + 1.0
+        x0 = max(0, int(math.floor(xmin - ox)))
+        x1 = min(w, int(math.ceil(xmax - ox)) + 1)
+        y0 = max(0, int(math.floor(ymin - oy)))
+        y1 = min(h, int(math.ceil(ymax - oy)) + 1)
+        if x0 >= x1 or y0 >= y1:
+            continue
+        nd_ = d1 - d0
+        WC = np.empty((nd_, 14), np.float64)
+        for d in range(d0, d1):
+            wp = D[d, 4]
+            q = d - d0
+            WC[q, 0] = math.cos(wp)
+            WC[q, 1] = math.sin(wp)
+            WC[q, 2] = math.cos(1.7 * wp + 1.0)
+            WC[q, 3] = math.sin(1.7 * wp + 1.0)
+            WC[q, 4] = math.cos(2.3 * wp + 2.0)
+            WC[q, 5] = math.sin(2.3 * wp + 2.0)
+            R = D[d, 2]
+            k = math.sqrt(D[d, 7] * D[d, 8])
+            WC[q, 6] = D[d, 0] + lx * D[d, 5] * R * k
+            WC[q, 7] = D[d, 1] + ly * D[d, 5] * R * k
+            kk = (1.9 - D[d, 6]) * R * k
+            WC[q, 8] = D[d, 0] + lx * kk
+            WC[q, 9] = D[d, 1] + ly * kk
+            WC[q, 10] = math.cos(D[d, 9])
+            WC[q, 11] = math.sin(D[d, 9])
+            WC[q, 12] = k
+            WC[q, 13] = R * max(D[d, 7], D[d, 8]) * (1.0 + abs(D[d, 3])) + 1.0
+        for y in range(y0, y1):
+            py = y + oy + 0.5
+            gcut = 1.0
+            if py > gy - 0.5:
+                gcut = gy - py + 0.5
+                if gcut <= 0.0:
+                    continue
+                if gcut > 1.0:
+                    gcut = 1.0
+            for x in range(x0, x1):
+                px = x + ox + 0.5
+                cs = 0.0
+                cn = 0.0
+                cl = 0.0
+                best = -1e9
+                bnd = 0.0
+                for d in range(d0, d1):
+                    R = D[d, 2]
+                    if R < 0.35:
+                        continue
+                    q = d - d0
+                    Rm = WC[q, 13]
+                    Rm2 = Rm * Rm
+                    dx = px - D[d, 0]
+                    dy = py - D[d, 1]
+                    nx = px - WC[q, 6]
+                    ny = py - WC[q, 7]
+                    tl = D[d, 6]
+                    in_s = dx * dx + dy * dy <= Rm2
+                    # ts < 0 marks a shape-only lobe: it takes its tones from the others
+                    in_n = D[d, 5] >= 0.0 and nx * nx + ny * ny <= Rm2
+                    in_l = False
+                    if tl > 0.0 and D[d, 5] >= 0.0:
+                        mx = px - WC[q, 8]
+                        my = py - WC[q, 9]
+                        in_l = mx * mx + my * my <= 0.81 * Rm2
+                    if not (in_s or in_n or in_l):
+                        continue
+                    ca = WC[q, 10]
+                    sa = WC[q, 11]
+                    sx = D[d, 7]
+                    sy = D[d, 8]
+                    kk = WC[q, 12]
+                    u, v, dl = _ell(px, py, D[d, 0], D[d, 1], ca, sa, sx, sy)
+                    c = u / dl
+                    s = v / dl
+                    wv = _wob(c, s, WC[q, 0], WC[q, 1], WC[q, 2], WC[q, 3], WC[q, 4], WC[q, 5])
+                    Rw = R * (1.0 + D[d, 3] * wv)
+                    if in_s:
+                        sd = (Rw - dl) * kk
+                        if D[d, 12] > 0.0:
+                            bx = px - D[d, 10]
+                            by = py - D[d, 11]
+                            bd = math.sqrt(bx * bx + by * by) - D[d, 12]
+                            if bd < sd:
+                                sd = bd
+                        v_ = _c01(sd + 0.5)
+                        if v_ > cs:
+                            cs = v_
+                        if sd > best:
+                            best = sd
+                            # outward normal of the ellipse in screen space
+                            gx = c / sx * ca - s / sy * sa
+                            gyy = c / sx * sa + s / sy * ca
+                            gn = math.sqrt(gx * gx + gyy * gyy) + 1e-9
+                            bnd = -(gx * lx + gyy * ly) / gn
+                    if in_n:
+                        u2, v2, dl2 = _ell(px, py, WC[q, 6], WC[q, 7], ca, sa, sx, sy)
+                        v_ = _c01((Rw - dl2) * kk + 0.5)
+                        if v_ > cn:
+                            cn = v_
+                    if in_l:
+                        u3, v3, dl3 = _ell(px, py, WC[q, 8], WC[q, 9], ca, sa, sx, sy)
+                        v_ = _c01((0.9 * Rw - dl3) * kk + 0.5)
+                        if v_ > cl:
+                            cl = v_
+                if cs <= 0.0:
+                    continue
+                r_ = P[0, 0] + (P[1, 0] - P[0, 0]) * cn
+                g_ = P[0, 1] + (P[1, 1] - P[0, 1]) * cn
+                b_ = P[0, 2] + (P[1, 2] - P[0, 2]) * cn
+                r_ += (P[2, 0] - r_) * cl
+                g_ += (P[2, 1] - g_) * cl
+                b_ += (P[2, 2] - b_) * cl
+                if li > 0.0:
+                    wl = li * _c01((bnd - 0.05) * 1.6)
+                    if wl > 0.05:
+                        v_ = _c01(wl - best + 0.5) * min(1.0, wl)
+                        r_ += (P[3, 0] - r_) * v_
+                        g_ += (P[3, 1] - g_) * v_
+                        b_ += (P[3, 2] - b_) * v_
+                a = cs * al * gcut
+                ia = 1.0 - a
+                buf[y, x, 0] = r_ * a + buf[y, x, 0] * ia
+                buf[y, x, 1] = g_ * a + buf[y, x, 1] * ia
+                buf[y, x, 2] = b_ * a + buf[y, x, 2] * ia
+                buf[y, x, 3] = a + buf[y, x, 3] * ia
+
+
+@njit(cache=True, fastmath=True)
+def paint_disc_lines2(buf, ox, oy, D, LW, GY, col, lx, ly):
+    """Silhouette colour line for v2 lobes (ellipses with bites), shadow side only; paint before
+    the fills.  D columns as paint_billows2; GY: ground cut per lobe."""
+    h, w = buf.shape[0], buf.shape[1]
+    for q in range(D.shape[0]):
+        cx = D[q, 0]
+        cy = D[q, 1]
+        R = D[q, 2]
+        lw = LW[q]
+        if R < 0.35 or lw <= 0.05:
+            continue
+        wa = D[q, 3]
+        wp = D[q, 4]
+        sx = D[q, 7]
+        sy = D[q, 8]
+        ca = math.cos(D[q, 9])
+        sa = math.sin(D[q, 9])
+        kk = math.sqrt(sx * sy)
+        Rmax = R * max(sx, sy) * (1.0 + abs(wa)) + 1.0 + lw
+        x0 = max(0, int(math.floor(cx - Rmax - ox)))
+        x1 = min(w, int(math.ceil(cx + Rmax - ox)) + 1)
+        y0 = max(0, int(math.floor(cy - Rmax - oy)))
+        y1 = min(h, int(math.ceil(min(cy + Rmax, GY[q] + 1.0) - oy)) + 1)
+        c2a = math.cos(wp)
+        s2a = math.sin(wp)
+        c3a = math.cos(1.7 * wp + 1.0)
+        s3a = math.sin(1.7 * wp + 1.0)
+        c5a = math.cos(2.3 * wp + 2.0)
+        s5a = math.sin(2.3 * wp + 2.0)
+        for y in range(y0, y1):
+            py = y + oy + 0.5
+            gcut = _c01(GY[q] - py + 0.5)
+            if gcut <= 0.0:
+                continue
+            for x in range(x0, x1):
+                px = x + ox + 0.5
+                u, v, dl = _ell(px, py, cx, cy, ca, sa, sx, sy)
+                if dl * min(sx, sy) > Rmax:
+                    continue
+                c = u / dl
+                s = v / dl
+                gx = c / sx * ca - s / sy * sa
+                gyy = c / sx * sa + s / sy * ca
+                gn = math.sqrt(gx * gx + gyy * gyy) + 1e-9
+                nd = -(gx * lx + gyy * ly) / gn
+                wl = lw * _c01((nd + 0.15) * 1.4)
+                if wl <= 0.05:
+                    continue
+                Rw = R * (1.0 + wa * _wob(c, s, c2a, s2a, c3a, s3a, c5a, s5a))
+                sd = (Rw - dl) * kk + wl
+                if D[q, 12] > 0.0:
+                    bx = px - D[q, 10]
+                    by = py - D[q, 11]
+                    bd = math.sqrt(bx * bx + by * by) - (D[q, 12] - wl)
+                    if bd < sd:
+                        sd = bd
+                a = _c01(sd + 0.5) * min(1.0, wl) * gcut
+                if a <= 0.0:
+                    continue
+                ia = 1.0 - a
+                buf[y, x, 0] = col[0] * a + buf[y, x, 0] * ia
+                buf[y, x, 1] = col[1] * a + buf[y, x, 1] * ia
+                buf[y, x, 2] = col[2] * a + buf[y, x, 2] * ia
+                buf[y, x, 3] = a + buf[y, x, 3] * ia

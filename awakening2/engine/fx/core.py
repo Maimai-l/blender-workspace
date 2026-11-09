@@ -349,21 +349,33 @@ def cut_holes(layer, holes):
 
 
 class BillowBatch:
-    """Groups of discs ("billows") painted back to front in the order added.
+    """Groups of lobes ("billows") painted back to front in the order added.
 
-    Within a group the lit cap and the shadow boundary are unions of shifted discs, so the
-    tone shapes are scalloped by the bumps (see raster.paint_billows).  A silhouette colour
-    line (shadow side) is painted under all groups so only the outer edge shows it."""
+    Within a group the lit cap and the shadow boundary are unions of shifted lobes, so the
+    tone shapes are scalloped by the bumps.  Lobes are ellipses (squashed bases, sheared
+    curls) with an optional bite (hook-shaped curls); a group may be cut flat at a ground y.
+    A silhouette colour line (shadow side) is painted under all groups so only the outer edge
+    shows it.  Disc rows: (cx, cy, r, wa, wp, ts, tl[, sx, sy, ang, bx, by, br])."""
 
     def __init__(self):
-        self.groups = []      # (discs (n, 7), alpha, inner_line, line_widths (n,))
+        self.groups = []      # (discs (n, 13), alpha, inner_line, line_widths (n,), ground_y)
 
-    def add(self, discs, alpha=1.0, inner=0.0, line=None):
-        D = np.asarray(discs, np.float64).reshape(-1, 7)
+    def add(self, discs, alpha=1.0, inner=0.0, line=None, ground=None):
+        D = np.asarray(discs, np.float64)
+        if D.ndim == 1:
+            D = D[None, :]
         if len(D) == 0:
             return
+        if D.shape[1] < 13:
+            pad = np.zeros((len(D), 13), np.float64)
+            pad[:, :D.shape[1]] = D
+            if D.shape[1] <= 7:
+                pad[:, 7] = 1.0
+                pad[:, 8] = 1.0
+            D = pad
         lw = np.zeros(len(D)) if line is None else np.broadcast_to(np.asarray(line, np.float64), (len(D),))
-        self.groups.append((D, float(alpha), float(inner), np.asarray(lw, np.float64)))
+        gy = 1e9 if ground is None else float(ground)
+        self.groups.append((D, float(alpha), float(inner), np.asarray(lw, np.float64), gy))
 
     def __len__(self):
         return len(self.groups)
@@ -373,7 +385,7 @@ class BillowBatch:
             return None
         D = np.concatenate([g[0] for g in self.groups], 0)
         LW = np.concatenate([g[3] for g in self.groups], 0)
-        R = D[:, 2] * (1 + np.abs(D[:, 3])) + LW + 2
+        R = D[:, 2] * np.maximum(D[:, 7], D[:, 8]) * (1 + np.abs(D[:, 3])) + LW + 2
         return (D[:, 0] - R).min(), (D[:, 1] - R).min(), (D[:, 0] + R).max(), (D[:, 1] + R).max()
 
     def paint(self, layer, palette, light_dir):
@@ -383,14 +395,16 @@ class BillowBatch:
         P = np.asarray(palette, np.float32)
         D = np.ascontiguousarray(np.concatenate([g[0] for g in self.groups], 0))
         LW = np.ascontiguousarray(np.concatenate([g[3] for g in self.groups], 0))
+        GY = np.ascontiguousarray(np.concatenate([np.full(len(g[0]), g[4]) for g in self.groups], 0))
         if LW.max() > 0.05:
-            raster.paint_disc_lines(layer.buf, layer.ox, layer.oy, D[:, :5].copy(), LW, P[3].copy(),
-                                    float(l[0]), float(l[1]))
+            raster.paint_disc_lines2(layer.buf, layer.ox, layer.oy, D, LW, GY, P[3].copy(),
+                                     float(l[0]), float(l[1]))
         starts = np.zeros(len(self.groups) + 1, np.int64)
         starts[1:] = np.cumsum([len(g[0]) for g in self.groups])
-        GP = np.asarray([(g[1], g[2]) for g in self.groups], np.float64)
-        raster.paint_billows(layer.buf, layer.ox, layer.oy, starts, D, GP, P, float(l[0]), float(l[1]))
+        GP = np.asarray([(g[1], g[2], g[4]) for g in self.groups], np.float64)
+        raster.paint_billows2(layer.buf, layer.ox, layer.oy, starts, D, GP, P, float(l[0]), float(l[1]))
         return layer
+
 
 
 _GRAIN = {}

@@ -18,7 +18,7 @@ import warden as WD
 MOSS, SOIL, WOOD = R.MOSS, R.SOIL, R.WOOD
 FOLIAGE = 13
 CACHE = os.environ.get('AW2_MESH_CACHE', '/home/user/aw2_cache/meshes')
-SURF_VERSION = '6'
+SURF_VERSION = '7'
 
 
 def rng_for(name):
@@ -222,7 +222,7 @@ def add_growth(rig, voxel=0.035):
 # decals: designed chipped paint and rust, box-projected in part space
 # ----------------------------------------------------------------------------
 
-CHIP, RUST, STREAK, PRIMER = 1, 2, 3, 4
+CHIP, RUST, STREAK, PRIMER, FADE, LICHEN = 1, 2, 3, 4, 5, 6
 TEXEL = 0.012    # metres per decal texel
 
 
@@ -248,7 +248,7 @@ def _streak_poly(rng, x0, y0, dx, dy, length, width):
     return np.concatenate([left, right])
 
 
-PRIORITY = (PRIMER, RUST, STREAK, CHIP)    # later wins
+PRIORITY = (FADE, PRIMER, RUST, STREAK, CHIP, LICHEN)    # later wins
 
 
 class Decals:
@@ -275,12 +275,27 @@ class Decals:
                 edge = cv2.morphologyEx(fp, cv2.MORPH_GRADIENT, np.ones((25, 25), np.uint8))
                 ey, ex = np.nonzero(edge)
                 area = (hi[u] - lo[u]) * (hi[v] - lo[v])
-                nclust = int(dens * area * 0.55) + 2
+                nclust = int(dens * area * 1.1) + 3
                 ddx, ddy = down[u], down[v]
                 nd = math.hypot(ddx, ddy)
 
                 def fill(k, poly):
                     cv2.fillPoly(cov[k], [np.round(poly * 16).astype(np.int32)], 255, lineType=cv2.LINE_AA, shift=4)
+                # sun-faded paint: a few big soft-cornered blotches (drawn first, everything sits on top)
+                for c in range(int(dens * area * 0.08) + 1):
+                    cx, cy = rng.uniform(0, Wt), rng.uniform(0, Ht)
+                    sz = rng.uniform(0.5, 1.4) / TEXEL
+                    fill(FADE, _chip_poly(rng, cx, cy, sz))
+                    fill(FADE, _chip_poly(rng, cx + rng.normal(0, sz * 0.5), cy + rng.normal(0, sz * 0.5), sz * 0.6))
+                # lichen: clusters of small pale rosettes
+                for c in range(int(dens * area * 0.12) + 1):
+                    cx, cy = rng.uniform(0, Wt), rng.uniform(0, Ht)
+                    for j in range(rng.integers(4, 14)):
+                        r = rng.uniform(0.025, 0.075) / TEXEL
+                        ox, oy = rng.normal(0, 0.16 / TEXEL, 2)
+                        ang = np.linspace(0, 2 * np.pi, 9, endpoint=False)
+                        rr = r * rng.uniform(0.75, 1.0, 9)
+                        fill(LICHEN, np.stack([cx + ox + np.cos(ang) * rr, cy + oy + np.sin(ang) * rr], -1))
                 for c in range(nclust):
                     if len(ex) and rng.random() < 0.7:
                         kk = rng.integers(len(ex)); cx, cy = ex[kk], ey[kk]
@@ -293,8 +308,8 @@ class Decals:
                             ox, oy = rng.normal(0, 0.18 / TEXEL, 2)
                             fill(PRIMER, _chip_poly(rng, cx + ox, cy + oy, sz * 1.35))
                             fill(CHIP, _chip_poly(rng, cx + ox, cy + oy, sz))
-                        if nd > 0.35 and rng.random() < 0.7:
-                            L = rng.uniform(0.6, 2.2) / TEXEL
+                        if nd > 0.35 and rng.random() < 0.85:
+                            L = rng.uniform(0.9, 3.2) / TEXEL
                             fill(STREAK, _streak_poly(rng, cx, cy, ddx / nd, ddy / nd, L, rng.uniform(0.03, 0.08) / TEXEL))
                     elif kind < 0.85:
                         sz = rng.uniform(0.12, 0.4) / TEXEL
@@ -341,12 +356,16 @@ DECAL_PARTS = {'torso': 1.0, 'pelvis': 1.0, 'head': 0.7, 'pauldron_R': 1.1, 'pau
                'shin_L': 1.0, 'foot_R': 0.9, 'foot_L': 0.9, 'roof_R': 0.7, 'roof_L': 0.7}
 
 DECAL_COLS = {   # (light, shadow) by decal label, for PAINT parts
+    FADE: (WD.hexc('cf8466'), WD.hexc('784044')),
+    LICHEN: (WD.hexc('b9c19a'), WD.hexc('6a7466')),
     CHIP: (WD.hexc('5e5a57'), WD.hexc('34303c')),
     RUST: (WD.hexc('a3552f'), WD.hexc('5f2d33')),
     STREAK: (WD.hexc('8e4a31'), WD.hexc('552a33')),
     PRIMER: (WD.hexc('9b4636'), WD.hexc('5e2938')),
 }
 ROOF_DECAL_COLS = {  # verdigris roof: chips show dark bronze, "rust" is pale green patina
+    FADE: (WD.hexc('a6cbb9'), WD.hexc('5b8189')),
+    LICHEN: (WD.hexc('d2d6b0'), WD.hexc('7c8577')),
     CHIP: (WD.hexc('6e5640'), WD.hexc('3c3238')),
     RUST: (WD.hexc('9cc7b3'), WD.hexc('5a8088')),
     STREAK: (WD.hexc('8fbfae'), WD.hexc('557a85')),

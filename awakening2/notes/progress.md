@@ -83,7 +83,18 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   Style comparison: `style/style_vs_benchmark.jpg` (v2 S01 end vs the benchmark's best frame).
   Animatic: `board/animatic.mp4`.
 
-## Next
+- 12:50 v2 delivered + pushed. 13:00 v3 rendering on the PC. 13:00–14:36 session paused (usage
+  limit; helper agents also stopped, resumed at 14:37).
+- 14:40 **v3 delivered** (`deliver/awakening2_v3.mp4`), QA in `qa/v3/`. Review of v1 by an
+  independent agent: `notes/review_v1.md` (benchmark won 7 of 8 beats on v1; average 5.4 vs 4.3).
+- v4 in progress (sandbox): colour-traced moss lines, heavier robot silhouette, warmer red
+  shadows, faded-paint + lichen decals and more rust (SURF_VERSION 7), S13 ring/flames/leaves,
+  S14 slower exit + flame column, S15 rebuilt (from below through the canopy), S17 push-in +
+  bigger bird, S09 framing + shake, thinner soil veil, core_light/glow_fn in cel.py (unused yet).
+  Helpers working: FX round 2 (dust, soil, smear, impact, leaves), BG round 4 (S00 vista, S16
+  clouds, S16A flight layers, S12 trunks, S13 ferns).
+
+## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.
 2. v3: `pc.py sync`, then `pc.py pipeline v3 --workers 7` (no bg regen needed), encode, QA.
 3. Read `notes/review_v1.md`, rank shots, fix the weakest for v4.

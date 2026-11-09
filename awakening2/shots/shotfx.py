@@ -587,7 +587,8 @@ class Rise(Base):
         for name, part, loc, a, b in self.pours:
             emit = self._emitter(part, loc)
             self.pour_fx.append(fx.SoilPour(f'{self.S.sid}_{name}', emit, start=int(a * 24), end=int(b * 24), rate=9,
-                                            strands=3, size=(3, 8), ground=self._ground_y()))
+                                            strands=3, size=(3, 8), ground=self._ground_y(), veil_opacity=0.22,
+                                            veil_size=22.0))
         self.puff_fx = []
         for name, part, loc, t0, size in self.puffs:
             q = self._proj_at(part, loc, t0)
@@ -747,17 +748,29 @@ class S13(Base):
     def setup(self):
         cam = self.S.cam(0.0)
         c = project(cam, (0, 0, 0))
-        self.ring = fx.WindRing('S13_ring', centre=(float(c[0]), float(c[1])), frame0=2, radius=1500, duration=56, r0=120,
-                                ratio=0.55, persp=0.3, height=110, slots=48, grass=900, leaves=80, lines=56)
+        self.ring = fx.WindRing('S13_ring', centre=(float(c[0]), float(c[1])), frame0=2, radius=1250, duration=66, r0=120,
+                                ratio=0.55, persp=0.3, height=120, slots=48, grass=1000, leaves=110, lines=64)
         self.flames = [fx.EngineFlame(f'S13_e{i}', ignite=-30, sputters=[]) for i in range(2)]
+        self.leaves = fx.LeafBurst('S13_leaves', origin=(float(c[0]), float(c[1])), frame0=6, count=70, direction=(0, -1),
+                                   spread=6.28, speed=(12, 30), size=(14, 26), origin_radius=200)
     def fx_behind(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
         self.ring.draw(cv_, f, part='back')
         return comp.over_straight(rgb, cv_)
     def fx_mid(self, rgb, f, t, ctx):
+        import anim
         cv_ = fx.new_canvas(H, W)
+        pose = anim.pose_at(self.shot, t)
+        lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
+        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
+            fl.draw(cv_, f, nozzle=noz, direction=d, radius=rad * 0.9, length=rad * 5)
+            fl.glow(lb, f, nozzle=noz, direction=d, radius=rad * 0.9, length=rad * 5)
         self.ring.draw(cv_, f, part='front')
+        self.leaves.draw(cv_, f)
         return comp.over_straight(rgb, cv_)
+    def light_buf(self, lb, f, t, ctx):
+        if 'lb' in ctx:
+            lb += ctx['lb']
 
 
 class S14(Base):
@@ -787,6 +800,21 @@ class S14(Base):
         self.leafburst = fx.LeafBurst('S14_leaves', origin=(float(g[0]), float(g[1]) - 200), frame0=8, count=60,
                                       direction=(0, -1), spread=3.0, speed=(14, 34), size=(16, 30), origin_radius=400)
         self.flames = [fx.EngineFlame(f'S14_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+    def fx_mid(self, rgb, f, t, ctx):
+        # after the impact: the flame column under the robot as it rockets out of frame
+        if f < 10:
+            return rgb
+        import anim
+        cv_ = fx.new_canvas(H, W)
+        pose = anim.pose_at(self.shot, t)
+        lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
+        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
+            fl.draw(cv_, f, nozzle=noz, direction=(d[0] * 0.2, 1.0), radius=rad * 1.4, length=rad * 16)
+            fl.glow(lb, f, nozzle=noz, direction=(d[0] * 0.2, 1.0), radius=rad * 1.4, length=rad * 16)
+        return comp.over_straight(rgb, cv_)
+    def light_buf(self, lb, f, t, ctx):
+        if 'lb' in ctx:
+            lb += ctx['lb']
     def fx_behind(self, rgb, f, t, ctx):
         # the engines fire from the back, so from the front the flames are behind the robot:
         # only their glow and the licks past the silhouette show
@@ -848,6 +876,7 @@ class S15(Base):
                 tc = k / 24.0
                 break
         fc = int(tc * 24)
+        self.t_cross = tc
         self.burst = fx.LeafBurst('S15_burst', origin=(960, 470), frame0=fc, count=110, direction=(0, 1), spread=3.1,
                                   speed=(10, 30), size=(16, 34), origin_radius=300)
         self.twigs = fx.DebrisBurst('S15_twigs', origin=(960, 470), frame0=fc, count=46,
@@ -855,6 +884,15 @@ class S15(Base):
                                     direction=(0, 1), spread=3.0, speed=(10, 26), gravity=0.8, origin_radius=260)
         self.fall = fx.LeafFall('S15_fall', region=(0, -300, 1920, 900), frame0=fc + 6, count=40, size=(16, 30), spiral=0.8)
         self.flames = [fx.EngineFlame(f'S15_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+    def compose(self, f, t, cam):
+        # below the canopy the robot is in front of every painted layer; once through, behind the near leaves
+        self._t = t
+        return Base.compose(self, f, t, cam)
+    def split_layers(self):
+        names = [l['name'] for l in self.P.layers]
+        if getattr(self, '_t', 0.0) < self.t_cross:
+            return names, []
+        return [n for n in names if n in ('sky', 'canopy_far', 'trunks')], [n for n in names if n not in ('sky', 'canopy_far', 'trunks')]
     def fx_mid(self, rgb, f, t, ctx):
         # the bells fire straight down at the camera: short flames and a blinding glow
         import anim

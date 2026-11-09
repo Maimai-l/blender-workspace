@@ -115,7 +115,7 @@ class Shot:
                 ext = float(np.percentile(np.abs(Pw - ctr), 99.5)) * 1.3 + 8.0
                 sm = r3d.ShadowMap(sc, st['light'], ctr, ext, 2048)
                 ent['gshadow'] = cv2.GaussianBlur(comp.ground_shadow(cam, sm).astype(np.float32), (0, 0), 1.0)
-        if len(self.cel_cache) > 8:
+        if len(self.cel_cache) > 3:
             self.cel_cache.clear()
         self.cel_cache[ck] = ent
         return ent

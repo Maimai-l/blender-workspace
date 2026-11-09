@@ -13,16 +13,20 @@ W, H = 1920, 1040
 _CACHE = {}
 
 
-def load_rgba(path):
+def load_rgba(path, u8=False):
+    """Load a straight-alpha RGBA layer. Cached as uint8 (4x smaller than float32); u8=True
+    returns the cached uint8 array, otherwise a float32 copy in 0..1."""
     if path in _CACHE:
         im = _CACHE.pop(path)
         _CACHE[path] = im          # most recently used last
+    else:
+        im = np.ascontiguousarray(np.asarray(Image.open(path).convert('RGBA'), np.uint8))
+        _CACHE[path] = im
+        while len(_CACHE) > 12:    # bounded
+            _CACHE.pop(next(iter(_CACHE)))
+    if u8:
         return im
-    im = np.asarray(Image.open(path).convert('RGBA'), np.float32) / 255.0
-    _CACHE[path] = im
-    while len(_CACHE) > 9:         # bounded: one painting's layers at a time
-        _CACHE.pop(next(iter(_CACHE)))
-    return im
+    return im.astype(np.float32) / 255.0
 
 
 class Painting:

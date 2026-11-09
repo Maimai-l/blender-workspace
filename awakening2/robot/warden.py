@@ -22,7 +22,7 @@ from rig import Rig, Part
 PAINT, METAL, LENS, GLOW, MOSS, WOOD, CABLE, DARK, LIDS, SOIL = R.PAINT, R.METAL, R.LENS, R.GLOW, R.MOSS, R.WOOD, R.CABLE, R.DARK, R.LIDS, R.SOIL
 ROOF, BRASS = 11, 12
 
-VERSION = '11'
+VERSION = '12'
 
 
 def _len2(x, y):
@@ -124,11 +124,11 @@ def sdf_roof_half(p):
 def sdf_bells(p):
     out = []
     for s in (1, -1):
-        a = (1.25 * s, -3.4, 5.4); b = (1.4 * s, -4.2, 3.7)
+        a = (1.25 * s, -3.45, 5.5); b = (1.4 * s, -3.75, 3.55)       # pointing almost straight down
         outer = sd_round_cone(p, a, b, 0.55, 1.0)
         inner = sd_round_cone(p, (a[0], a[1] - 0.05, a[2] - 0.15), (b[0] * 1.01, b[1] - 0.1, b[2] - 0.22), 0.42, 0.88)
         bell = SUB(outer, inner)
-        ring = sd_torus(p, (1.36 * s, -4.0, 4.1), 0.88, 0.09, rot_matrix(-25, 0, 0))
+        ring = sd_torus(p, (1.36 * s, -3.68, 4.0), 0.88, 0.09, rot_matrix(-10, 0, 0))
         out.append(U(bell, ring))
     return U(*out)
 

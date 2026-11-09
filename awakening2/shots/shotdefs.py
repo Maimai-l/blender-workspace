@@ -148,11 +148,12 @@ SHOTS = [
     dict(id='S07', t0=30.5, t1=34.0, step=2,
          desc='Face: the lids crack open, the eyes flicker alive; the small bird startles and flies off',
          cam=[(0.0, *face_cam(10.0, -1.2, 52, tz=-0.15))],
-         pose=[(0.0, 'KNEEL_DORMANT'), (0.7, 'KNEEL_DORMANT'), (1.3, 'KNEEL_WAKE'), (3.5, 'KNEEL_WAKE')], light=SUN_FACE, bg='S03',
+         pose=[(0.0, 'KNEEL_DORMANT'), (0.7, 'KNEEL_DORMANT'), (1.2, 'KNEEL_STIR'), (2.0, 'KNEEL_STIR'),
+               (2.5, 'KNEEL_WAKE'), (3.5, 'KNEEL_WAKE')], light=SUN_FACE, bg='S03',
          notes='Lids open 0.7-1.3 s (on 2s with a hold), eyes flicker 1.3-2.0 s; bird flees 2.1 s.'),
     dict(id='S08', t0=34.0, t1=38.5, step=3,
          desc='RISE A, wide front between trunks: the hand presses into the earth, the whole body heaves up; soil, roots and vines pour off',
-         cam=[(0.0, v(23, 28, 2.2), v(0.5, 0, 7.4), 27)],
+         cam=[(0.0, v(23, 28, 2.2), v(0.5, 0, 7.4), 27), (4.5, v(23, 28, 2.2), v(0.5, 0, 7.4), 31)],
          pose=[(0.0, 'KNEEL_WAKE'), (0.4, 'KNEEL_WAKE'), (0.9, 'KNEEL_SINK'), (1.6, 'PUSH_PLANT'), (2.5, 'PUSH_UP'),
                (3.1, 'PUSH_UP'), (4.5, 'RISE_CROUCH')],
          light=SUN_BACK, bg='S08', shake=(0.5, 4.5, 4.0),
@@ -186,8 +187,9 @@ SHOTS = [
     dict(id='S14', t0=55.0, t1=56.5, step=1,
          desc='LAUNCH: 2-3 smear frames, an impact frame, the robot leaves frame upward',
          cam=[(0.0, v(-9, 30, 2.6), v(0, 0, 8.5), 28)],
-         pose=[(0.0, 'LAUNCH_CROUCH'), (0.25, 'LAUNCH_CROUCH'), (0.29, 'LAUNCH_UP', dict(lift=3.0)),
-               (0.45, 'LAUNCH_UP', dict(lift=11.0)), (0.7, 'LAUNCH_UP', dict(lift=32.0)), (1.5, 'LAUNCH_UP', dict(lift=150.0))],
+         pose=[(0.0, 'LAUNCH_CROUCH'), (0.25, 'LAUNCH_CROUCH'), (0.29, 'LAUNCH_UP', dict(lift=2.0)),
+               (0.45, 'LAUNCH_UP', dict(lift=6.0)), (0.75, 'LAUNCH_UP', dict(lift=14.0)), (1.1, 'LAUNCH_UP', dict(lift=34.0)),
+               (1.5, 'LAUNCH_UP', dict(lift=120.0))],
          spacing='linear',
          light=SUN_BACK, bg='S09', shake=(0.15, 1.5, 9.0),
          notes='0.0-0.2 s anticipation hold, 0.2 s smear x2, 0.3 s impact frame x2, then the robot exits frame top.'),
@@ -315,7 +317,13 @@ for _s in SHOTS:
     if _s['id'] == 'S16B':
         _s['pose'] = _s16_keys()
     if _s['id'] == 'S16A':
-        _s['pose'] = [(k / 8.0, 'FLY', dict(M=s16a_root(k / 8.0))) for k in range(0, 3 * 8 + 1)]
+        def _fly(t):
+            u = ease(t / 2.2)
+            return dict(PZ.FLY, head=(18 + 16 * u, 0, -14 * u),
+                        upperarm_R=(-30 - 10 * u, 26, 0), upperarm_L=(-30 - 10 * u, -26, 0),
+                        forearm_R=(6 + 8 * u, 0, 0), forearm_L=(6 + 8 * u, 0, 0),
+                        lid_R=(-10 + 6 * u, 0, -12), lid_L=(-10 + 6 * u, 0, 12))
+        _s['pose'] = [(k / 8.0, _fly(k / 8.0), dict(M=s16a_root(k / 8.0))) for k in range(0, 3 * 8 + 1)]
 
 
 # ---------------------------------------------------------------- timing from the cue sheet

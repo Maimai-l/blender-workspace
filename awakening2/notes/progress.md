@@ -125,6 +125,16 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   S10 S11 --workers 7` (BG regen for round 5), then steal for the slow shots when the fast
   workers go idle.
 
+- 15:25 **v4 delivered + pushed** (79.5 s). Reviewer agent on v4 running -> notes/review_v4.md.
+  v4 slip: bg/S16A was missing on the PC (fallback used). Before every render, check
+  `ls code/bg` on the PC lists every painting in bg/ here (S00..S17 incl. S16A).
+- 15:23 v5 rendering (frames_v5): kneel fix, lag, BG round 5, FX round 3 + veil, sound v2.
+- For v6 (sandbox, not in v5): S14 slower exit (robot stays in frame on its flame column),
+  engine bells pointing down + glow inside the flame (no "eyes" on the back; warden VERSION 12),
+  S16A head turns to the sun + arms sweep back, S07 two-stage eye opening (KNEEL_STIR lids -44,
+  then KNEEL_WAKE lids -22), edge/seam check in QA (tools/check_edges.py; v1 had 9, v4 has 0).
+  Tried and dropped: a dissolving trail echo in the S17 sky (read as a power line).
+
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.
 2. v3: `pc.py sync`, then `pc.py pipeline v3 --workers 7` (no bg regen needed), encode, QA.

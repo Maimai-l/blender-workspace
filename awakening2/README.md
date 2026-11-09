@@ -121,7 +121,7 @@ vines yet; the rise is a simple blend between three poses.
 - The climax: the robot faces three-quarters toward the camera as it climbs, with engine flames.
 - (The session was paused 13:00–14:36 by a usage limit; the PC finished rendering v3 meanwhile.)
 
-### v4 (15:40)
+### v4 (15:25)
 - **Restructured to 79.5 s** (cue sheet v2; picture and sound both read it): an establishing vista
   over the misty forest at sunrise opens the film; the sky shot became two shots — a tracking
   shot where the robot fills the frame, debris, leaves and vines streaming off it against a
@@ -139,3 +139,19 @@ vines yet; the rise is a simple blend between three poses.
   no lens-flare starbursts, less grain and bloom; S04's furnace core glows in designed bands.
 - **Staging:** S08 seen three-quarters so the kneel reads, S09 framed to keep the head in, S10 lit
   from the canopy gap above, S12's crouch snaps down instead of easing.
+- Known slip in v4: the flight painting (S16A) was missing on the render PC, so the tracking shot
+  used the static fallback sky (the clouds do not stream past). Fixed for v5.
+
+### v5 (15:55)
+- **A real kneel.** The old kneeling pose hung the knee 0.8 m and the hand 2 m above the ground
+  (the toes carried the body), so it read as a crouch; the pose is now solved so the right knee
+  and the knuckles rest on the ground, and the anticipation pose presses the hand down.
+- **Overlapping action:** the head, lids, hands and roof halves follow the body a few frames late.
+- **Backgrounds (round 5):** the canopy seen from below repainted in flat planes with a soft sun
+  halo (no starburst), painted soft focus instead of fog gradients in the close shots, bigger
+  margins for the tilts, characterful near trunks (buttress roots, knot holes, bracket fungi).
+- **Effects (round 3):** dust crowns built from rolling lobes, a varied ring wall, a dust veil
+  behind the launch blast.
+- **Sound:** re-scored for the 79.5 s cut: a music-box opening over the vista, the full theme
+  landing on the cut to the tracking flight, the roar flying away, a chime as it crosses the sun.
+- The flight painting is in place, so the tracking shot's clouds stream past.

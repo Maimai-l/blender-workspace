@@ -125,6 +125,10 @@ def qa(version, mp4):
     for k, r in enumerate(rows):
         sb.paste(r, (0, 560 * k))
     sb.save(os.path.join(qd, f'vs_benchmark_{version}.jpg'), quality=88)
+    # automatic check for flat border strips and card seams
+    r = subprocess.run([sys.executable, os.path.join(HERE, 'check_edges.py'), mp4, '6'], capture_output=True, text=True)
+    open(os.path.join(qd, 'edge_check.txt'), 'w').write(r.stdout)
+    print('edge check:', r.stdout.strip().splitlines()[-1] if r.stdout.strip() else 'no output')
     print('qa ->', qd)
 
 

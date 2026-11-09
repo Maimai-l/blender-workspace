@@ -131,7 +131,7 @@ class Base:
         for L in self.P.layers:
             if L['name'] not in names:
                 continue
-            img = comp.load_rgba(os.path.join(self.P.folder, L['file']))
+            img = comp.load_rgba(os.path.join(self.P.folder, L['file']), u8=True)
             k = self.layer_k(L['depth'])
             M = self.M_for(k, t, shake=shake)
             ox, oy = L['offset']
@@ -141,7 +141,7 @@ class Base:
             Mf = np.vstack([M, [0, 0, 1]]) @ A
             lay = cv2.warpAffine(img, Mf[:2], (W, H), flags=cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_REPLICATE if L.get('coverage', 0) > 0.98 else cv2.BORDER_CONSTANT,
-                                 borderValue=(0, 0, 0, 0))
+                                 borderValue=(0, 0, 0, 0)).astype(np.float32) / 255.0
             if self.blur_bg:
                 lay = cv2.GaussianBlur(lay, (0, 0), self.blur_bg)
             op = self.layer_opacity(L['name'], t)
@@ -738,14 +738,14 @@ class S11(Base):
 
 class Engines:
     """Engine bell nozzles in world space for a pose."""
-    BELLS = [(1.4, -4.2, 3.7), (-1.4, -4.2, 3.7)]
+    BELLS = [(1.4, -3.75, 3.5), (-1.4, -3.75, 3.5)]
     @staticmethod
     def nozzles(pose, cam):
         mats = SD.rig().world_mats(pose)
         out = []
         for b in Engines.BELLS:
             P = r3d.xform_points(mats['torso'], np.array([b], np.float32))[0]
-            P2 = P + np.array([0.0, -0.4, -2.0], np.float32)       # thrust points down
+            P2 = P + np.array([0.0, -0.25, -2.0], np.float32)      # thrust points down
             q0 = project(cam, P); q1 = project(cam, P2)
             d = q1[:2] - q0[:2]; n = np.linalg.norm(d) + 1e-6
             rad = cam.fpx * 1.0 / max(q0[2], 1)
@@ -778,7 +778,8 @@ class S12(Base):
         import anim
         pose = anim.pose_at(self.shot, t)
         for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
-            fl.glow(lb, f, nozzle=noz, direction=d, radius=rad * 0.9, length=rad * 9)
+            n2 = (noz[0] + d[0] * rad * 1.6, noz[1] + d[1] * rad * 1.6)      # the light sits in the flame
+            fl.glow(lb, f, nozzle=n2, direction=d, radius=rad * 0.7, length=rad * 8)
     def shake_gain(self, t):
         return 0.3 if t < 3.0 else 1.0
 
@@ -1073,16 +1074,16 @@ class S16A(Base):
         for L in self.P.layers:
             if L['name'] not in names:
                 continue
-            img = comp.load_rgba(os.path.join(self.P.folder, L['file']))
+            img = comp.load_rgba(os.path.join(self.P.folder, L['file']), u8=True)
             if L['name'] == 'sun_glow':
-                lay = img
+                lay = img.astype(np.float32) / 255.0
             else:
                 x_off = (self.SPEED * self.SCROLL_K.get(L['name'], 1.0) * t + 700.0) % img.shape[1]
                 # screen = C + sc * R * (p - (x_off + C'))  with C the frame centre and C' the painting window centre
                 A = np.float32([[sc * c, sc * s_, 0], [-sc * s_, sc * c, 0]])
                 pc = np.array([x_off + 960.0, 520.0], np.float32)
                 A[:, 2] = np.array([960.0, 520.0], np.float32) - A[:, :2] @ pc
-                lay = cv2.warpAffine(img, A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+                lay = cv2.warpAffine(img, A, (W, H), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP).astype(np.float32) / 255.0
             rgb = comp.over_straight(rgb, lay)
         return rgb
     def M_cel(self, t, tc, shake):
@@ -1185,6 +1186,8 @@ class S17(Base):
             birds.draw_state(cv_, st, birds.Light(dir=(0.8, 0.5), depth=-0.4))
         return comp.over_straight(rgb, cv_)
     def light_buf(self, lb, f, t, ctx):
+        if 'lb' in ctx:
+            lb += ctx['lb']
         mask = fx.sunbeams(lb, src=(1500, -500), angles=[math.radians(a) for a in (110, 116, 121, 127)],
                            widths=[60, 120, 50, 70], spread=0.03, intensity=0.26, frame=f, scale=0.5)
         if mask.shape != (H, W):

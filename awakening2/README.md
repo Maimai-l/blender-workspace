@@ -6,8 +6,8 @@ face, a light flickers on inside its chest; the ground trembles, birds burst fro
 it rises, lifts its head to a gap in the canopy, ignites its engines and tears into the golden
 sky, leaving a curving trail of light and mist.
 
-- Film: `deliver/awakening2.mp4` (the final version, v13) and `deliver/awakening2_vN.mp4` (each
-  version, v1–v13): 1920×1040 (1.85:1), 24 fps, H.264 + AAC, 79.5 s.
+- Film: `deliver/awakening2.mp4` (the final version, v14) and `deliver/awakening2_vN.mp4` (each
+  version, v1–v14): 1920×1040 (1.85:1), 24 fps, H.264 + AAC, 79.5 s.
 - Benchmark study and scorecard: `notes/benchmark.md`. Progress log: `notes/progress.md`.
 
 ## How the frames are made (no image or video models anywhere)
@@ -59,12 +59,12 @@ and layouts: `board/`, style frame: `style/`, QA sheets: `qa/<version>/`.
   a shaft from the canopy above: the robot's bowed face points down, so only a low sun can light
   the face itself — and at sunrise that is what the sun does.
 
-## Self-assessment (final, v13)
+## Self-assessment (final)
 
 Four independent reviews (each a fresh agent given only the two films, our QA sheets and the
 brief) scored both films out of 10 on design, composition, line, colour, timing, effects, climax
 and backgrounds. Each review had a different reviewer, so the scores drift from one review to
-the next; what holds is that ours has been ahead since v7. v12 and v13 were not reviewed.
+the next; what holds is that ours has been ahead since v7. v12, v13 and v14 were not reviewed.
 
 | Review of | The Moss Keeper | Awakening II |
 |---|---|---|
@@ -94,7 +94,8 @@ background details, not these):
   has no overshoot or settle.
 - The launch (59.5–61 s) lacks power: the robot leaves the frame early and the rest is empty
   forest.
-- The eyes stay at the same sleepy half-mast from the waking to the flight.
+- The eyes stayed at the same sleepy half-mast from the waking to the flight (v14 adds a
+  resolute state from the head lift on; not reviewed).
 - In the wide shots the head is small and the tree on the back merges with the canopy.
 - The trail across the sky (67–72 s) is a pale ribbon rather than light, and the sky is flat.
 - The ring of wind (56.5–59.5 s) is a thin ring that is over in under a second.
@@ -293,7 +294,7 @@ lump, the rise wide lost the head in the canopy, and the flock and S10 moved lik
   against a dark crown.
 - **S03:** the sunlit band on the face is a little less saturated.
 
-### v13 — final film (rendered 21:43, encoded the next morning at 07:46)
+### v13 (rendered 21:43, encoded the next morning at 07:46)
 - **A face for the design:** a faded cream sun crest on each shoulder plate (the sunrise motif
   of the film, chipped and rusted like the rest of the paint), on the model sheet too.
 - **Effects (round 8):** pebbles are faceted stones that hop from the ground (not grey spheres
@@ -303,14 +304,24 @@ lump, the rise wide lost the head in the canopy, and the flock and S10 moved lik
   pale outline); the top view's floor is moss, grass, soil and leaf litter with a hard canopy
   shadow; the vista's corner crowns are backlit leaf clusters; S12's light is dappled golden
   pools with leaf-shadow holes instead of converging stripes.
-- **Not in the film.** From about 21:45 until 07:44 the session was stopped by a usage limit,
-  so the last hours before the 04:30 deadline were lost, and the work started after v13 was
-  never rendered or reviewed. It is kept as `notes/post_v13_wip.patch` (apply from the
-  repository root with `git apply awakening2/notes/post_v13_wip.patch`):
+- **Not in v13.** From about 21:45 until 07:44 the session was stopped by a usage limit, so
+  the last hours before the 04:30 deadline were lost, and the work started after v13 was not
+  rendered until v14. It is kept as `notes/post_v13_wip.patch`:
   - a 15 % bigger, raised head;
   - a resolute eye state from the head lift on (lids up, white-hot cores, a flare on the cue);
   - a fade straight to black;
   - bigger tumbling leaves in S16A and bigger pebbles in S05;
   - the first parts of two helper rounds: an opaque dust wall for the launch, and an
     amber-to-blue dawn sky for S16B.
-  The source in the tree is exactly the code that rendered v13.
+
+### v14 — final film (09:33 the next morning, after the deadline, at the user's request)
+v13 plus `notes/post_v13_wip.patch`, applied unchanged and rendered without further work:
+- **A bigger head (15 %), raised** so the eyes clear the shoulder plates in three-quarter views.
+- **Resolute eyes** from the head lift on: the lids open up and the lamps get white-hot cores,
+  with a two-frame flare as the eyes resolve in S10; the model sheet shows the state.
+- **A fade straight to black** at the end.
+- **S16B:** an amber-to-blue dawn sky with a clear sun disc and halo behind the trail.
+- **Effects:** no more tails behind thrown debris; bigger tumbling leaves in the flight and
+  bigger stones in the ground close-up. (The patch also adds an opaque "wall" dust style that
+  no shot uses yet.)
+The source in the tree is exactly the code that rendered v14.

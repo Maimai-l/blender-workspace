@@ -336,19 +336,19 @@ for _s in SHOTS:
         _FK = [
             (0.00, dict(PZ.FLY, head=(8, 0, 0), upperarm_R=(-18, 30, 0), upperarm_L=(-18, -30, 0),
                         forearm_R=(20, 0, 0), forearm_L=(20, 0, 0), thigh_R=(-6, 6, 0), shin_R=(-20, 0, 0),
-                        thigh_L=(4, -6, 0), shin_L=(-34, 0, 0), lid_R=(-14, 10, 0), lid_L=(-14, -10, 0))),
+                        thigh_L=(4, -6, 0), shin_L=(-34, 0, 0), lid_R=(-8, -5, 0), lid_L=(-8, 5, 0))),
             (0.40, None),
             (0.85, dict(PZ.FLY, head=(34, 0, -10), torso=(6, 0, 0), upperarm_R=(-62, 22, 0), upperarm_L=(-58, -22, 0),
                         forearm_R=(8, 0, 0), forearm_L=(10, 0, 0), thigh_R=(-22, 8, 0), shin_R=(-24, 0, 0),
-                        thigh_L=(-6, -8, 0), shin_L=(-46, 0, 0), lid_R=(-6, 10, 0), lid_L=(-6, -10, 0))),
+                        thigh_L=(-6, -8, 0), shin_L=(-46, 0, 0), lid_R=(-5, -5, 0), lid_L=(-5, 5, 0))),
             (1.25, None),
             (1.75, dict(PZ.FLY, head=(30, 0, -24), torso=(4, 0, -6), upperarm_R=(-22, 46, 0), upperarm_L=(-56, -24, 0),
                         forearm_R=(34, 0, 0), forearm_L=(10, 0, 0), hand_R=(-10, 0, 0), thigh_R=(-24, 8, 0),
-                        shin_R=(-20, 0, 0), thigh_L=(-4, -8, 0), shin_L=(-50, 0, 0), lid_R=(-4, 10, 0), lid_L=(-4, -10, 0))),
+                        shin_R=(-20, 0, 0), thigh_L=(-4, -8, 0), shin_L=(-50, 0, 0), lid_R=(-4, -5, 0), lid_L=(-4, 5, 0))),
             (2.25, None),
             (2.70, dict(PZ.FLY, head=(38, 0, -12), torso=(8, 0, 0), upperarm_R=(-66, 22, 0), upperarm_L=(-62, -24, 0),
                         forearm_R=(6, 0, 0), forearm_L=(8, 0, 0), thigh_R=(-24, 8, 0), shin_R=(-26, 0, 0),
-                        thigh_L=(-8, -8, 0), shin_L=(-48, 0, 0), lid_R=(-6, 10, 0), lid_L=(-6, -10, 0))),
+                        thigh_L=(-8, -8, 0), shin_L=(-48, 0, 0), lid_R=(-5, -5, 0), lid_L=(-5, 5, 0))),
         ]
         _FK2 = []
         for i, (tk, pk) in enumerate(_FK):

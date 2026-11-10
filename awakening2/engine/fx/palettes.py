@@ -21,6 +21,13 @@ WIND_WHITE = pal('#c9cfd6', '#eef0ee', '#ffffff', '#b8c0c8')  # wind ring brush 
 
 # tone opacities (shadow, mid, lit) for the translucent styles
 WIND_DUST = pal('#a9a6a8', '#d6d1c9', '#f6f1e6', '#9a979b')   # light mist / dust thrown by the wind ring
+# round 9
+DUST_WALL = pal('#7a6c86', '#c2a07c', '#f4dcae', '#5e5168')   # opaque launch dust wall: cool violet
+                                                              # underside, warm tan body, cream-gold tops
+EARTH = dict(lit=hexc('#b88a56'), shade=hexc('#7a5139'), ink=hexc('#4f3426'))   # warm rise soil
+EARTH_DUST = pal('#8a7468', '#b89a7a', '#dcc29c', '#6f5a50')  # light two-tone soil dust
+TRAIL_ENV = pal('#b7a3d8', '#f4d4b8', '#fff2d2', '#9d89c4')   # trail mist envelope: lilac shadow side,
+                                                              # warm peach body, warm cream sun side
 
 TONE_ALPHA = {'dust': (0.6, 0.62, 0.86), 'soil': (0.8, 0.86, 0.94), 'mist': (0.3, 0.38, 0.5),
               'wind': (0.42, 0.48, 0.74)}

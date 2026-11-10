@@ -68,7 +68,7 @@ def main():
     SD._RIG = rig
     states = [('DORMANT', 'KNEEL_DORMANT', 0.0, (-0.6, 0.55, 0.35)),
               ('WAKING', 'KNEEL_WAKE', 0.6, (-0.6, 0.55, 0.35)),
-              ('RESOLUTE', 'STAND_LOOKUP', 1.0, (-0.4, 0.6, 0.65))]
+              ('RESOLUTE', 'STAND_LOOKUP', 1.4, (-0.4, 0.6, 0.65))]
     FW, FH = 900, 760
     faces = []
     for name, pname, glow, Ldir in states:
@@ -87,7 +87,7 @@ def main():
     d = ImageDraw.Draw(fs)
     d.text((pad, 16), 'THE WARDEN  —  face states (the eyes carry the emotion)', fill=(70, 40, 35), font=ImageFont.truetype(F_B, 40))
     notes = {'DORMANT': 'lids shut, glass dark, head bowed', 'WAKING': 'lids crack open, amber light flickers',
-             'RESOLUTE': 'lids level and narrowed at the outer corners, full glow, head raised'}
+             'RESOLUTE': 'lids up, white-hot cores, head raised'}
     for i, (img, name) in enumerate(faces):
         fs.paste(Image.fromarray(img), (pad + i * FW, 80))
         d.text((pad + i * FW + 16, 90), name, fill=(255, 245, 230), font=ImageFont.truetype(F_B, 34))

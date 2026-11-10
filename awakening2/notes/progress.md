@@ -211,12 +211,15 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   code that rendered v13 (checked file by file against the sync tarball). The unrendered post-v13 work is
   in notes/post_v13_wip.patch. Final README self-assessment written.
 
+- 09:06 (next morning) the user asked to apply the patch and render v14, with no further work. Patch applied
+  unchanged; smoke test (S16B, S14, S10, S08) rendered without errors; v14 launched on the PC with S16
+  repainted (frames_v14). Model sheet regenerated (bigger head, resolute face at glow 1.4).
+
 ## Final state
-- Final film: v13. Nothing is rendering on the PC; its frames_v10..v13 folders (~19 GB) are still there.
-- Next steps if work resumes: apply notes/post_v13_wip.patch (bigger head, resolute eyes, fade to
-  black), finish FX round 9 (opaque launch dust wall, thicker longer ring of wind, warmer soil clumps,
+- Final film: v14 (= v13 + notes/post_v13_wip.patch). The PC's frames_v10..v14 folders are still there.
+- Next steps if work resumes: finish FX round 9 (opaque launch dust wall, thicker longer ring of wind, warmer soil clumps,
   a glowing S16B trail) and BG round 10 (dawn sky in S16, varied distant trunks, ivy clusters, S17
-  light shafts), then render, review and deliver v14.
+  light shafts), then render, review and deliver v15.
 
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.

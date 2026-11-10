@@ -52,7 +52,7 @@ STAND_HUNCH = dict(
 # 4) head lifted toward the canopy gap
 STAND_LOOKUP = dict(STAND_HUNCH, torso=(-2, 0, 0), head=(34, 0, 0), pelvis=(2, 0, 0),
                     upperarm_R=(4, 12, 0), upperarm_L=(4, -12, 0),
-                    lid_R=(-16, 10, 0), lid_L=(-16, -10, 0))
+                    lid_R=(-6, -5, 0), lid_L=(-6, 5, 0))          # resolute: lids up, set level-to-stern
 # launch anticipation: deep squat, arms swept back, roof wings open, head up
 LAUNCH_CROUCH = dict(
     thigh_R=(84, 10, 0), shin_R=(-110, 0, 0), foot_R=(28, 0, 0),
@@ -61,7 +61,7 @@ LAUNCH_CROUCH = dict(
     upperarm_R=(-38, 24, 0), forearm_R=(14, 0, 0), hand_R=(-10, 0, 0),
     upperarm_L=(-38, -24, 0), forearm_L=(14, 0, 0), hand_L=(-10, 0, 0),
     roof_R=(0, -34, 0), roof_L=(0, 34, 0),
-    lid_R=(-18, 10, 0), lid_L=(-18, -10, 0))
+    lid_R=(-8, -5, 0), lid_L=(-8, 5, 0))
 # launch extension: stretched up, arms down and back
 LAUNCH_UP = dict(
     thigh_R=(-6, 4, 0), shin_R=(-4, 0, 0), foot_R=(-40, 0, 0),
@@ -70,7 +70,7 @@ LAUNCH_UP = dict(
     upperarm_R=(-24, 16, 0), forearm_R=(6, 0, 0), hand_R=(-20, 0, 0),
     upperarm_L=(-24, -16, 0), forearm_L=(6, 0, 0), hand_L=(-20, 0, 0),
     roof_R=(0, -40, 0), roof_L=(0, 40, 0),
-    lid_R=(-10, 10, 0), lid_L=(-10, -10, 0))
+    lid_R=(-5, -5, 0), lid_L=(-5, 5, 0))
 # flight: body pitched forward, roof wings spread, legs trailing
 FLY = dict(LAUNCH_UP, pelvis=(-8, 0, 0), torso=(-6, 0, 0), head=(18, 0, 0),
            thigh_R=(-14, 6, 0), shin_R=(-22, 0, 0), thigh_L=(-6, -6, 0), shin_L=(-30, 0, 0),

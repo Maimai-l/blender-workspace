@@ -30,6 +30,7 @@ class Part:
         self.mesh = None
         self.index = -1
         self.world = False          # True: fixed in the world (ground growth), ignores the root
+        self.scale = 1.0            # uniform scale of the part (and everything parented to it)
 
 
 class Rig:
@@ -94,6 +95,8 @@ class Rig:
                 if rr is not None:
                     r = (rr[0], -rr[1], -rr[2])     # mirror the rotation
             L = mat4(rot_matrix(*r), p.joint)
+            if p.scale != 1.0:
+                L = L @ np.diag([p.scale, p.scale, p.scale, 1.0]).astype(np.float32)
             if p.world:
                 mats[nm] = L
             elif p.parent is None or p.parent == '':

@@ -129,7 +129,7 @@ class DebrisBurst:
 
     def __init__(self, name, origin, frame0, count=40, kinds=None, size=(4.0, 16.0),
                  direction=(0, -1), spread=1.2, speed=(8.0, 22.0), gravity=1.2, spin=0.35,
-                 light=(0.55, -0.83), ground=None, bounce=0.3, friction=0.6, on=2, trails=0.25,
+                 light=(0.55, -0.83), ground=None, bounce=0.3, friction=0.6, on=2, trails=0.0,
                  origin_radius=0.0, ink=1.0, life=90, delay=0.0, trail_palette=None, flat_origin=None):
         self.name = name
         self.frame0 = int(frame0)

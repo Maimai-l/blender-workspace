@@ -21,7 +21,7 @@
       ],
       "blend": "normal",
       "coverage": 1.0,
-      "note": "gold sunrise sky, sun at upper right; opaque"
+      "note": "amber-to-blue dawn sky; bright sun disc with a painted halo at upper right (where the trail ends); opaque"
     },
     {
       "name": "high_clouds",
@@ -36,7 +36,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.1,
+      "coverage": 0.122,
       "note": "large sculpted cloud forms + soft lenses, upper left (clear of the trail)"
     },
     {
@@ -68,7 +68,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.425,
+      "coverage": 0.416,
       "note": "the far sea of clouds: irregular cumulus of varied scale in perspective"
     },
     {
@@ -84,7 +84,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.084,
+      "coverage": 0.09,
       "note": "sculpted cumulus banks rising from the sea (right half)"
     },
     {
@@ -100,7 +100,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.102,
+      "coverage": 0.136,
       "note": "big near cumulus at the bottom right"
     },
     {
@@ -116,19 +116,19 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.057,
+      "coverage": 0.055,
       "note": "forest canopy tops at the bottom-left edge (the launch point of the trail)"
     }
   ],
-  "seconds": 15.6,
+  "seconds": 22.3,
   "layer_seconds": {
-    "sky": 3.3,
-    "high_clouds": 1.5,
-    "ridge": 1.8,
-    "cloud_sea": 4.1,
-    "clouds_mid": 1.3,
-    "clouds_near": 1.6,
-    "fg": 1.5
+    "sky": 7.3,
+    "high_clouds": 2.4,
+    "ridge": 1.9,
+    "cloud_sea": 4.6,
+    "clouds_mid": 1.7,
+    "clouds_near": 2.0,
+    "fg": 1.7
   },
   "sun": [
     2010.0,

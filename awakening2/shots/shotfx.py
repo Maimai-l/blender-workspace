@@ -296,12 +296,7 @@ class Base:
             a_, b_ = self.fade_out
             if t > a_:
                 fo = 1 - ease((t - a_) / (b_ - a_))
-                # fade out through a cool dark, not a muddy olive: desaturate and cool as it darkens
-                lum = rgb.mean(-1, keepdims=True)
-                cool = lum * np.array([0.78, 0.88, 1.12], np.float32)
-                k = 1 - fo
-                rgb = rgb * (1 - k) + cool * k
-                fade = min(fade, fo)
+                fade = min(fade, fo)               # straight to black
         return rgb * fade
 
     def robot_extra(self, robot_rgb, a, rgb, f, t, ctx):
@@ -546,11 +541,11 @@ class S05(Base):
 
     def setup(self):
         self.pebbles = fx.DebrisBurst('S05_hop', origin=(960, 900), frame0=8, count=26,
-                                      kinds={'pebble': 0.5, 'crumb': 0.4, 'moss': 0.1}, size=(5, 14),
+                                      kinds={'pebble': 0.5, 'crumb': 0.4, 'moss': 0.1}, size=(8, 20),
                                       direction=(0, -1), spread=1.6, speed=(3, 7), gravity=0.9,
                                       ground=930, bounce=0.35, origin_radius=520)
         self.pebbles2 = fx.DebrisBurst('S05_hop2', origin=(900, 950), frame0=30, count=20,
-                                       kinds={'pebble': 0.6, 'crumb': 0.4}, size=(4, 12),
+                                       kinds={'pebble': 0.6, 'crumb': 0.4}, size=(7, 17),
                                        direction=(0, -1), spread=1.4, speed=(3, 8), gravity=0.9,
                                        ground=990, bounce=0.3, origin_radius=600)
         self.dust = fx.GroundDust('S05_dust', start=(1200, 960), direction=(-1, 0), frame0=20,
@@ -754,7 +749,11 @@ class S10(Base):
     ground = False
     light_az, light_el = 150, 68      # from the canopy gap above: the upturned face catches it
     def glow(self, tq):
-        return 0.7 + 0.3 * ease((tq - 1.6) / 0.8)
+        if tq < 2.2:
+            return 0.7 + 0.3 * ease((tq - 1.4) / 0.7)
+        if tq < 2.3:
+            return 1.75                    # the flare as it resolves
+        return 1.4
     def robot_state(self, tq):
         return ('glow', round(self.glow(tq), 2))
     def style(self, tq, cam):
@@ -809,7 +808,7 @@ class Engines:
 
 
 class S12(Base):
-    eye_glow = 1.0
+    eye_glow = 1.4          # resolute after S10: white-hot cores
     painting = 'S12'
     fallback = ('S01', (0.0, 1500.0), 1.0, 4)
     robot_depth = 0.55
@@ -842,7 +841,7 @@ class S12(Base):
 
 
 class S13(Base):
-    eye_glow = 1.0
+    eye_glow = 1.4          # resolute after S10: white-hot cores
     painting = 'S13'
     haze_auto = False
     haze = 0.08
@@ -909,7 +908,7 @@ class S13(Base):
 
 class S14(Base):
     """Launch: anticipation hold, smears, impact frames, exit upward."""
-    eye_glow = 1.0
+    eye_glow = 1.4          # resolute after S10: white-hot cores
     vines = False
     painting = 'S08'
     fallback = ('S01', (0.0, 1860.0), 1.0, 0)
@@ -1004,7 +1003,7 @@ class S14(Base):
 class S15(Base):
     """From below: it tears up through the canopy gap; the canopy bursts; leaves rain down."""
     ground_growth = False
-    eye_glow = 1.0
+    eye_glow = 1.4          # resolute after S10: white-hot cores
     painting = 'S11'
     ground = False
     vines = False
@@ -1083,7 +1082,7 @@ class S15(Base):
 class S16B(Base):
     """Golden sky: the robot climbs along a big S-curve to the sun; the trail of light and mist."""
     ground_growth = False
-    eye_glow = 1.0
+    eye_glow = 1.4          # resolute after S10: white-hot cores
     painting = 'S16'
     win0 = (400.0, 0.0)
     haze_auto = False
@@ -1164,7 +1163,7 @@ class S16B(Base):
 class S16A(Base):
     """Tracking beside the climbing robot: it fills the frame; sky and clouds stream past."""
     ground_growth = False
-    eye_glow = 1.0
+    eye_glow = 1.4          # resolute after S10: white-hot cores
     painting = 'S16A'
     fallback = ('S16', (0.0, 120.0), 1.7, 0)
     ground = False
@@ -1212,9 +1211,9 @@ class S16A(Base):
                                    glow=0.3)
         d = (-0.93, 0.37)
         self.leaves = fx.LeafBurst('S16A_leaves', origin=(1000, 420), frame0=0, count=70, direction=d,
-                                   spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=260, wind=(-0.7, 0.28))
+                                   spread=1.1, speed=(18, 34), size=(18, 34), origin_radius=260, wind=(-0.7, 0.28))
         self.leaves2 = fx.LeafBurst('S16A_leaves2', origin=(900, 500), frame0=30, count=50, direction=d,
-                                    spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=300, wind=(-0.7, 0.28))
+                                    spread=1.1, speed=(18, 34), size=(18, 34), origin_radius=300, wind=(-0.7, 0.28))
         self.debris = fx.DebrisBurst('S16A_soil', origin=(980, 460), frame0=2, count=60,
                                      kinds={'clod': 0.3, 'crumb': 0.3, 'moss': 0.25, 'vine': 0.15}, size=(5, 16),
                                      direction=d, spread=0.9, speed=(16, 36), gravity=0.0, origin_radius=240)

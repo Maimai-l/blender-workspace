@@ -56,33 +56,67 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- sky
     cv = P.layer('sky', 0.0)
-    stops = [C(196, 164, 194), C(236, 180, 162), C(250, 198, 136), C(255, 210, 128), C(255, 222, 146),
-             C(255, 232, 172), C(255, 236, 190)]
-    pos = [0.0, 0.1, 0.24, 0.4, 0.55, 0.68, 1.0]
-    sky(cv, rng, stops, pos, sun=SUN, glow=(1000, C(255, 238, 186), 1.0), tilt=0.12, n_strokes=0.8,
-        stroke_w=(24, 80), stroke_len=(260, 900), angle=-0.06)
-    glow(cv, SUN[0], SUN[1], 520, C(255, 236, 170), 0.35)
-    # long thin high cloud streaks in the upper left (lilac tops, gold undersides)
+    # an amber-to-blue dawn: clear blue-violet high up (strongest at the upper left, away from the sun),
+    # lilac-rose, peach, then amber and gold down to the cloud sea; the whole sky warms toward the sun
+    stops = [C(70, 92, 168), C(104, 118, 186), C(160, 146, 196), C(222, 168, 172), C(248, 184, 132),
+             C(255, 198, 112), C(255, 214, 136), C(255, 226, 168)]
+    pos = [0.0, 0.08, 0.2, 0.32, 0.44, 0.54, 0.64, 1.0]
+    X, Y = cv.coords()
+    dsun = np.hypot(X - SUN[0], (Y - SUN[1]) * 1.15)
+    warp = (fbm(cv.shape[0], cv.shape[1], 700, rng, octaves=3) - 0.5) * 0.04
+    t = Y / float(H) + 0.1 * (X / float(W) - 0.5) + 0.14 * np.exp(-(dsun / 900.0) ** 2) + warp
+    base = ramp(stops, np.clip(t, 0, 1), pos)
+    # warm glow around the sun: amber far out, gold nearer, pale cream at the core
+    for (r_, col_, k_) in [(1300, C(255, 196, 120), 0.45), (650, C(255, 214, 140), 0.55), (260, C(255, 238, 196), 0.7)]:
+        g_ = np.exp(-(dsun / r_) ** 2) * k_
+        base = mix(base, col_, g_[..., None])
+    cv.img[..., :3] = base
+    cv.img[..., 3] = 1.0
+    # brushed over with broad strokes that sample the sky (paint, not a gradient)
+    n = 900
+    xs = rng.uniform(-0.05, 1.05, n) * W
+    ys = rng.uniform(-0.05, 0.75, n) * H
+    ix = np.clip((xs + cv.m).astype(int), 0, cv.shape[1] - 1)
+    iy = np.clip((ys + cv.m).astype(int), 0, cv.shape[0] - 1)
+    cols = jitter(base[iy, ix], rng, dl=0.02, dc=0.1, dh=0.04)
+    for k in range(n):
+        L = rng.uniform(260, 900)
+        a_ = -0.06 + rng.normal(0, 0.05)
+        dx_, dy_ = np.cos(a_) * L / 2, np.sin(a_) * L / 2
+        stroke(cv, [[xs[k] - dx_, ys[k] - dy_], [xs[k], ys[k] + rng.normal(0, 8)], [xs[k] + dx_, ys[k] + dy_]],
+               taper(12, 0.35, 0.25, rng.uniform(24, 80)), cols[k], opacity=rng.uniform(0.25, 0.55), edge=0.55,
+               bristle=0.6, rag=0.25, spacing=6.0, rng=rng)
+    # long thin high cloud streaks in the upper left (cool lilac bodies, warm undersides)
     for k in range(7):
         y0 = rng.uniform(60, 330)
         x0 = rng.uniform(-100, 1100)
         L = rng.uniform(500, 1100)
         if trail_dist(x0 + L / 2, y0) < 140:
             continue
-        n = 10
-        xs = np.linspace(x0, x0 + L, n)
-        ys = y0 + np.cumsum(rng.normal(0, 6, n)) - np.linspace(0, L * 0.06, n)
+        n_ = 10
+        xs_ = np.linspace(x0, x0 + L, n_)
+        ys_ = y0 + np.cumsum(rng.normal(0, 6, n_)) - np.linspace(0, L * 0.06, n_)
         th = rng.uniform(8, 22)
-        base = mix(C(214, 170, 180), C(246, 196, 160), (y0 / 330))
+        base_c = mix(C(150, 140, 196), C(222, 172, 176), (y0 / 330))
         for j in range(5):
             off = (j - 2) * th * 0.35
-            c = mix(base, C(255, 224, 180), np.clip(j / 4, 0, 1) * 0.8)
-            stroke(cv, np.stack([xs + rng.normal(0, 10, n), ys + off], 1), taper(n, 0.2, 0.1, th * rng.uniform(0.5, 1.0)),
+            c = mix(base_c, C(255, 214, 170), np.clip(j / 4, 0, 1) * 0.8)
+            stroke(cv, np.stack([xs_ + rng.normal(0, 10, n_), ys_ + off], 1), taper(n_, 0.2, 0.1, th * rng.uniform(0.5, 1.0)),
                    jitter(c, rng, 1, dl=0.02)[0], opacity=rng.uniform(0.25, 0.55), edge=0.6, bristle=0.7, rag=0.3,
                    rng=rng)
-    sun_disc(cv, SUN[0], SUN[1], 46, rng=rng)
-    glow(cv, SUN[0], SUN[1], 260, C(255, 244, 214), 0.6)
-    P.add('sky', 0.0, cv, 'gold sunrise sky, sun at upper right; opaque')
+    # the sun: a painted halo (soft concentric bands of warm light, brushed), a bright disc with a hot core
+    for (rr_, col_, op_, n_) in [(300, C(255, 222, 160), 0.1, 50), (190, C(255, 234, 184), 0.16, 40),
+                                 (120, C(255, 244, 214), 0.24, 30)]:
+        aa = rng.uniform(0, 2 * np.pi, n_)
+        rd = rr_ * np.sqrt(rng.uniform(0.3, 1.0, n_))
+        dabs(cv, SUN[0] + np.cos(aa) * rd * 0.6, SUN[1] + np.sin(aa) * rd * 0.6, rng.uniform(rr_ * 0.6, rr_ * 1.1, n_),
+             jitter(np.broadcast_to(col_, (n_, 3)), rng, dl=0.02, dc=0.06), aspect=rng.uniform(0.7, 1.0, n_),
+             angle=rng.uniform(0, np.pi, n_), opacity=op_, edge=0.95, rag=0.35, bristle=0.4, rng=rng)
+    glow(cv, SUN[0], SUN[1], 150, C(255, 246, 220), 0.55)
+    sun_disc(cv, SUN[0], SUN[1], 52, col=C(255, 252, 238), halo=C(255, 236, 190), rng=rng)
+    dabs(cv, [SUN[0]], [SUN[1]], [72], C(255, 255, 248), aspect=1.0, edge=0.35, rag=0.0, bristle=0.0, rng=rng)
+    P.add('sky', 0.0, cv, 'amber-to-blue dawn sky; bright sun disc with a painted halo at upper right '
+          '(where the trail ends); opaque')
 
     # ---------------------------------------------------------------- high clouds (upper left, calm)
     cv = P.layer('high_clouds', 0.08)

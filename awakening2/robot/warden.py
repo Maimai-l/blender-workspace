@@ -219,6 +219,7 @@ def sdf_forearm(p):
 
 
 HAND_VERSION = '2'
+HEAD_SCALE = 1.15
 
 
 def _finger(p, base, d1, d2, w):
@@ -304,7 +305,8 @@ def build(voxel=0.06, head_voxel=0.03):
     r.add(Part('grille', 'torso', (0, 0, 0), sdf_grille, (-1.6, 3.3, 3.0), (1.6, 3.9, 5.7), v * 0.4, METAL, version=VERSION))
     r.add(Part('bells', 'torso', (0, 0, 0), sdf_bells, (-3.0, -6.0, 2.0), (3.0, -2.8, 6.2), v, METAL, version=VERSION))
     r.add_pair('roof', 'torso', ROOF_PIVOT, sdf_roof_half, (-0.5, -3.4, -4.2), (6.4, 2.3, 1.4), v * 0.8, ROOF, version=VERSION)
-    r.add(Part('head', 'torso', (0, 1.2, 7.35), sdf_head, (-2.5, -1.7, -0.6), (2.5, 3.0, 3.5), hv, PAINT, version=VERSION))
+    hd = r.add(Part('head', 'torso', (0, 1.25, 7.7), sdf_head, (-2.5, -1.7, -0.6), (2.5, 3.0, 3.5), hv, PAINT, version=VERSION))
+    hd.scale = HEAD_SCALE          # a bigger head, raised so the eyes clear the shoulder plates
     r.add(Part('earhubs', 'head', (0, 0, 0), sdf_earhubs, (-2.5, -0.1, 0.6), (2.5, 1.0, 1.8), hv, BRASS, version=VERSION))
     r.add(Part('eyes', 'head', (0, 0, 0), sdf_eyes, (-1.3, 1.4, 0.6), (1.3, 2.6, 1.8), hv * 0.6, LENS, version=VERSION))
     r.add_pair('lid', 'head', EYE_C, sdf_lid, (-0.7, -0.7, -0.7), (0.7, 0.7, 0.7), hv * 0.5, LIDS, version=VERSION)
@@ -484,6 +486,13 @@ def eye_colour(o, glow, lit):
         e_rim, e_mid, e_core = hexc('6e2a22'), hexc('a9442a'), hexc('d9702f')
         b_rim, b_mid, b_core = hexc('e08436'), hexc('ffb552'), hexc('fff3c8')
         rim = e_rim * (1 - g) + b_rim * g; mid = e_mid * (1 - g) + b_mid * g; core = e_core * (1 - g) + b_core * g
-        col = np.where((r < 0.36)[:, None], core, np.where((r < 0.7)[:, None], mid, rim))
+        rc, rm = 0.36, 0.7
+        if glow > 1.0:
+            # resolute: a white-hot core that fills more of the lamp
+            h = float(np.clip(glow - 1.0, 0, 1))
+            core = core * (1 - h) + hexc('fffcef') * h
+            mid = mid * (1 - h) + hexc('ffd27a') * h
+            rc, rm = 0.36 + 0.16 * h, 0.7 + 0.1 * h
+        col = np.where((r < rc)[:, None], core, np.where((r < rm)[:, None], mid, rim))
         out = col.astype(np.float32)
     return out.astype(np.float32)

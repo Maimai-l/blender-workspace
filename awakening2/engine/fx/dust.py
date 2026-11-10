@@ -391,6 +391,10 @@ class DustPuff:
             self.tone_alpha = palettes.TONE_ALPHA['soil']
             self.dust_life = int(min(self.life, 18))
             self.line = min(self.line, 1.5)
+        elif style == 'wall':
+            # opaque 3-tone dust wall (launch): warm lit tops, cool underside, hard tone edges
+            self.palette = palettes.DUST_WALL
+            self.line = min(max(self.line, 2.0), 3.0)
         g = core.rng('dustpuff', name)
         a0 = math.atan2(direction[1], direction[0])
         u = (np.arange(n) + g.uniform(0.2, 0.8, n)) / n          # stratified across the fan
@@ -430,6 +434,8 @@ class DustPuff:
                 k += 1
         if style == 'soil':
             self.rad = self.rad * 0.62                            # only a little dust
+        if style == 'wall':
+            self.rise = min(self.rise, 0.12)                       # the wall rolls out, it does not rise
         self.aspect = aspect
         self.delay = g.uniform(0, 0.05, n) + 0.04 * edge
         self.brk = g.uniform(-0.08, 0.08, n)
@@ -625,6 +631,14 @@ class GroundDust:
             self.tone_alpha = palettes.TONE_ALPHA['soil']
             self.life = max(10, int(self.life * 0.65))           # earthy dust settles fast
             self.line = min(self.line, 1.5)
+        elif style == 'wall':
+            # an opaque rolling wall: a bigger head, tail billows that stay low and long enough to
+            # join into one continuous lumpy wall behind the front
+            self.palette = palettes.DUST_WALL
+            self.life = int(self.life * 1.7)
+            self.line = min(max(self.line, 2.0), 3.0)
+            head = max(head, 4)
+        self.wall = style == 'wall'
         self.nh = head
         self.nsp = int(math.ceil(self.duration / on)) + 1
         n = head + self.nsp
@@ -636,6 +650,8 @@ class GroundDust:
         self.lj = g.uniform(0.8, 1.2, n)
         self.hoff = np.array([[-0.15, 0.62, 0.0], [-0.75, 0.48, -0.15], [0.32, 0.34, 0.25],
                               [-1.2, 0.38, -0.3]])[:head]
+        if head > len(self.hoff):
+            self.hoff = np.concatenate([self.hoff, np.array([[-1.6, 0.42, -0.35]] * (head - len(self.hoff)))])
         self.bil = _Billow(name, n, (4, 7))
 
     def front(self, age):
@@ -692,6 +708,17 @@ class GroundDust:
             sc = 1 + self.grow * s_b / max(self.distance, 1)
             h = self.height * sc * (0.40 + 0.60 * (v_b / vmax) ** 0.6) * self.u[i]
             s = s_b - 0.45 * self.height * sc + h * self.fw[i] + h * 0.5 * (1 - math.exp(-a / 5.0)) * (v_b / vmax)
+            if self.wall:
+                h = h * 1.25
+                R = h * 0.5 * (0.6 + 0.4 * ease_out(min(1, a / 8), 2)) * (1 + 0.2 * t)
+                lat = self.lat[i] * self.depth * h * 0.5
+                x, y = self._place(s, R, lat)
+                GY.append(self._gy if t < 0.7 else self._gy + 1e6)
+                ids.append(i); PX.append(x); PY.append(y - h * 0.12 * t); RR.append(R)
+                BR.append(smoothstep(0.62, 1.0, t + self.brk[i]))
+                PH.append(sgn * TAU * self.roll * 0.4 * a / 18.0)
+                Z.append(b + lat * 0.05)
+                continue
             R = h * 0.46 * (0.55 + 0.45 * ease_out(min(1, a / 8), 2)) * (1 + 0.3 * t)
             lat = self.lat[i] * self.depth * h
             x, y = self._place(s, R, lat)
@@ -796,6 +823,9 @@ class DustVeil:
             base = palettes.DUST_WARM
         elif style == 'soil':
             base = palettes.SOIL_DUST
+        elif style == 'wall':
+            base = palettes.DUST_WALL
+            opacity = max(opacity, 0.95)                         # a solid back row of the wall
         P = np.asarray(base, np.float32).copy()
         P[1] = P[2] * 0.55 + P[1] * 0.45            # 2 tones: a light top and a cool underside
         P[2] = P[1]

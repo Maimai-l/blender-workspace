@@ -15,6 +15,15 @@ SMOKE = pal('#56505f', '#857c88', '#b8adae', '#3c3644')       # engine sputter s
 STEAM = pal('#9b98b4', '#d8d2d6', '#fbf6ec', '#7b789a')       # pale exhaust / mist
 TRAIL_MIST = pal('#c4b4dc', '#f7dfcf', '#fffaf0', '#a898c8')  # climax trail mist: soft lilac shadows
 VEIL = pal('#8d7a86', '#bea084', '#e8d2aa', '#6f5b69')        # thin dust veil behind soil
+SOIL_DUST = pal('#4a3d3c', '#6e5d52', '#9a8670', '#3a2e2c')   # earthy brown-grey soil dust (round 6)
+DUST_WARM = pal('#8a8088', '#b3a89f', '#eadcc4', '#7a7078')   # translucent warm grey blast / wash dust
+WIND_WHITE = pal('#c9cfd6', '#eef0ee', '#ffffff', '#b8c0c8')  # wind ring brush strokes and mist
+
+# tone opacities (shadow, mid, lit) for the translucent styles
+WIND_DUST = pal('#a9a6a8', '#d6d1c9', '#f6f1e6', '#9a979b')   # light mist / dust thrown by the wind ring
+
+TONE_ALPHA = {'dust': (0.6, 0.62, 0.86), 'soil': (0.8, 0.86, 0.94), 'mist': (0.3, 0.38, 0.5),
+              'wind': (0.42, 0.48, 0.74)}
 
 # --- debris: lit, shade, ink ------------------------------------------------------------------
 INK = hexc('#23161d')

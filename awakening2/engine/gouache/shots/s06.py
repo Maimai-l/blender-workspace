@@ -41,15 +41,22 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- far crowns (hazier, lower)
     cv = P.layer('canopy_far', 0.4)
-    b = Blobs()
-    for x in np.linspace(-120, 2040, 16):
-        top = 690 + 110 * np.sin(x / 260 + 1.0) + rng.normal(0, 40)
-        layered_mass(b, rng, x + rng.normal(0, 40), top + 60, rng.uniform(90, 140), flat=0.8, droop=0.2)
-    leafy_mass(cv, rng, b, 0.3, C(255, 214, 180), (0.0, -0.3, -0.9), (0.0, -1.0), 8, density=0.9, trans_amt=0.6,
-               rim_vary=1.0,
-               rim_amt=0.9, lz=-0.8,
-               stops=[C(76, 66, 102), C(96, 94, 116), C(124, 128, 108), C(206, 182, 112), C(255, 216, 142)])
-    P.add('canopy_far', 0.4, cv, 'distant crowns along the bottom, glowing edges')
+    # a row of distinct crowns (like the near clumps, but hazier and cooler), separated by small gaps,
+    # with varied heights; painted in two depth passes so the farther crowns are paler
+    for (dd, n_, Rr, y0_) in [(0.4, 7, (105, 145), 650), (0.26, 8, (95, 135), 730)]:
+        b = Blobs()
+        xs_ = np.linspace(-150, 2070, n_) + rng.normal(0, 90, n_)
+        for x in xs_:
+            top = y0_ + 90 * np.sin(x / 300 + 1.0 + dd * 5) + rng.normal(0, 35)
+            if ((x - OPEN[0]) / (OPEN[2] * 1.05)) ** 2 + ((top - OPEN[1]) / (OPEN[3] * 1.05)) ** 2 < 1:
+                top += 140                                      # keep the flock's sky open
+            layered_mass(b, rng, x + rng.normal(0, 30), top + 60, rng.uniform(*Rr), flat=0.75, droop=0.25)
+        stops = [aerial(c, dd, C(206, 212, 182)) for c in (C(34, 44, 58), C(46, 66, 70), C(72, 102, 76),
+                                                           C(156, 158, 86), C(236, 206, 116))]
+        leafy_mass(cv, rng, b, 0.0, HAZE, (0.0, -0.3, -0.85), (0.0, -1.0), 12, density=0.9, trans_amt=0.6,
+                   rim_amt=0.9, rim_vary=1.0, lz=-0.8, stops=stops)
+    P.add('canopy_far', 0.4, cv, 'mid-distance crowns painted like the near clumps, hazier and cooler, '
+          'varied rims; the upper middle stays open for the flock')
 
     # ---------------------------------------------------------------- near canopy edge + branches
     cv = P.layer('canopy', 0.85)

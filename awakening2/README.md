@@ -61,29 +61,29 @@ and layouts: `board/`, style frame: `style/`, QA sheets: `qa/<version>/`.
 
 ## Self-assessment (updated every version)
 
-Where it beats The Moss Keeper (judged on the side-by-side sheets in `qa/<version>/` and an
-independent review, `notes/review_v1.md`):
-- **Backgrounds and air.** Painted per shot in screen space, unique trees, layered mist, golden
-  light shafts, plane-painted clouds; the benchmark reuses one forest set and stamps its cloud
-  bands and conifers.
-- **A designed robot with a readable face.** A distinctive shrine-roof silhouette, lidded lamp
-  eyes that carry the waking (dormant → ember → gold), a furnace grille; weathered paint,
-  rust runs, lichen, moss with fringed colour-traced lines, grass and flowers growing out of it.
-- **Line.** Lines traced from the passes sit exactly on the fills, with a weight hierarchy
-  (heavy silhouette, light interior, colour-trace on moss) and pressure; the benchmark has thin
-  uniform lines and mesh edges cutting across forms.
-- **The story beats, in order:** a vista, the reveal, the bird landing, the first ray across the
-  shut eyes, the chest furnace waking, the tremor, the flock, the eyes opening, a three-shot rise,
-  the head lifting to the gap, the engines, the ring of wind, the launch (anticipation, smears,
-  impact frames, blast), the climb through the canopy, the tracking flight and the trail to the sun.
+Three independent reviews (fresh agents given only the two films, our QA sheets and the brief)
+scored the films on eight criteria. v1: benchmark 5.4, ours 4.3. v4: benchmark 6.1, ours 5.8.
+v7: **ours 6.4, benchmark 5.9** — ours ahead on composition, colour, timing, effects, climax and
+backgrounds; the benchmark still ahead on robot design and line. v10 targets exactly those two.
+
+Where it beats The Moss Keeper:
+- **Light and depth.** Backgrounds painted per shot in screen space with layered mist and real
+  sunrise light; the benchmark reuses one clearing with clone trees.
+- **Timing.** The robot is drawn on 2s/3s from key poses with holds, overlapping action on the
+  head, lids, hands and roof; camera shake only on impacts; impact frames and smears at the
+  launch. The benchmark's robot barely changes pose.
+- **The beats, staged.** Bird landing, first ray across the face, furnace heartbeat, the eyes
+  opening with a blink, a three-angle rise from a real kneel, the head lifting to the gap, the
+  engines, the wind ring bending the forest, the launch, the climb through the canopy, the
+  hero flight and the trail to the sun, the empty imprint with the bird.
+- **Effects.** Drawn flames, soil sheets and clods, translucent dust, a dry-brush wind ring,
+  leaves and debris, all in 2–3 tones on 2s.
 
 Where it still falls short:
-- The robot is a rigid-part machine; its poses are clean but the motion between keys is
-  interpolated rather than hand-drawn breakdowns (overlap from lagging parts, vines and debris
-  helps).
-- Painted clouds, ferns and canopies still repeat a few brush shapes in places.
-- Effects are drawn shapes in 2–3 tones but share one billow vocabulary.
-- Sound is synthesized; the strings and horns are good synths, not an orchestra.
+- The robot is still built from clean primitives; plate seams, rivets, rust runs and ground
+  growth help, but it is less iconic than the benchmark's design.
+- Some painted foliage repeats its brush shapes (S00, S06 mid canopy).
+- The sound is synthesized; good, but not an orchestra.
 
 ## Version history
 
@@ -223,3 +223,27 @@ robot read as a red vinyl toy, the film moved like CG, and the hero vanished at 
   small discs side by side read as a pair of eyes).
 - **Sound:** a soft servo-and-click blink in S07.
 - (The session was paused 17:25–19:35 by a usage limit; v9 had finished rendering on the PC.)
+
+### v10 (20:15)
+Fixes from the third independent review (`notes/review_v7.md`: ours 6.4, benchmark 5.9; it
+said the robot read as a dim maroon toon model with a thin contour, the hero flight was a dark
+lump, the rise wide lost the head in the canopy, and the flock and S10 moved like CG).
+- **The robot catches the sunrise:** a lighter, warmer weathered red-ochre (dark maroon only in
+  the deep shadow), lighter faded paint and rust in the same family, the roof's shadow a deep
+  green so gaps in the moss read as shade, not holes.
+- **The contour survives the air:** haze and light wrap used to wash the outline into the
+  background; the drawn line is now put back after them (75 % of its darkness, tinted by the
+  air), so the silhouette is again the heaviest line in every shot.
+- **Hero flight (S16A) re-staged:** front-lit by the sun ahead, closer and lower, the whole
+  robot in frame, drawn key poses with holds on 2s (out of the canopy; arms swept back with
+  the head up to the sun; a balancing arm; swept back again), no glow over the chest.
+- **Rise wide (S09):** a wider camera so the head clears the canopy and the full figure, feet
+  and hands read. **S10:** the camera holds while the head lifts on 2s (no 3D tilt).
+  **S01:** the tilt moves like a hand-cranked rostrum (short ease, constant speed).
+- **Launch (S14):** the engines are already roaring in the crouch (continuity with S13), with
+  no glow veiling the robot. **S15:** a slower climb, so the robot stays in the gap longer
+  (sound retimed to the new crossing).
+- **Vines and the flock:** vines sway with per-vine gusts; leaves in three greens, shadow
+  leaves darker and without outlines. The flock is drawn on 2s as hard-edged silhouettes.
+- **S17:** the bird's breast stays white in shadow (its overridden colour now drives the
+  shadow tone).

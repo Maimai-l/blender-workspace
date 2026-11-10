@@ -114,6 +114,14 @@ compilation (cached in `__pycache__` afterwards).
 - `forest.character()` — individual features for near trunks: knot holes with lit lips,
   bracket fungi, a hollow between buttress roots, ivy in distinct climbing bands, moss
   cushions on the root flare (`giant(..., traits=dict(...))`; S08, S09).
+- `backlit.py` — canopy undersides against the light (round 7, S11/S15): `backlit_masses()`
+  paints leaf masses as translucent foliage. Thickness inside the silhouette (with clumping
+  noise) and the light reaching each mass (strong near the gap) give the transmitted light;
+  it is cut into ragged painted bands from deep cool green to glowing yellow-green, with
+  per-mass translucency and hue, dark overlapping leaves in the bright parts, glowing
+  leaves near edges, leaves breaking the silhouette, and a rim that differs per mass
+  (none / a few hot leaves / a soft glow, in varied colours, never a continuous line).
+  `haze_veil()` and `light_shafts()` paint glowing air between the canopy storeys.
 - `imprint.py` — `paint_imprint()`: depressions pressed into the floor (round 6, S17):
   bowls and capsules in a foreshortened ground frame -> height field with a raised soil
   lip -> sun lighting with a cast shadow from the far rim -> flat painted soil planes,

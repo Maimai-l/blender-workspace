@@ -246,7 +246,7 @@ class _Billow:
 def paint_groups(canvas, groups, holes, palette, light, centre, size, line=2.5, wob=0.05,
                  opacity=1.0, bias=0.0, vert=0.45, contrast=1.0, layer=None, ref_r=None,
                  alpha=1.0, inner=0.0, local=0.0, group_bias=None, texture=0.0, tex_anchor=None,
-                 tex_scale=1.0, wisps=None):
+                 tex_scale=1.0, wisps=None, tone_alpha=None):
     """Paint billow groups [(z, lobes, r0[, i[, ground_y]])] as one cel layer onto the canvas.
 
     lobes: rows (cx, cy, r, wp) or (cx, cy, r, wp, sx, sy, ang, bx, by, br).
@@ -302,10 +302,31 @@ def paint_groups(canvas, groups, holes, palette, light, centre, size, line=2.5, 
     bb.paint(layer, palette, light)
     if holes:
         cut_holes(layer, holes)
+    if tone_alpha is not None and not layer.empty:
+        _apply_tone_alpha(layer, palette, tone_alpha)
     if texture > 0:
         core.brush_grain(layer, texture, centre if tex_anchor is None else tex_anchor, tex_scale, light)
     layer.onto(canvas, opacity)
     return canvas
+
+
+def _apply_tone_alpha(layer, palette, tone_alpha):
+    """Make a finished (opaque) billow cel translucent per tone: the tone of each pixel is read
+    back from its luminance between the shadow and lit colours, so overlapping lobes inside the
+    cel do not show as darker circles - the whole cel is one translucent mass."""
+    P = np.asarray(palette, np.float32)
+    wl = np.array([0.3, 0.59, 0.11], np.float32)
+    ls, lm, ll = float(P[0] @ wl), float(P[1] @ wl), float(P[2] @ wl)
+    buf = layer.buf
+    a = buf[..., 3]
+    m = a > 1e-4
+    if not m.any():
+        return
+    lum = (buf[..., :3] @ wl) / np.maximum(a, 1e-4)
+    ta = np.asarray(tone_alpha, np.float32)
+    f = np.interp(lum, [min(ls, lm), max(ls, lm) if lm > ls else ls + 1e-3, ll if ll > lm else lm + 1e-3],
+                  [ta[0], ta[1], ta[2]]).astype(np.float32)
+    buf *= np.where(m, f, 1.0)[..., None]
 
 
 def paint_rows(canvas, rows, holes, palette, light, centre, size, line=2.5, wob=0.05,
@@ -334,7 +355,7 @@ class DustPuff:
     def __init__(self, name, origin, frame0, size=150.0, direction=(0, -1), spread=2.6, life=40,
                  n=9, light=(0.55, -0.83), palette=None, ground=None, rise=0.25, drift=(0.0, 0.0),
                  roll=0.5, line=2.5, on=2, opacity=1.0, wobble=0.05, sub=(4, 7), bias=0.0,
-                 aspect=0.7, vert=0.45, arms=0.9, texture=0.0, main=None, bits=None):
+                 aspect=0.7, vert=0.45, arms=0.9, texture=0.0, main=None, bits=None, style=None):
         self.name = name
         self.origin = np.asarray(origin, np.float64)
         self.frame0 = int(frame0)
@@ -354,6 +375,20 @@ class DustPuff:
         self.bias = bias
         self.vert = vert
         self.texture = texture
+        # round 6 looks: 'soil' = dark clods + dirt sprays + a little short-lived brown-grey dust;
+        # 'dust' = translucent warm grey with denser lit crowns (blast / engine wash)
+        self.style = style
+        self.tone_alpha = None
+        self.dust_life = self.life
+        if style == 'dust':
+            self.palette = palettes.DUST_WARM
+            self.tone_alpha = palettes.TONE_ALPHA['dust']
+            self.line = 0.0
+        elif style == 'soil':
+            self.palette = palettes.SOIL_DUST
+            self.tone_alpha = palettes.TONE_ALPHA['soil']
+            self.dust_life = int(min(self.life, 18))
+            self.line = min(self.line, 1.5)
         g = core.rng('dustpuff', name)
         a0 = math.atan2(direction[1], direction[0])
         u = (np.arange(n) + g.uniform(0.2, 0.8, n)) / n          # stratified across the fan
@@ -391,6 +426,8 @@ class DustPuff:
                 big = (k % 2 == 0)
                 self.rad[i] = size * (g.uniform(0.3, 0.4) if big else g.uniform(0.13, 0.21)) * (1.0 - 0.3 * edge[i])
                 k += 1
+        if style == 'soil':
+            self.rad = self.rad * 0.62                            # only a little dust
         self.aspect = aspect
         self.delay = g.uniform(0, 0.05, n) + 0.04 * edge
         self.brk = g.uniform(-0.08, 0.08, n)
@@ -408,13 +445,29 @@ class DustPuff:
         self.bit_r = np.clip(size * g.uniform(0.012, 0.03, nb), 1.2, 9.0)
         self.bit_d = g.integers(0, 4, nb)
         self.bit_tone = g.random(nb) < 0.65
+        if style == 'soil':
+            nc = 20
+            ca = a0 + g.normal(0, spread / 3.0, nc)
+            cs = size * g.uniform(0.045, 0.11, nc)
+            self.clod_v = np.stack([np.cos(ca) * cs, np.sin(ca) * cs * 0.9 - size * 0.035], 1)
+            self.clod_r = np.clip(size * g.uniform(0.035, 0.09, nc), 3.0, 26.0)
+            self.clod_k = ['clod' if g.random() < 0.6 else 'crumb' for _ in range(nc)]
+            self.clod_a = g.uniform(0, 6.28, nc)
+            self.clod_w = g.uniform(-0.35, 0.35, nc)
+            self.clod_shape = [shapes.KINDS[k](core.rng('puffclod', name, i)) for i, k in enumerate(self.clod_k)]
+            ns = 5                                               # dirt sprays: arcs of specks
+            sa = a0 + (np.arange(ns) + g.uniform(0.2, 0.8, ns)) / ns * spread * 0.8 - spread * 0.4
+            ss = size * g.uniform(0.06, 0.1, ns)
+            self.spray_v = np.stack([np.cos(sa) * ss, np.sin(sa) * ss * 0.9 - size * 0.03], 1)
+            self.spray_j = g.normal(0, 1.0, (ns, 14, 2))
+            self.spray_d = g.uniform(0, 5.0, (ns, 14))
 
     def rows(self, frame):
         fh = held(frame, self.on, self.frame0)
         age = fh - self.frame0
-        if age < 0 or age > self.life:
+        if age < 0 or age > self.dust_life:
             return [], [], 0.0, None
-        t = age / self.life
+        t = age / self.dust_life
         idx = np.nonzero(t >= self.delay)[0]
         if len(idx) == 0:
             return [], [], 0.0, None
@@ -435,19 +488,70 @@ class DustPuff:
         w = R ** 2
         C = (np.sum(px * w) / w.sum(), np.sum(py * w) / w.sum())
         op = self.opacity * (1 - smoothstep(0.88, 1.0, t))
+        if self.style == 'dust':
+            op *= 1 - 0.45 * float(smoothstep(0.3, 1.0, t))      # thins as it spreads
         return rows, holes, op, C
 
     def draw(self, canvas, frame, light=None):
+        light = self.light if light is None else light
         rows, holes, op, C = self.rows(frame)
-        if not rows:
-            return canvas
-        paint_groups(canvas, rows, holes, self.palette, self.light if light is None else light,
-                     C, self.size, self.line, self.wobble, op, self.bias, self.vert,
-                     texture=self.texture, tex_anchor=self.origin, tex_scale=self.size / 260.0,
-                     wisps=self._wisps)
-        if self.bits:
-            self._draw_bits(canvas, frame, op)
+        if rows:
+            paint_groups(canvas, rows, holes, self.palette, light,
+                         C, self.size, self.line, self.wobble, op, self.bias, self.vert,
+                         texture=self.texture, tex_anchor=self.origin, tex_scale=self.size / 260.0,
+                         wisps=self._wisps, tone_alpha=self.tone_alpha)
+            if self.bits and self.style != 'soil':
+                self._draw_bits(canvas, frame, op)
+        if self.style == 'soil':
+            self._draw_soil(canvas, frame, light)
         return canvas
+
+    def _draw_soil(self, canvas, frame, light):
+        """Clods thrown on parabolic arcs (2 tones + a thin brown line) and arcs of dirt specks."""
+        fh = held(frame, self.on, self.frame0)
+        age = fh - self.frame0
+        if age < 0 or age > self.life:
+            return
+        grav = self.size * 0.0065
+        gy = self.ground
+        b = core.PolyBatch()
+        col = palettes.DEBRIS['crumb']
+        for k in range(len(self.clod_r)):
+            p = self.origin + self.clod_v[k] * age + np.array([0, 0.5 * grav * age * age])
+            if gy is not None and p[1] > gy:
+                # landed: stays put a moment, then is gone
+                tl = self._land_t(self.clod_v[k, 1], grav, gy - self.origin[1])
+                if tl is None or age - tl > 10:
+                    continue
+                p = self.origin + self.clod_v[k] * tl + np.array([0, 0.5 * grav * tl * tl])
+                p[1] = gy
+                ang = self.clod_a[k] + self.clod_w[k] * tl
+            else:
+                ang = self.clod_a[k] + self.clod_w[k] * age
+            from .debris import add_piece
+            add_piece(b, self.clod_k[k], self.clod_shape[k], p, ang, self.clod_r[k], light, 0.9)
+        for s in range(len(self.spray_v)):
+            for j in range(self.spray_j.shape[1]):
+                t = age - self.spray_d[s, j]
+                if t <= 0:
+                    continue
+                p = self.origin + self.spray_v[s] * t + np.array([0, 0.5 * grav * t * t]) \
+                    + self.spray_j[s, j] * (1.5 + 0.35 * t)
+                if gy is not None and p[1] > gy:
+                    continue
+                r = max(1.2, self.size * 0.016 * (1 - 0.5 * t / self.life))
+                poly = shapes.blob(core.rng('spray', self.name, s, j), n=5, rmin=0.6, rmax=1.0, smooth=0) * r
+                b.add(poly + p, col['shade'] if (j % 3) else col['lit'])
+        b.draw(canvas)
+
+    @staticmethod
+    def _land_t(vy, g, dy):
+        if dy <= 0:
+            return 0.0
+        disc = vy * vy + 2 * g * dy
+        if disc < 0 or g <= 0:
+            return None
+        return (-vy + math.sqrt(disc)) / g
 
     def _draw_bits(self, canvas, frame, op):
         fh = held(frame, self.on, self.frame0)
@@ -486,7 +590,7 @@ class GroundDust:
     def __init__(self, name, start, direction, frame0, distance=600.0, duration=30, height=110.0,
                  life=26, light=(0.55, -0.83), palette=None, on=2, depth=0.3, roll=1.0,
                  line=2.5, grow=0.0, opacity=1.0, wobble=0.05, ground=None, bias=0.0, vert=0.45,
-                 head=3, texture=0.0):
+                 head=3, texture=0.0, style=None):
         self.name = name
         self.start = np.asarray(start, np.float64)
         self.dir = core.unit(direction)
@@ -508,6 +612,17 @@ class GroundDust:
         self.vert = vert
         self.ground = ground
         self.texture = texture
+        self.tone_alpha = None
+        self.style = style
+        if style == 'dust':
+            self.palette = palettes.DUST_WARM
+            self.tone_alpha = palettes.TONE_ALPHA['dust']
+            self.line = 0.0
+        elif style == 'soil':
+            self.palette = palettes.SOIL_DUST
+            self.tone_alpha = palettes.TONE_ALPHA['soil']
+            self.life = max(10, int(self.life * 0.65))           # earthy dust settles fast
+            self.line = min(self.line, 1.5)
         self.nh = head
         self.nsp = int(math.ceil(self.duration / on)) + 1
         n = head + self.nsp
@@ -596,6 +711,8 @@ class GroundDust:
         size = max(self.height * 1.4, RR.max() * 2.0)
         end = self.duration + self.life * 1.2
         op = self.opacity * (1 - smoothstep(end * 0.88, end, age))
+        if self.style == 'dust':
+            op *= 1 - 0.4 * float(smoothstep(end * 0.3, end, age))
         return rows, holes, op, C, size
 
     def draw(self, canvas, frame, light=None):
@@ -605,7 +722,7 @@ class GroundDust:
         return paint_groups(canvas, rows, holes, self.palette, self.light if light is None else light,
                             C, size, self.line, self.wobble, op, self.bias, self.vert,
                             ref_r=self.height * 0.4, texture=self.texture, tex_anchor=C,
-                            tex_scale=self.height / 150.0, wisps=self._wisps)
+                            tex_scale=self.height / 150.0, wisps=self._wisps, tone_alpha=self.tone_alpha)
 
 
 def puff_trail_rows(points, births, frame, size, life, name, on=2, rise=0.4, grow=1.6,
@@ -664,7 +781,7 @@ class DustVeil:
     the base is cut flat at `ground` (default origin y)."""
 
     def __init__(self, name, origin, frame0, width=1400.0, height=240.0, life=48, light=(0.55, -0.83),
-                 palette=None, opacity=0.55, on=2, ground=None, segments=14, rise=0.35):
+                 palette=None, opacity=0.55, on=2, ground=None, segments=14, rise=0.35, style=None):
         self.name = name
         self.origin = np.asarray(origin, np.float64)
         self.frame0 = int(frame0)
@@ -673,6 +790,10 @@ class DustVeil:
         self.life = int(life)
         self.light = light
         base = palettes.DUST_DRY if palette is None else palette
+        if style == 'dust':
+            base = palettes.DUST_WARM
+        elif style == 'soil':
+            base = palettes.SOIL_DUST
         P = np.asarray(base, np.float32).copy()
         P[1] = P[2] * 0.55 + P[1] * 0.45            # 2 tones: a light top and a cool underside
         P[2] = P[1]

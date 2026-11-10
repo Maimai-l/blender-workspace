@@ -73,8 +73,10 @@ class VineSet:
             vel = (p - pp) * (1 - self.damp)
             acc = np.array([0, 0, -self.g], np.float32)
             if self.wind is not None:
-                w = self.wind(self.f_done / self.fps) if callable(self.wind) else self.wind
-                acc = acc + np.asarray(w, np.float32)
+                tt = self.f_done / self.fps
+                w = np.asarray(self.wind(tt) if callable(self.wind) else self.wind, np.float32)
+                g_ = 0.7 + 0.55 * math.sin(tt * 1.9 + vi * 2.1) + 0.25 * math.sin(tt * 4.3 + vi * 0.7)
+                acc = acc + w * g_
             new = p + vel + acc * dt * dt
             new[0] = a
             rooted = v.root is not None and not self.snapped[vi]
@@ -103,7 +105,8 @@ class VineSet:
         fh = (f // on) * on
         pts_all = self.step_to(fh)
         H, W = canvas.shape[:2]
-        cols = colours or dict(stem=(0.24, 0.33, 0.20), leaf=(0.46, 0.60, 0.30), leaf_sh=(0.22, 0.36, 0.26),
+        cols = colours or dict(stem=(0.24, 0.33, 0.20), leaf=(0.46, 0.60, 0.30), leaf2=(0.55, 0.62, 0.28),
+                              leaf3=(0.38, 0.54, 0.33), leaf_sh=(0.22, 0.36, 0.26), leaf_sh2=(0.19, 0.30, 0.25),
                               leaf_hi=(0.72, 0.78, 0.42), ink=(0.13, 0.22, 0.14))     # dark green colour line
         lx, ly = light
         ink_strokes, stem_strokes, leaves = [], [], []
@@ -155,13 +158,18 @@ class VineSet:
                 if size < 2.0:
                     continue
                 lit = (math.cos(ang) * lx + math.sin(ang) * ly) > -0.1
-                leaves.append((c, ang, size, cols['leaf'] if lit else cols['leaf_sh'],
-                               cols['leaf_hi'] if lit and r3 < 0.35 else None))
+                hue = rng.random()
+                if lit:
+                    fill = cols['leaf'] if hue < 0.55 else (cols['leaf2'] if hue < 0.82 else cols['leaf3'])
+                else:
+                    fill = cols['leaf_sh'] if hue < 0.6 else cols['leaf_sh2']
+                leaves.append((c, ang, size, fill, cols['leaf_hi'] if lit and r3 < 0.35 else None, lit))
         if ink_strokes:
             _over(canvas, ink.draw_strokes((H, W), ink_strokes), cols['ink'])
             _over(canvas, ink.draw_strokes((H, W), stem_strokes), cols['stem'])
-        for c, ang, size, fill, hi in leaves:
-            _leaf(canvas, c, ang, size, fill, cols['ink'], hi)
+        for c, ang, size, fill, hi, lit in leaves:
+            # leaves in shadow get no outline (a darker shape is enough); lit ones a thin green line
+            _leaf(canvas, c, ang, size, fill, cols['ink'] if lit else None, hi)
 
 
 def _over(canvas, cov, col):
@@ -203,8 +211,9 @@ def _leaf(canvas, c, ang, size, fill, inkc, hi=None):
     a = m[..., None]
     rgb = sub[..., :3] * sub[..., 3:4] * (1 - a) + fc * a
     al = a[..., 0] + sub[..., 3] * (1 - a[..., 0])
-    ai = mi[..., None]
-    rgb = rgb * (1 - ai) + np.asarray(inkc, np.float32) * ai
-    al = np.maximum(al, mi)
+    if inkc is not None:
+        ai = mi[..., None]
+        rgb = rgb * (1 - ai) + np.asarray(inkc, np.float32) * ai
+        al = np.maximum(al, mi)
     sub[..., :3] = rgb / np.maximum(al[..., None], 1e-6)
     sub[..., 3] = al

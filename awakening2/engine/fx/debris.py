@@ -215,7 +215,7 @@ class SoilPour:
     def __init__(self, name, emitter, start, end, rate=22, strands=5, size=(2.0, 8.0),
                  gravity=1.1, inherit=0.7, jitter=0.7, light=(0.55, -0.83), on=2, veil=True,
                  kinds=None, ground=None, strand_width=(10.0, 24.0), maxage=36, veil_size=34.0,
-                 veil_opacity=0.6, scatter=0.25, land_size=None):
+                 veil_opacity=0.6, scatter=0.25, land_size=None, style=None):
         self.name = name
         self.em = _as_emitter(emitter)
         self.start = int(start)
@@ -234,6 +234,10 @@ class SoilPour:
         self.veil_opacity = veil_opacity
         self.scatter = scatter
         self.land_size = veil_size * 1.2 if land_size is None else land_size
+        # style='soil': the veil and the landing dust are earthy brown-grey and settle quickly
+        self.veil_pal = palettes.SOIL_DUST if style == 'soil' else palettes.VEIL
+        self.land_pal = palettes.SOIL_DUST if style == 'soil' else palettes.DUST
+        self.land_alpha = palettes.TONE_ALPHA['soil'] if style == 'soil' else None
         self.kinds = {'crumb': 0.72, 'clod': 0.24, 'moss': 0.04} if kinds is None else kinds
         g = core.rng('pour', name)
         ns = int(min(max(strands, 1), 3))
@@ -392,7 +396,7 @@ class SoilPour:
             if ids:
                 groups, holes = self.veil_b.groups(ids, PX, PY, RR, BR, PH, Z, drawing)
                 C = (float(np.mean(PX)), float(np.mean(PY)))
-                paint_groups(canvas, groups, holes, palettes.VEIL, light, C,
+                paint_groups(canvas, groups, holes, self.veil_pal, light, C,
                              max(float(np.ptp(PY)), self.veil_size * 3), line=0, opacity=self.veil_opacity,
                              vert=0.15)
         sheets = PolyBatch()
@@ -520,8 +524,8 @@ class SoilPour:
         if ids:
             groups, holes = self.land_b.groups(ids, PX, PY, RR, BR, PH, Z, drawing, ground=np.array(GYs))
             C = (float(np.mean(PX)), float(np.mean(PY)))
-            paint_groups(canvas, groups, holes, palettes.DUST, light, C, self.land_size * 3,
-                         line=1.5, opacity=0.95)
+            paint_groups(canvas, groups, holes, self.land_pal, light, C, self.land_size * 3,
+                         line=1.5, opacity=0.95, tone_alpha=self.land_alpha)
         bits.draw(canvas)
         clumps.draw(canvas)
         sheets.draw(canvas)

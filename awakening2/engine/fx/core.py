@@ -388,21 +388,24 @@ class BillowBatch:
         R = D[:, 2] * np.maximum(D[:, 7], D[:, 8]) * (1 + np.abs(D[:, 3])) + LW + 2
         return (D[:, 0] - R).min(), (D[:, 1] - R).min(), (D[:, 0] + R).max(), (D[:, 1] + R).max()
 
-    def paint(self, layer, palette, light_dir):
+    def paint(self, layer, palette, light_dir, tone_alpha=None):
+        """tone_alpha: (shadow, mid, lit) opacity of the tones, e.g. (.55, .65, .9) for a
+        translucent dust body with a denser lit crown; None = opaque."""
         if not self.groups or layer.empty:
             return layer
         l = unit(light_dir)
         P = np.asarray(palette, np.float32)
+        TA = np.ones(3, np.float64) if tone_alpha is None else np.asarray(tone_alpha, np.float64).reshape(3)
         D = np.ascontiguousarray(np.concatenate([g[0] for g in self.groups], 0))
         LW = np.ascontiguousarray(np.concatenate([g[3] for g in self.groups], 0))
         GY = np.ascontiguousarray(np.concatenate([np.full(len(g[0]), g[4]) for g in self.groups], 0))
         if LW.max() > 0.05:
-            raster.paint_disc_lines2(layer.buf, layer.ox, layer.oy, D, LW, GY, P[3].copy(),
-                                     float(l[0]), float(l[1]))
+            raster.paint_disc_lines2(layer.buf, layer.ox, layer.oy, D, LW * (1.0 if TA[0] >= 0.99 else 0.0), GY,
+                                     P[3].copy(), float(l[0]), float(l[1]))
         starts = np.zeros(len(self.groups) + 1, np.int64)
         starts[1:] = np.cumsum([len(g[0]) for g in self.groups])
         GP = np.asarray([(g[1], g[2], g[4]) for g in self.groups], np.float64)
-        raster.paint_billows2(layer.buf, layer.ox, layer.oy, starts, D, GP, P, float(l[0]), float(l[1]))
+        raster.paint_billows2(layer.buf, layer.ox, layer.oy, starts, D, GP, P, float(l[0]), float(l[1]), TA)
         return layer
 
 

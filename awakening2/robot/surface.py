@@ -408,6 +408,32 @@ class Decals:
                 maps.append((cov, lo[u], lo[v], u, v))
             self.maps[p.index] = maps
 
+    def add_rivet_streaks(self, rig, rivets, mats_kneel, frac=0.3):
+        """Rust bleeding from the rivets: short tapered streaks running down (gravity at the kneel)
+        from a share of the rivets, drawn into every projection map of the part."""
+        rng = rng_for('rivet_streaks')
+        for pname, P, N in rivets:
+            p = rig.parts[pname]
+            if p.index not in self.maps:
+                continue
+            down = mats_kneel[pname][:3, :3].T @ np.array([0, 0, -1.0])
+            for (cov, lu, lv, u, v) in self.maps[p.index]:
+                ddx, ddy = down[u], down[v]
+                nd = math.hypot(ddx, ddy)
+                if nd < 0.4:
+                    continue
+                Ht, Wt = cov[STREAK].shape
+                for q in P:
+                    if rng.random() > frac:
+                        continue
+                    cx = (q[u] - lu) / TEXEL; cy = (q[v] - lv) / TEXEL
+                    if not (0 <= cx < Wt and 0 <= cy < Ht):
+                        continue
+                    L = rng.uniform(0.22, 0.7) / TEXEL
+                    wd = rng.uniform(0.022, 0.045) / TEXEL
+                    poly = _streak_poly(rng, cx, cy, ddx / nd, ddy / nd, L, wd)
+                    cv2.fillPoly(cov[STREAK], [np.round(poly * 16).astype(np.int32)], 255, lineType=cv2.LINE_AA, shift=4)
+
     @staticmethod
     def _bilinear(img, x, y):
         H, W = img.shape

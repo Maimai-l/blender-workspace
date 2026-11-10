@@ -41,7 +41,7 @@ class WindRing:
                  palette=None, grass=700, leaves=60, lines=48, band=True, leaf_size=(14.0, 28.0),
                  grass_len=(26.0, 70.0), grass_life=(40, 70), ease=2.2, radius_fn=None,
                  line_width=3.0, dust_line=2.5, opacity=1.0, horizon=None, near=0.18, mist=0.0,
-                 mist_palette=None):
+                 mist_palette=None, style=None, wall=None):
         self.name = name
         self.c = np.asarray(centre, np.float64)
         self.frame0 = int(frame0)
@@ -63,6 +63,16 @@ class WindRing:
         self.dust_line = dust_line
         self.opacity = opacity
         self.band = band
+        # round 6: style='wind' = a translucent white dry-brush shock ring, torn leaves, a little
+        # mist; the billow wall much smaller and translucent (wall=0 turns it off)
+        self.style = style
+        self.wall = (0.22 if style == 'wind' else 1.0) if wall is None else float(wall)
+        self.wall_alpha = palettes.TONE_ALPHA['wind'] if style == 'wind' else None
+        if style == 'wind':
+            self.palette = palettes.WIND_DUST if palette is None else palette
+            mist = 0.32 if mist == 0.0 else mist
+            mist_palette = palettes.WIND_WHITE if mist_palette is None else mist_palette
+            self.band = False
         self.mist = mist
         self.mist_pal = palettes.STEAM if mist_palette is None else mist_palette
         self.mist_b = BillowSet(name + '_mist', 64, (4, 6))
@@ -180,7 +190,9 @@ class WindRing:
         ids, PX, PY, RR, BR, PH, Z, GB = [], [], [], [], [], [], [], []
         self._gy, self._lead = [], []
         l = core.unit(self.light)
-        K = max(10, int(round(self.slots * 0.55)))       # fewer, larger masses
+        if self.wall <= 0.0:
+            return ids, PX, PY, RR, BR, PH, Z, GB
+        K = max(6, int(round(self.slots * 0.55 * min(1.0, self.wall * 1.4))))   # fewer, larger masses
         R = self.R(age)
         spd = self.speed(age)
         if self.horizon is not None:
@@ -189,7 +201,8 @@ class WindRing:
             circ = math.pi * R * (1 + self.ratio) * (1 + 0.3 * self.persp)
         spacing = circ / K
         end = smoothstep(self.duration * 0.7, self.duration + self.life * 1.4, age)
-        hh = self.height * (0.5 + 0.5 * spd ** 0.6) * (0.55 + 0.75 * min(1.0, R / self.radius))
+        hh = self.height * (0.5 + 0.5 * spd ** 0.6) * (0.55 + 0.75 * min(1.0, R / self.radius)) \
+            * (0.4 + 0.6 * min(1.0, self.wall))
         grow = float(ease_out(min(1.0, (age + 2) / 8.0), 2))
 
         def add(i, rho, phi, r_base, brk, roll_a, rise):
@@ -218,7 +231,7 @@ class WindRing:
                 v += math.sin(phi * (2 + 2 * m) + TAU * _h(self.name, 'cl', m)) / (1 + m)
             return v / 1.8
 
-        nseg = 3
+        nseg = 3 if self.wall >= 0.5 else 1
         for k in range(K):
             phi = (k + 0.5 + (_h(self.name, 'hp', k) - 0.5) * 0.7) * TAU / K
             # strongly varied heights: towering billows, low ones, gaps, a few laggers
@@ -232,7 +245,10 @@ class WindRing:
             u = (0.85 + 0.3 * _h(self.name, 'hu', k)) * (1 + 0.3 * clump(phi)) * hcls
             if _h(self.name, 'gap', k) < 0.1:
                 continue                                  # gaps in the wall
-            r = max(hh * 0.5 * u, spacing * 0.8 * min(u, 1.2)) * grow
+            if self.wall >= 0.5:
+                r = max(hh * 0.5 * u, spacing * 0.8 * min(u, 1.2)) * grow
+            else:
+                r = hh * 0.5 * u * grow                      # sparse: small billows with gaps
             r = min(r, 0.3 * R + 6.0)          # a young ring is a thin ring, not a disc
             lag = hh * 0.3 * (_h(self.name, 'hf', k) - 0.5)
             if _h(self.name, 'lagger', k) < 0.15:
@@ -248,13 +264,13 @@ class WindRing:
                 add(k + m * K, rho, phi + 0.03 * m * (_h(self.name, 'fs', k) - 0.5),
                     r * fs * (1 - 0.15 * m * (1 - spd)), bm, age / 16.0 + 0.3 * m,
                     hh * (0.3 * end + 0.12 * m))
-            if hcls > 1.4:
+            if hcls > 1.4 and self.wall >= 0.5:
                 # a towering billow: a second, smaller mass stacked on the head
                 rt = r * 0.72
                 add(k + 3 * K, R - r * 0.35 + lag, phi + 0.02, rt, float(np.clip(brk + 0.1, 0, 1)),
                     age / 14.0 + 0.5, r * 1.15 + hh * 0.3 * end)
         # sporadic billows shed by the wall, left behind to rise and break up
-        for k in range(K):
+        for k in (range(K) if self.wall >= 0.5 else ()):
             per = 7 + int(6 * _h(self.name, 'sper', k))
             ph = int(per * _h(self.name, 'sph', k))
             for j in range(0, 3):
@@ -295,7 +311,8 @@ class WindRing:
             s = math.sin(phi)
             if (part == 'back' and s >= 0) or (part == 'front' and s < 0):
                 continue
-            r = max(self.height * 0.75, circ / K * 0.75) * (0.8 + 0.4 * _h(self.name, 'mu', k))
+            r = max(self.height * 0.75, circ / K * 0.75) * (0.8 + 0.4 * _h(self.name, 'mu', k)) \
+                * (0.55 if self.style == 'wind' else 1.0)
             rho = R + r * (0.55 + 0.3 * spd)
             if not self.visible(rho, phi):
                 continue
@@ -362,7 +379,9 @@ class WindRing:
                               np.stack([x1 - px * w1, y1 - py * w1], 1), np.stack([x0 - px * w0, y0 - py * w0], 1)], 1)
             for qd, tn in zip(quads, tone):
                 band.add(qd, G['lit'] if tn else G['mid'], alpha=0.6 * fade)
-        band.draw(canvas, self.opacity)
+        band.draw(canvas, self.opacity * (0.75 if self.style == 'wind' else 1.0))
+        if self.style == 'wind':
+            return
         # the thin bright pressure line at the leading edge, nearly closed, slightly broken
         line = PolyBatch()
         a0 = g.uniform(0, TAU)
@@ -386,6 +405,58 @@ class WindRing:
             wd = (1.2 + 1.8 * np.sin(np.pi * q) ** 0.6) * sc * self.line_width / 3.0 * (0.6 + 0.4 * fade)
             line.add(core.stroke_poly(np.stack([x, y], 1), wd), palettes.WIND_LINE, alpha=0.95 * fade)
         line.draw(canvas, self.opacity)
+
+    def _drybrush(self, age, part, canvas):
+        """The shock ring as dry-brush strokes: bundles of thin white bristle arcs, broken, with a
+        streaky texture, brightest and densest at the leading edge; re-drawn on 2s."""
+        spd = self.speed(age)
+        if spd < 0.04 or age < 1:
+            return
+        R = self.R(age)
+        drawing = age // max(self.on, 1)
+        g = core.rng('drybrush', self.name, drawing)
+        fade = min(1.0, spd * 2.5)
+        col = palettes.WIND_WHITE[2]
+        b = PolyBatch()
+
+        def stroke(rr, phi0, span, width, alpha):
+            mid = phi0 + span / 2
+            if (part == 'back' and math.sin(mid) >= 0) or (part == 'front' and math.sin(mid) < 0):
+                return
+            # a dry brush skips: break the arc into 1-3 pieces
+            cuts = np.sort(g.uniform(0, 1, int(g.integers(0, 3))))
+            edges = np.concatenate([[0.0], cuts, [1.0]])
+            for e0, e1 in zip(edges[:-1], edges[1:]):
+                e0 += 0.04
+                if e1 - e0 < 0.08:
+                    continue
+                phi = phi0 + span * np.linspace(e0, e1, 12)
+                ok = np.array([self.visible(rr, p_) for p_ in phi])
+                if ok.sum() < 3:
+                    continue
+                phi = phi[ok]
+                x, y, sc = self.project(np.full(len(phi), rr), phi)
+                q = np.linspace(0, 1, len(phi))
+                wd = width * sc * np.sin(np.pi * np.clip(q * 0.9 + 0.05, 0, 1)) ** 0.7 + 0.25
+                b.add(core.stroke_poly(np.stack([x, y], 1), wd), col, alpha=alpha * fade)
+
+        lw = self.line_width / 3.0
+        for j in range(36):
+            k_out = g.random() ** 0.55                       # more strokes toward the leading edge
+            rr = R * (0.94 + 0.16 * k_out)
+            phi0 = g.uniform(0, TAU)
+            span = g.uniform(0.15, 0.6) * (0.6 + 0.4 * k_out)
+            nbr = int(g.integers(3, 6))                      # bristles in the bundle
+            for q_ in range(nbr):
+                stroke(rr + (q_ - nbr / 2) * R * 0.007, phi0 + g.normal(0, 0.02), span * g.uniform(0.7, 1.0),
+                       (1.0 + 2.2 * k_out) * lw * g.uniform(0.6, 1.2), (0.3 + 0.62 * k_out) * g.uniform(0.75, 1.0))
+        for j in range(11):                                   # the bright leading edge: 2-3 bristles
+            phi0 = g.uniform(0, TAU)
+            span = g.uniform(0.3, 0.85)
+            for q_ in range(int(g.integers(2, 4))):
+                stroke(R * (1.1 + 0.006 * q_), phi0 + g.normal(0, 0.015), span * g.uniform(0.8, 1.0),
+                       (4.2 - q_) * lw, 0.97)
+        b.draw(canvas, self.opacity)
 
     def _grass(self, age, batch):
         l = core.unit(self.light)
@@ -522,6 +593,8 @@ class WindRing:
                 self._band(age, ground, pt)
             ground.draw(canvas, self.opacity)
             self._shock(age, pt, canvas)
+            if self.style == 'wind':
+                self._drybrush(age, pt, canvas)
             self._mist(canvas, age, pt, drawing)
             ids, PX, PY, RR, BR, PH, Z, GB = self._wall(age, pt)
             if ids:
@@ -532,8 +605,9 @@ class WindRing:
                 gbias = [bias_by_id.get(g_[3], 0.0) for g_ in groups]
                 C = (float(np.mean(PX)), float(np.mean(PY)))
                 paint_groups(canvas, groups, holes, self.palette, self.light, C,
-                             max(self.height * 2.5, 1.0), line=self.dust_line, opacity=self.opacity,
-                             local=0.75, vert=0.5, group_bias=gbias, wisps=wisps[::2])
+                             max(self.height * 2.5, 1.0), line=self.dust_line if self.wall_alpha is None else 0.0,
+                             opacity=self.opacity, local=0.75, vert=0.5, group_bias=gbias, wisps=wisps[::2],
+                             tone_alpha=self.wall_alpha)
             lines = PolyBatch()
             self._lines(age, lines, pt)
             lines.draw(canvas, self.opacity)

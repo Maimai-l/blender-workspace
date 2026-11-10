@@ -605,7 +605,7 @@ def _ell(px, py, cx, cy, ca, sa, sx, sy):
 
 
 @njit(cache=True, fastmath=True)
-def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
+def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly, TA):
     """Billows with designed lobes (v2).
 
     D columns: cx cy r wa wp ts tl sx sy ang bx by br
@@ -614,7 +614,8 @@ def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
       bx, by, br  : a bite disc removed from this lobe only (br <= 0: none) - hook-shaped curls
       ts, tl      : shadow crescent / lit cap depth (fractions of r), unions over the group
     GP columns: alpha, inner line width, ground cut y (pixels below it are cut flat; 1e9 = none)
-    P rows: shadow, mid, lit, line."""
+    P rows: shadow, mid, lit, line.   TA: alpha of the shadow, mid and lit tones (translucent
+    bodies with more opaque lit crowns)."""
     h, w = buf.shape[0], buf.shape[1]
     G = starts.shape[0] - 1
     for g in range(G):
@@ -781,6 +782,8 @@ def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
                 r_ += (P[2, 0] - r_) * cl
                 g_ += (P[2, 1] - g_) * cl
                 b_ += (P[2, 2] - b_) * cl
+                ta = TA[0] + (TA[1] - TA[0]) * cn
+                ta += (TA[2] - ta) * cl
                 if li > 0.0:
                     wl = li * _c01((bnd - 0.05) * 1.6)
                     if wl > 0.05:
@@ -788,7 +791,7 @@ def paint_billows2(buf, ox, oy, starts, D, GP, P, lx, ly):
                         r_ += (P[3, 0] - r_) * v_
                         g_ += (P[3, 1] - g_) * v_
                         b_ += (P[3, 2] - b_) * v_
-                a = cs * al * gcut
+                a = cs * al * gcut * ta
                 ia = 1.0 - a
                 buf[y, x, 0] = r_ * a + buf[y, x, 0] * ia
                 buf[y, x, 1] = g_ * a + buf[y, x, 1] * ia

@@ -36,7 +36,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.487,
+      "coverage": 0.501,
       "note": "far trunks converging up into the high canopy around the gap"
     },
     {
@@ -52,7 +52,7 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.469,
+      "coverage": 0.457,
       "note": "giant trunks rising at the sides into the dark canopy around the gap"
     },
     {
@@ -68,16 +68,16 @@
         -160
       ],
       "blend": "normal",
-      "coverage": 0.157,
+      "coverage": 0.158,
       "note": "sunbeams down through the gap onto the face (robot goes above or below: above for silhouette, below for light on the face)"
     }
   ],
-  "seconds": 28.9,
+  "seconds": 26.6,
   "layer_seconds": {
-    "sky": 3.3,
-    "far": 16.6,
-    "canopy": 6.7,
-    "beams": 1.6
+    "sky": 3.2,
+    "far": 15.1,
+    "canopy": 6.2,
+    "beams": 1.5
   },
   "sun": [
     980.0,

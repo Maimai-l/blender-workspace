@@ -68,7 +68,7 @@
         -64
       ],
       "blend": "normal",
-      "coverage": 0.419,
+      "coverage": 0.444,
       "note": "the forest canopy below with the gap of the clearing (x~1250, y~640) and rising mist"
     },
     {
@@ -84,17 +84,17 @@
         -64
       ],
       "blend": "normal",
-      "coverage": 0.173,
-      "note": "dark backlit treetops along the bottom edge with warm rims"
+      "coverage": 0.154,
+      "note": "near canopy in two rows of painted silhouettes: varied crowns, a few snags and bare branches against the misty valley, mist in the dips, rims on some crowns only"
     }
   ],
-  "seconds": 12.3,
+  "seconds": 12.6,
   "layer_seconds": {
     "sky": 2.2,
-    "far": 3.9,
+    "far": 3.8,
     "mist": 1.1,
-    "mid": 2.9,
-    "near": 1.7
+    "mid": 3.2,
+    "near": 1.9
   },
   "sun": [
     1930.0,

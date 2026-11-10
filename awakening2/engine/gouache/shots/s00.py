@@ -93,6 +93,11 @@ def add_crown(b, rng, x, y, r, kind, lt=1.0, hue=0.0):
 KINDS = ['round', 'spire', 'flat', 'emergent']
 
 
+def shade_dark(c, dl):
+    from ..color import shade
+    return np.clip(shade(c, dl=dl), 0, 1)
+
+
 def crest_trees(cv, rng, xs, ys, scale, kind_p, body, lit, edge_px=1.0):
     """Broken ridge silhouette: crowns of varied size along the crest (mostly rounded, some
     short tiered conifers), occasional dips and gaps; lit sliver on the sun side."""
@@ -193,6 +198,14 @@ def build(outdir, quick=False):
     b = Blobs()
     gx, gy = GAP
     rows = []
+    # big-form light over the rolling canopy: ridges catch the sun, troughs sit in shadow and mist
+    BF = fbm(400, 1100, 160, rng, octaves=3)
+
+    def bigform(x, y):
+        ix = int(np.clip(x / W * 1099, 0, 1099))
+        iy = int(np.clip((y - 540) / 500 * 399, 0, 399))
+        return float(BF[iy, ix])
+    troughs = []
     for row in range(9):
         y = 575 + row * 40 + rng.normal(0, 8)
         r0 = 26 + row * 8
@@ -200,21 +213,33 @@ def build(outdir, quick=False):
             xx = x + rng.normal(0, r0 * 0.35)
             yy = y + rng.normal(0, r0 * 0.3) + 18 * np.sin(xx / 210 + row)
             e = ((xx - gx) / 175) ** 2 + ((yy - gy) / 72) ** 2
-            if e < 1.0:
+            if e < 1.35:
                 continue                                          # the gap
             kind = str(rng.choice(KINDS, p=[0.68, 0.12, 0.1, 0.1]))
             r = r0 * rng.uniform(0.75, 1.3) * (1.3 if kind == 'emergent' else 1.0)
-            lt = rng.uniform(0.85, 1.1) * (0.75 if e < 2.2 and yy > gy else 1.0)   # the gap's far wall in shade
-            rows.append((yy, xx, r, lt, kind, rng.normal(0, 0.06)))
+            f = bigform(xx, yy)
+            lt = (0.32 + 0.95 * f ** 1.4) * rng.uniform(0.9, 1.1) * (0.75 if e < 2.2 and yy > gy else 1.0)
+            if kind == 'emergent':
+                lt = max(lt, 1.0)                                   # tall crowns rise into the light
+            # local colour by species: young yellow-green, deep blue-green, olive, plain green
+            hue = float(rng.choice([-0.12, 0.1, -0.05, 0.0])) + rng.normal(0, 0.03)
+            rows.append((yy, xx, r, lt, kind, hue))
+            if f < 0.35 and rng.random() < 0.45:
+                troughs.append((xx, yy))
     rows.sort(key=lambda t: t[0])
     for yy, xx, r, lt, kind, hue in rows:
         add_crown(b, rng, xx, yy, r, kind, lt, hue)
     d = 0.35
     ccols = (aerial(C(34, 46, 70), d, HAZE), aerial(C(52, 80, 80), d, HAZE), aerial(C(120, 140, 96), d * 0.6, HAZE),
              aerial(C(236, 210, 140), d * 0.3, HAZE))
-    paint_planes(cv, rng, b, ccols, light3=(0.8, -0.5, 0.25), th=(0.42, 0.64, 0.86), strokes=1.2, stroke_size=9,
-                 rim=C(255, 222, 156), rim_amt=1.0, sun2=(0.85, -0.5), leafy_edge=0.45, noise_amt=0.08, leaf_px=7,
-                 glob=0.0, form=0.0, soft=0.015, wrap=0.3, stroke_dl=0.06, stroke_op=(0.35, 0.7))
+    paint_planes(cv, rng, b, ccols, light3=(0.8, -0.5, 0.35), th=(0.38, 0.62, 0.88), strokes=1.2, stroke_size=9,
+                 rim=C(255, 222, 156), rim_amt=0.6, sun2=(0.85, -0.5), leafy_edge=0.45, noise_amt=0.1, leaf_px=7,
+                 glob=0.0, form=0.0, soft=0.015, wrap=0.75, stroke_dl=0.06, stroke_op=(0.35, 0.7))
+    # mist lying in the troughs of the canopy
+    for (tx_, ty_) in troughs:
+        dabs(cv, tx_ + rng.normal(0, 40, 4), ty_ + rng.normal(0, 10, 4), rng.uniform(90, 200, 4),
+             jitter(mix(MIST_SH, MIST_LIT, np.clip(tx_ / W, 0, 1)), rng, 4, dl=0.02), aspect=rng.uniform(0.15, 0.3, 4),
+             angle=rng.normal(0, 0.05, 4), opacity=rng.uniform(0.12, 0.25, 4), edge=0.95, rag=0.4, bristle=0.5, rng=rng)
     # thin mist pockets between the crown rows (cool left, warm right)
     for yb in (650, 720, 800):
         mist(cv, rng, -100, W + 100, yb - 20, yb + 25, MIST_LIT, MIST_SH,
@@ -235,20 +260,67 @@ def build(outdir, quick=False):
 
     # ---------------------------------------------------------------- near canopy silhouettes at the bottom edge
     cv = P.layer('near', 0.85)
-    b = Blobs()
-    for x in np.arange(-120, W + 160, 115):
-        top = 950 + 70 * np.sin(x / 300 + 1.4) + rng.normal(0, 25)
-        kind = str(rng.choice(KINDS, p=[0.55, 0.25, 0.1, 0.1]))
-        add_crown(b, rng, x + rng.normal(0, 30), top + 40, rng.uniform(90, 150), kind, rng.uniform(0.85, 1.1),
-                  rng.normal(0, 0.05))
-        add_crown(b, rng, x + rng.normal(0, 60) + 75, top + 130, rng.uniform(100, 160), 'round', 1.0,
-                  rng.normal(0, 0.05))
-        add_crown(b, rng, x + rng.normal(0, 40), top + 230, rng.uniform(120, 170), 'round', 0.9, rng.normal(0, 0.05))
-    ncols = (C(26, 30, 50), C(38, 52, 64), C(70, 92, 74), C(220, 190, 120))
-    paint_planes(cv, rng, b, ncols, light3=(0.7, -0.6, -0.1), th=(0.5, 0.72, 0.9), strokes=1.0, stroke_size=16,
-                 rim=C(255, 214, 140), rim_amt=1.0, sun2=(0.8, -0.6), leafy_edge=0.6, noise_amt=0.06, leaf_px=16,
-                 glob=0.0, form=0.0, soft=0.015, wrap=0.3, stroke_dl=0.05, stroke_op=(0.35, 0.7))
-    P.add('near', 0.85, cv, 'dark backlit treetops along the bottom edge with warm rims')
+    sil_cols = [C(30, 40, 46), C(24, 34, 52), C(36, 34, 54), C(28, 44, 42)]
+    for row, (ybase, rr_, dark_k, rim_p) in enumerate([(915, (60, 120), 0.0, 0.35), (1005, (90, 160), 1.0, 0.25)]):
+        groups = [Blobs(), Blobs(), Blobs()]
+        x = -140.0
+        while x < W + 160:
+            r = rng.uniform(*rr_)
+            kind = str(rng.choice(['round', 'round', 'spire', 'flat', 'snag'], p=[0.45, 0.2, 0.15, 0.1, 0.1]))
+            top = ybase + 45 * np.sin(x / 260 + row * 2.0) + rng.normal(0, 22)
+            if kind == 'snag':
+                # a dead snag / bare branches against the mist (stroked, not a blob)
+                h_ = rng.uniform(140, 240)
+                c0 = jitter(sil_cols[1], rng, 1, dl=0.02)[0]
+                k_ = 6
+                tx_ = x + np.cumsum(rng.normal(0, 9, k_))
+                ty_ = top + 120 - np.linspace(0, h_ + 120, k_)
+                stroke(cv, np.stack([tx_, ty_], 1), taper(k_, 1.0, 0.2, rng.uniform(14, 22)), c0, edge=0.3,
+                       bristle=0.4, rag=0.45, rng=rng)
+                for j in range(int(rng.integers(3, 6))):
+                    yb = top - h_ * rng.uniform(0.3, 0.9)
+                    sd = rng.choice([-1, 1])
+                    L = rng.uniform(40, 110)
+                    stroke(cv, [[x, yb], [x + sd * L * 0.6, yb - L * 0.35], [x + sd * L, yb - L * 0.6 + rng.normal(0, 8)]],
+                           taper(3, 1.0, 0.1, rng.uniform(3, 6)), c0, edge=0.3, bristle=0.3, rag=0.3, rng=rng)
+                x += r * rng.uniform(0.8, 1.4)
+                continue
+            b = groups[int(rng.integers(0, 3))]
+            if kind == 'spire':
+                add_crown(b, rng, x, top + r * 0.6, r * 0.7, 'spire', rng.uniform(0.8, 1.1), 0.1)
+            elif kind == 'flat':
+                add_crown(b, rng, x, top + r * 0.2, r, 'flat', rng.uniform(0.8, 1.1), -0.05)
+            else:
+                add_crown(b, rng, x, top + r * 0.5, r, 'round', rng.uniform(0.75, 1.15), rng.normal(0, 0.06))
+            # the body below each crown reaches the bottom edge
+            for yy in np.arange(top + r, H + 220, r * 0.9):
+                b.add(x + rng.normal(0, r * 0.3), yy, r * rng.uniform(0.9, 1.3), r * 0.8, light=0.6, rng=rng, lumpy=0.2)
+            x += r * rng.uniform(0.9, 1.6) * (0.75 if row == 1 else 1.0)
+        for gi, b in enumerate(groups):
+            if len(b) == 0:
+                continue
+            base = [C(30, 46, 44), C(24, 36, 54), C(38, 34, 56)][gi]
+            if row == 0:
+                base = mix(base, MIST_SH, 0.28)                    # the back row sits in thin mist
+            if row == 1:
+                base = shade_dark(base, -0.035)
+            ncols = (shade_dark(base, 0.0), shade_dark(base, 0.06), mix(base, C(104, 120, 80), 0.5 - 0.2 * dark_k),
+                     C(214, 190, 130))
+            paint_planes(cv, rng, b, ncols, light3=(0.7, -0.6, -0.1), th=(0.5, 0.74, 0.93), strokes=1.4,
+                         stroke_size=18, rim=[C(255, 214, 140), None, C(236, 200, 160)][gi],
+                         rim_amt=rim_p * 2.2, sun2=(0.8, -0.6), leafy_edge=0.7, noise_amt=0.12, leaf_px=17 + 4 * row,
+                         glob=0.0, form=0.0, soft=0.03, wrap=0.35, stroke_dl=0.07, stroke_op=(0.4, 0.8))
+        if row == 0:
+            # mist in the dips between the two rows: the valley shows between the near crowns
+            for k in range(26):
+                mx = rng.uniform(-60, W + 60)
+                my = 960 + rng.normal(0, 25)
+                dabs(cv, mx + rng.normal(0, 60, 3), my + rng.normal(0, 10, 3), rng.uniform(120, 260, 3),
+                     jitter(mix(MIST_SH, MIST_LIT, np.clip(mx / W, 0, 1)), rng, 3, dl=0.02),
+                     aspect=rng.uniform(0.12, 0.25, 3), angle=rng.normal(0, 0.04, 3),
+                     opacity=rng.uniform(0.15, 0.3, 3), edge=0.95, rag=0.4, bristle=0.5, rng=rng)
+    P.add('near', 0.85, cv, 'near canopy in two rows of painted silhouettes: varied crowns, a few snags and bare '
+          'branches against the misty valley, mist in the dips, rims on some crowns only')
 
     P.save(sun=list(SUN), gap=list(GAP), camera='slow pan left -> right over 4.5 s (any 1920-wide window)')
     return P

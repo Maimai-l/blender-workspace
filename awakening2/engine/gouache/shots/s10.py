@@ -79,9 +79,11 @@ def build(outdir, quick=False):
     cv = P.layer('sky', 0.0)
     stops = [C(250, 222, 170), C(255, 214, 150), C(250, 200, 160), C(236, 214, 200), C(226, 214, 214)]
     sky(cv, rng, stops, [0, 0.15, 0.35, 0.65, 1.0], sun=SUN, glow=(700, C(255, 244, 210), 1.0), n_strokes=0.7)
-    plane_cloud(cv, rng, 620, 380, 560, 140, (C(186, 140, 160), C(242, 190, 162), C(255, 224, 180),
+    # a soft-based cloud high in the gap (its underside dissolves into wisps: no hard card edge, and it sits
+    # above any window the held camera can use)
+    plane_cloud(cv, rng, 640, 235, 520, 120, (C(186, 140, 160), C(242, 190, 162), C(255, 224, 180),
                                               C(255, 248, 224)), kind='cumulus', light3=(0.4, -0.75, 0.3),
-                rim=C(255, 246, 218), wisps=0.4)
+                rim=C(255, 246, 218), wisps=0.8, soft_base=0.85)
     glow(cv, SUN[0], SUN[1], 150, C(255, 252, 236), 0.85)
     P.add('sky', 0.0, cv, 'golden sky in the gap above the robot; opaque')
 

@@ -73,8 +73,8 @@ def build_palette(shadow_mul=None, rim_color=None, rim_mix=0.62, overrides=None)
         if name == 'none':
             continue
         b = _c(base[name]) if isinstance(base[name], str) else np.asarray(base[name], float)
-        if name in SHADOW_OVERRIDE and shadow_mul is None:
-            s = _c(SHADOW_OVERRIDE[name])
+        if name in SHADOW_OVERRIDE and shadow_mul is None and not (overrides and name in overrides):
+            s = _c(SHADOW_OVERRIDE[name])        # (an overridden colour gets its shadow from its own hue)
         else:
             s = np.clip(b * sm, 0, 1)
         if name in ('eye', 'catch'):

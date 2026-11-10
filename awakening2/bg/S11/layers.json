@@ -36,8 +36,8 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.872,
-      "note": "the highest canopy rimming the gap: big leafy masses in flat planes, lit and rim-lit on the gap side"
+      "coverage": 0.865,
+      "note": "the highest canopy around the gap: translucent backlit leaf masses (warm near the gap, cool and dark away from it), sky holes, a layer of glowing haze"
     },
     {
       "name": "trunks",
@@ -52,8 +52,8 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.173,
-      "note": "trunks converging toward the zenith"
+      "coverage": 0.592,
+      "note": "trunks converging toward the zenith; haze shafts and glowing air between the storeys"
     },
     {
       "name": "canopy_mid",
@@ -68,8 +68,8 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.254,
-      "note": "crowns of the converging trees and silhouetted branches/twigs into the gap"
+      "coverage": 0.329,
+      "note": "crowns of the converging trees (translucent, backlit) and dark branches and twigs in silhouette reaching into the gap"
     },
     {
       "name": "canopy_near",
@@ -84,8 +84,8 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.098,
-      "note": "near leaves and twigs silhouetted with warm rims"
+      "coverage": 0.134,
+      "note": "near leaf masses and twigs at the frame edges, backlit, varied rims"
     },
     {
       "name": "flare",
@@ -104,14 +104,14 @@
       "note": "soft painted sun glow at the gap edge (animate opacity); no starburst"
     }
   ],
-  "seconds": 13.7,
+  "seconds": 14.8,
   "layer_seconds": {
-    "sky": 1.9,
-    "canopy_far": 4.4,
-    "trunks": 2.4,
-    "canopy_mid": 2.4,
-    "canopy_near": 1.4,
-    "flare": 0.7
+    "sky": 1.6,
+    "canopy_far": 4.9,
+    "trunks": 2.7,
+    "canopy_mid": 2.6,
+    "canopy_near": 1.7,
+    "flare": 0.8
   },
   "sun": [
     1225.0,

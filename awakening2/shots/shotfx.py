@@ -552,7 +552,7 @@ class S05(Base):
                                        direction=(0, -1), spread=1.4, speed=(3, 8), gravity=0.9,
                                        ground=990, bounce=0.3, origin_radius=600)
         self.dust = fx.GroundDust('S05_dust', start=(1200, 960), direction=(-1, 0), frame0=20,
-                                  distance=700, duration=36, height=70)
+                                  distance=700, duration=36, height=70, style='soil')
 
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
@@ -600,7 +600,8 @@ class S06(Base):
     ground = False
     behind = ('sky', 'canopy_far')
     def setup(self):
-        self.sim = birds.burst(n=130, canopy=((150, 640), (1800, 560)), f_start=2, frames=72, seed=7, span=(10, 46))
+        self.sim = birds.burst(n=130, canopy=((150, 640), (1800, 560)), f_start=2, frames=72, seed=7, span=(10, 46),
+                               on_small=2, on_big=2)       # every bird drawn on 2s
         self.lb = fx.LeafBurst('S06_leaves', origin=(960, 600), frame0=3, count=40, direction=(0, -1), spread=2.4,
                                speed=(6, 20), size=(14, 26), origin_radius=700, wind=(0.4, 0))
     def fx_mid(self, rgb, f, t, ctx):
@@ -674,14 +675,14 @@ class Rise(Base):
             emit = self._emitter(part, loc)
             self.pour_fx.append(fx.SoilPour(f'{self.S.sid}_{name}', emit, start=int(a * 24), end=int(b * 24), rate=9,
                                             strands=3, size=(3, 8), ground=self._ground_y(), veil_opacity=0.22,
-                                            veil_size=22.0, kinds={'crumb': .72, 'clod': .24, 'moss': .04}))
+                                            veil_size=22.0, kinds={'crumb': .72, 'clod': .24, 'moss': .04}, style='soil'))
         self.puff_fx = []
         for name, part, loc, t0, size in self.puffs:
             # the puff starts ON the ground under the contact (never an airborne ball)
             q = self._proj_at(part, loc, t0, on_ground=True)
             self.puff_fx.append(fx.DustPuff(f'{self.S.sid}_{name}', origin=(float(q[0]), float(q[1])), frame0=int(t0 * 24),
                                             size=size * 0.6, ground=float(q[1]) + size * 0.08, spread=3.0, life=40, aspect=0.45,
-                                            palette=fx.palettes.DUST_DARK,
+                                            palette=fx.palettes.DUST_DARK, style='soil',
                                             light=screen_dir(self.S.cam(t0), self.light(self.S.cam(t0)))))
         tree = self._proj_at('roof_L', (-3.2, -0.2, 3.6), 0.0)
         self.leaves = fx.LeafBurst(f'{self.S.sid}_treeleaves', origin=(float(tree[0]), float(tree[1])), frame0=int(0.8 * 24),
@@ -817,9 +818,9 @@ class S12(Base):
         self.flames = [fx.EngineFlame(f'S12_e{i}', ignite=int(3.0 * 24) + i * 2, sputters=sp[i],
                                       diamonds=True, smoke=True, sparks=True) for i in range(2)]
         self.dust = fx.GroundDust('S12_dust', start=(960, 1000), direction=(1, 0), frame0=int(3.0 * 24), distance=900, duration=24, height=120,
-                                  palette=fx.palettes.DUST_DARK)
+                                  palette=fx.palettes.DUST_DARK, style='dust')
         self.dust2 = fx.GroundDust('S12_dust2', start=(960, 1000), direction=(-1, 0), frame0=int(3.0 * 24), distance=900, duration=24, height=120,
-                                   palette=fx.palettes.DUST_DARK)
+                                   palette=fx.palettes.DUST_DARK, style='dust')
     def fx_mid(self, rgb, f, t, ctx):
         import anim
         cv_ = fx.new_canvas(H, W)
@@ -850,7 +851,7 @@ class S13(Base):
         cam = self.S.cam(0.0)
         c = project(cam, (0, 0, 0))
         self.ring = fx.WindRing('S13_ring', centre=(float(c[0]), float(c[1])), frame0=2, radius=1250, duration=66, r0=120,
-                                ratio=0.55, persp=0.3, height=120, slots=48, grass=1000, leaves=110, lines=64)
+                                ratio=0.55, persp=0.3, height=120, slots=48, grass=1000, leaves=110, lines=64, style='wind')
         self.flames = [fx.EngineFlame(f'S13_e{i}', ignite=-30, sputters=[]) for i in range(2)]
         self.leaves = fx.LeafBurst('S13_leaves', origin=(float(c[0]), float(c[1])), frame0=6, count=70, direction=(0, -1),
                                    spread=6.28, speed=(12, 30), size=(14, 26), origin_radius=200)
@@ -890,9 +891,12 @@ class S13(Base):
         cv_ = fx.new_canvas(H, W)
         pose = anim.pose_at(self.shot, t)
         lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
-        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
-            fl.draw(cv_, f, nozzle=noz, direction=d, radius=rad * 0.9, length=rad * 5)
-            fl.glow(lb, f, nozzle=noz, direction=d, radius=rad * 0.9, length=rad * 5)
+        # seen from above, the jets fire down at the ground: short licks at the bells and a hot pool of
+        # light on the ground under the robot (not two candle flames standing on its back)
+        gq = project(ctx['cam'], (0.0, -1.5, 0.0))
+        flick = 0.85 + 0.15 * math.sin(f * 1.9)
+        fx.glow(lb, (float(gq[0]), float(gq[1])), 300, colour=(1.0, 0.72, 0.38), intensity=0.55 * flick)
+        fx.glow(lb, (float(gq[0]), float(gq[1])), 120, colour=(1.0, 0.92, 0.72), intensity=0.45 * flick)
         self.ring.draw(cv_, f, part='front')
         self.leaves.draw(cv_, f)
         return comp.over_straight(rgb, cv_)
@@ -918,13 +922,13 @@ class S14(Base):
         g = project(cam, (0, 0, 0))
         self.blast = fx.DustPuff('S14_blast', origin=(float(g[0]), float(g[1]) + 40), frame0=7, size=380, spread=3.8,
                                  life=30, ground=float(g[1]) + 70, aspect=0.45, arms=1.2, direction=(0, -1),
-                                 palette=fx.palettes.DUST, main=True)      # the launch keeps one big mass
+                                 palette=fx.palettes.DUST, main=True, style='dust')      # one big translucent mass
         self.veil = fx.DustVeil('S14_veil', origin=(float(g[0]), float(g[1]) + 50), frame0=8, width=1700, height=300,
-                                life=56, palette=fx.palettes.DUST_DARK, opacity=0.55, ground=float(g[1]) + 70)
+                                life=56, palette=fx.palettes.DUST_DARK, opacity=0.55, ground=float(g[1]) + 70, style='dust')
         self.ring = fx.GroundDust('S14_ringL', start=(float(g[0]), float(g[1]) + 60), direction=(-1, 0), frame0=8,
-                                  distance=1100, duration=20, height=170)
+                                  distance=1100, duration=20, height=170, style='dust')
         self.ring2 = fx.GroundDust('S14_ringR', start=(float(g[0]), float(g[1]) + 60), direction=(1, 0), frame0=8,
-                                   distance=1100, duration=20, height=170)
+                                   distance=1100, duration=20, height=170, style='dust')
         self.debris = fx.DebrisBurst('S14_debris', origin=(float(g[0]), float(g[1])), frame0=8, count=70,
                                      direction=(0, -1), spread=2.4, speed=(14, 40), gravity=1.0, ground=float(g[1]) + 80,
                                      size=(5, 18), origin_radius=180)
@@ -933,7 +937,7 @@ class S14(Base):
         self.flames = [fx.EngineFlame(f'S14_e{i}', ignite=-40, sputters=[]) for i in range(2)]
         # continuity with S13: the engines are already roaring in the crouch, the downwash rolls dust out
         self.wash = [fx.GroundDust(f'S14_wash{k}', start=(float(g[0]), float(g[1]) + 55), direction=(sd, 0), frame0=-6,
-                                   distance=420, duration=16, height=70) for k, sd in enumerate((-1, 1))]
+                                   distance=420, duration=16, height=70, style='dust') for k, sd in enumerate((-1, 1))]
     def fx_mid(self, rgb, f, t, ctx):
         # after the impact: the flame column under the robot as it rockets out of frame
         if f < 10:
@@ -960,8 +964,8 @@ class S14(Base):
         lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
         for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
             # big enough to spill past the crouching silhouette on both sides
+            # (no glow here: the bells are behind the robot, a glow would veil its chest)
             fl.draw(cv_, f, nozzle=noz, direction=(d[0] * 0.3, 1.0), radius=rad * 2.0, length=rad * 13)
-            fl.glow(lb, f, nozzle=noz, direction=(d[0] * 0.3, 1.0), radius=rad * 2.0, length=rad * 13)
         for w_ in self.wash:
             w_.draw(cv_, f)
         return comp.over_straight(rgb, cv_)
@@ -1119,7 +1123,7 @@ class S16B(Base):
         q, n = self.trail_points(t, ctx['cam'])
         births = np.arange(f - n + 1, f + 1)
         # perspective: the trail is wide where it passes near the camera, thin at the far robot
-        sc = np.clip(230.0 / np.maximum(q[:, 2], 1.0), 0.1, 1.5)
+        sc = np.clip(230.0 / np.maximum(q[:, 2], 1.0), 0.1, 1.12)     # (no swollen 'pancake' at the near end)
         self.trail.draw(cv_, f, q[:, :2], births=births, light_buf=lb, scales=sc)
         # engine flames from the two bells, streaming back along the path (on 1s)
         cam = ctx['cam']

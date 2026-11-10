@@ -36,8 +36,8 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.238,
-      "note": "distant crowns along the bottom, glowing edges"
+      "coverage": 0.242,
+      "note": "mid-distance crowns painted like the near clumps, hazier and cooler, varied rims; the upper middle stays open for the flock"
     },
     {
       "name": "canopy",
@@ -52,15 +52,15 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.371,
+      "coverage": 0.358,
       "note": "near canopy: readable leaf clumps with warm rims, branches reaching into the sky"
     }
   ],
-  "seconds": 13.3,
+  "seconds": 12.1,
   "layer_seconds": {
-    "sky": 1.8,
-    "canopy_far": 1.6,
-    "canopy": 9.5
+    "sky": 1.7,
+    "canopy_far": 1.7,
+    "canopy": 8.2
   },
   "sun": [
     1180.0,

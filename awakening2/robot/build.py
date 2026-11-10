@@ -56,6 +56,7 @@ def make(voxel=0.05, head_voxel=0.025, growth_voxel=0.035):
         tufts.append((anchor, P, N))   # anchored to the parent part's frame (same as moss); world growth to itself
     fl = [(p, F) for p, F in flowers.items()]
     rivets = make_rivets(rig)
+    dec.add_rivet_streaks(rig, rivets, mats_k)          # rust runs from the rivets (designed, not noise)
     # grass sprouts from the moss (part-local anchors): height, blade count, lean
     sprouts = []
     rng2 = SF.rng_for('sprouts')

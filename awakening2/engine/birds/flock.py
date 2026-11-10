@@ -68,7 +68,10 @@ def draw_flock(canvas, states, light=None, style='silhouette', on=None, tint=Non
         pre[..., :3] *= pre[..., 3:4]
         patch = cv2.warpAffine(pre, M2, (x1 - x0, y1 - y0), flags=cv2.INTER_LINEAR,
                                borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-        a = patch[..., 3:4] * st.get('alpha', 1.0)
+        a = patch[..., 3:4]
+        if style == 'silhouette':
+            a = np.clip((a - 0.3) / 0.4, 0.0, 1.0)        # hard-edged drawn silhouettes, not soft particles
+        a = a * st.get('alpha', 1.0)
         rgb = np.where(a > 1e-6, patch[..., :3] / np.maximum(patch[..., 3:4], 1e-6), 0)
         if tint is not None:
             t = np.asarray(tint[:3], np.float32); ta = tint[3] if len(tint) > 3 else 0.5

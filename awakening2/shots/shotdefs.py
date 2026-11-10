@@ -117,7 +117,7 @@ SHOTS = [
          desc='Tilt-down reveal: crowns against the dawn sky through the canopy gap, down the trunks, to the kneeling robot in mist',
          cam=[(0.0, v(15, 31, 3.0), v(3, 6, 44), 26), (1.2, v(15, 31, 3.0), v(3, 6, 44), 26),
               (6.4, v(15, 31, 3.0), A['pelvis'] + v(0.5, 0, 4.4), 26), (8.0, v(15, 31, 3.0), A['pelvis'] + v(0.5, 0, 4.4), 26)],
-         pose=[(0.0, 'KNEEL_DORMANT')], light=SUN_BACK, bg='S01',
+         pose=[(0.0, 'KNEEL_DORMANT')], light=SUN_BACK, bg='S01', cam_spacing='crank',
          notes='Fade in 0-1.5 s. Ends locked with the robot ~55% of frame height framed by two huge trunks. Bird crosses far at 6.8 s.'),
     dict(id='S02', t0=8.0, t1=13.5, step=2,
          desc='Shoulder: the mossy pauldron with flowers and a sapling; the small bird lands',
@@ -237,7 +237,20 @@ def cam_at(shot, t, with_roll=False):
         out = None
         for a, b in zip(keys[:-1], keys[1:]):
             if t <= b[0]:
-                u = ease((t - a[0]) / max(b[0] - a[0], 1e-6))
+                u = (t - a[0]) / max(b[0] - a[0], 1e-6)
+                if shot.get('cam_spacing') == 'crank':
+                    # a hand-cranked rostrum move: short ease in and out, constant speed in between
+                    e = 0.18
+                    u = min(max(u, 0.0), 1.0)
+                    v_ = 1.0 / (1.0 - e)
+                    if u < e:
+                        u = 0.5 * v_ * u * u / e
+                    elif u > 1 - e:
+                        u = 1.0 - 0.5 * v_ * (1 - u) * (1 - u) / e
+                    else:
+                        u = 0.5 * v_ * e + v_ * (u - e)
+                else:
+                    u = ease(u)
                 out = (a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u, a[3] + (b[3] - a[3]) * u,
                        _roll(a) + (_roll(b) - _roll(a)) * u)
                 break

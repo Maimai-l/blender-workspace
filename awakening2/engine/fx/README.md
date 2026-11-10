@@ -245,6 +245,42 @@ rgb = fx.bloom(rgb, threshold=.78, radius=24, strength=.5)
 * Shafts with soft (airbrushed) edges, length fade and slow breathing; the returned mask lets
   motes, sparkles and leaves light up only inside the beams.
 
+## Round 6: three distinct looks - SOIL, DUST, WIND (opt-in `style=`)
+
+Every dust-like effect used to share one opaque cream/lavender billow. Pass `style=` to pick a
+design (default `None` = the previous look, so existing calls are unchanged):
+
+| look | where | what it is |
+|---|---|---|
+| `style='soil'` | rise contacts, pours, landings (S05, S08, S09) | dark brown clods on parabolic arcs (2 tones + thin brown line) and arcs of dirt specks; a little earthy brown-grey dust (`palettes.SOIL_DUST`, darker and browner than `DUST_DARK`) that thins out within ~12-18 frames |
+| `style='dust'` | launch blast (S14), engine wash (S12, S14) | translucent warm grey (`palettes.DUST_WARM`): body alpha ~0.6, lit crowns ~0.86, no outline; thins (opacity falls ~45 %) and breaks up over its life; `main=True` still gives the single-mass blast, translucent |
+| `style='wind'` | the ring (S13) | `WindRing`: a translucent white shock ring of dry-brush strokes (bundles of broken white bristle arcs, densest and brightest at the leading edge, re-drawn on 2s), flattened-grass streaks, torn leaves, a little light mist (`palettes.WIND_DUST`, alpha ~0.45-0.75); the billow wall is ~0.22x and sparse (`wall=0` turns it off, `wall=1` restores it) |
+
+Supported on: `DustPuff(style=)`, `GroundDust(style=)`, `DustVeil(style=)`, `SoilPour(style='soil')`
+(its veil and landing dust become `SOIL_DUST`), `WindRing(style='wind', wall=None)`.
+Low level: `paint_groups(..., tone_alpha=(shadow, mid, lit))` makes any billow cel translucent per
+tone (`palettes.TONE_ALPHA`).
+
+Call-site parameters used for the round-6 verification (`fx_tests/render_styled.py` injects them):
+
+```python
+# S05
+fx.GroundDust('S05_dust', ..., style='soil')
+# Rise (S08, S09)
+fx.SoilPour(f'{sid}_{name}', emit, ..., style='soil')
+fx.DustPuff(f'{sid}_{name}', ..., aspect=0.45, palette=fx.palettes.DUST_DARK, style='soil')
+# S12 engine wash
+fx.GroundDust('S12_dust', ..., style='dust');  fx.GroundDust('S12_dust2', ..., style='dust')
+# S13
+fx.WindRing('S13_ring', ..., style='wind')          # add wall=0 for no billows at all
+# S14
+fx.DustPuff('S14_blast', ..., main=True, style='dust')
+fx.DustVeil('S14_veil', ..., style='dust')
+fx.GroundDust('S14_ringL', ..., style='dust');  fx.GroundDust('S14_ringR', ..., style='dust')
+fx.GroundDust(f'S14_wash{k}', ..., style='dust')
+```
+Tests: `fx_tests/styles_*` (soil spray vs translucent blast + wash) and `fx_tests/wind_style_*`.
+
 ## Shot recipes (starting points at 1920×1040; frames = seconds × 24 from `audio/cues.json`)
 
 | shot | effect | starting call |

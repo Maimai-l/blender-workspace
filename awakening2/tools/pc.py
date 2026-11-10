@@ -42,17 +42,20 @@ def sync():
         if '__pycache__' in n or n.endswith(('.png', '.jpg', '.mp4', '.wav', '.npz', '.pyc')):
             return None
         return ti
-    snap = os.environ.get('AW2_FX_SNAPSHOT')      # ship a frozen engine/fx while a helper edits the live one
+    # ship frozen copies of engine/fx and engine/gouache while helpers edit the live ones
+    snaps = {'engine/fx': os.environ.get('AW2_FX_SNAPSHOT'), 'engine/gouache': os.environ.get('AW2_GOUACHE_SNAPSHOT')}
+    snaps = {k: v for k, v in snaps.items() if v}
     def filt2(ti):
-        if snap and (ti.name == 'engine/fx' or ti.name.startswith('engine/fx/')):
-            return None
+        for k in snaps:
+            if ti.name == k or ti.name.startswith(k + '/'):
+                return None
         return filt(ti)
     with tarfile.open(tgz, 'w:gz') as tf:
         for d in ('engine', 'robot', 'shots', 'tools'):
             tf.add(os.path.join(ROOT, d), arcname=d, filter=filt2)
-        if snap:
-            tf.add(snap, arcname='engine/fx', filter=filt)
-            print('engine/fx from snapshot', snap)
+        for k, v in snaps.items():
+            tf.add(v, arcname=k, filter=filt)
+            print(k, 'from snapshot', v)
         tf.add(os.path.join(ROOT, 'audio', 'cues.json'), arcname='audio/cues.json')
     pcx.put(tgz, PCROOT + '\\aw2code.tgz')
     print(sh(f'cd {U} && mkdir -p code && tar xzf aw2code.tgz -C code && echo synced'))

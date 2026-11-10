@@ -308,7 +308,7 @@ def add_ground_growth(rig, voxel=0.045):
 # decals: designed chipped paint and rust, box-projected in part space
 # ----------------------------------------------------------------------------
 
-CHIP, RUST, STREAK, PRIMER, FADE, LICHEN = 1, 2, 3, 4, 5, 6
+CHIP, RUST, STREAK, PRIMER, FADE, LICHEN, EMBLEM = 1, 2, 3, 4, 5, 6, 7
 TEXEL = 0.012    # metres per decal texel
 
 
@@ -334,7 +334,7 @@ def _streak_poly(rng, x0, y0, dx, dy, length, width):
     return np.concatenate([left, right])
 
 
-PRIORITY = (FADE, PRIMER, RUST, STREAK, CHIP, LICHEN)    # later wins
+PRIORITY = (FADE, PRIMER, EMBLEM, RUST, STREAK, CHIP, LICHEN)    # later wins
 
 
 class Decals:
@@ -367,6 +367,24 @@ class Decals:
 
                 def fill(k, poly):
                     cv2.fillPoly(cov[k], [np.round(poly * 16).astype(np.int32)], 255, lineType=cv2.LINE_AA, shift=4)
+                if name.startswith('pauldron') and ax == 0:
+                    # the old sun crest on each shoulder: faded cream paint, chipped and rusted like the rest
+                    ecx, ecy = (0.0 - lo[u]) / TEXEL, (0.62 - lo[v]) / TEXEL
+                    def circ(r, n=48):
+                        a_ = np.linspace(0, 2 * np.pi, n, endpoint=False)
+                        return np.stack([ecx + np.cos(a_) * r / TEXEL, ecy + np.sin(a_) * r / TEXEL], -1)
+                    ring = np.zeros_like(cov[EMBLEM])
+                    cv2.fillPoly(ring, [np.round(circ(0.84) * 16).astype(np.int32)], 255, lineType=cv2.LINE_AA, shift=4)
+                    cv2.fillPoly(ring, [np.round(circ(0.71) * 16).astype(np.int32)], 0, lineType=cv2.LINE_AA, shift=4)
+                    cov[EMBLEM] = np.maximum(cov[EMBLEM], ring)
+                    fill(EMBLEM, circ(0.30))
+                    for k8 in range(8):
+                        a0 = k8 * np.pi / 4 + np.pi / 8
+                        h_ = np.radians(9)
+                        tri = np.array([[ecx + np.cos(a0 - h_) * 0.38 / TEXEL, ecy + np.sin(a0 - h_) * 0.38 / TEXEL],
+                                        [ecx + np.cos(a0) * 0.62 / TEXEL, ecy + np.sin(a0) * 0.62 / TEXEL],
+                                        [ecx + np.cos(a0 + h_) * 0.38 / TEXEL, ecy + np.sin(a0 + h_) * 0.38 / TEXEL]])
+                        fill(EMBLEM, tri)
                 # sun-faded paint: a few big soft-cornered blotches (drawn first, everything sits on top)
                 for c in range(int(dens * area * 0.08) + 1):
                     cx, cy = rng.uniform(0, Wt), rng.uniform(0, Ht)
@@ -469,6 +487,7 @@ DECAL_PARTS = {'torso': 1.0, 'pelvis': 1.0, 'head': 0.7, 'pauldron_R': 1.1, 'pau
 
 DECAL_COLS = {   # (light, shadow) by decal label, for PAINT parts
     FADE: (WD.hexc('c78e70'), WD.hexc('7e5046')),     # sun-faded paint: lighter, greyer, same hue
+    EMBLEM: (WD.hexc('e2cfa4'), WD.hexc('927d6e')),   # the faded cream sun crest on the shoulders
     LICHEN: (WD.hexc('b9c19a'), WD.hexc('6a7466')),
     CHIP: (WD.hexc('5e5a57'), WD.hexc('34303c')),     # bare iron
     RUST: (WD.hexc('945024'), WD.hexc('543024')),     # rust: browner and more orange than the paint

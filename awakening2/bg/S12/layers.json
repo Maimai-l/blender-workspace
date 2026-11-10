@@ -52,7 +52,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.657,
+      "coverage": 0.653,
       "note": "mid trunks as dark silhouettes with gold rims; floor in cool shade crossed by hard-edged sunlit stripes between the trunk shadows"
     },
     {
@@ -68,7 +68,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.155,
+      "coverage": 0.178,
       "note": "three translucent light shafts with clean edges, continuing the ground stripes; small sun bloom (robot goes above this)"
     },
     {
@@ -84,17 +84,17 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.037,
+      "coverage": 0.066,
       "note": "dark backlit ferns/grass at the bottom, a near trunk at the right edge"
     }
   ],
-  "seconds": 32.6,
+  "seconds": 30.7,
   "layer_seconds": {
-    "sky": 1.3,
-    "far": 20.3,
-    "mid": 8.3,
-    "beams": 1.2,
-    "fg": 1.0
+    "sky": 1.4,
+    "far": 19.8,
+    "mid": 6.9,
+    "beams": 1.1,
+    "fg": 1.1
   },
   "sun": [
     1250.0,

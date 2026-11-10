@@ -302,6 +302,26 @@ Tests: `fx_tests/styles_*` (soil spray vs translucent blast + wash) and `fx_test
   flattened (ground-hugging) and fainter (`mist` default 0.22); `wall=0` still removes the
   billows entirely.
 
+## Round 8
+
+* **Pebbles**: the `pebble` kind is an irregular flat-faceted stone (5-8 straight sides) with a
+  hard straight light/shadow split, a thin brown-grey line and per-stone colours from
+  `palettes.PEBBLES` (warm / cool / brown / blue greys, sandstone); ~15 % become `mossy_pebble`
+  (a moss cushion on one face).  Ground-bound `DebrisBurst`s (`ground=` given) now start on a
+  flat band along the ground (x within +/-`origin_radius`, y at the origin clamped to the
+  ground) instead of a disc that put pieces in mid-air or under the ground, so they hop and
+  bounce (on 2s); `flat_origin=False` restores the disc.
+* **Leaves tumble**: `add_leaf(..., pitch=)` treats the leaf as a thin plate turned in 3D and
+  projected: roll about the long axis (`flip`) foreshortens the width by |cos|, pitch about the
+  across axis foreshortens the length, both together skew it; the visible side (lit top or
+  paler underside) follows the plate normal; the 2 tones are a hard split along the midrib
+  (the half turned away from the light is shaded, flipping as the leaf rolls); edge-on leaves
+  show a light rim sliver.  `LeafBurst` leaves keep rolling (one turn in 14-34 frames) and
+  pitch (30 % end over end) for their whole life; `LeafFall` leaves rock far enough to pass
+  edge-on and show the underside.
+* **Smear**: `smear_drawn` posterizes with a stronger mode filter and merges tone islands
+  smaller than 0.4 % of the silhouette into their surroundings: bigger, simpler shadow shapes.
+
 ## Shot recipes (starting points at 1920×1040; frames = seconds × 24 from `audio/cues.json`)
 
 | shot | effect | starting call |

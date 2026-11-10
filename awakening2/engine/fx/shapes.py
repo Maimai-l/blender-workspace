@@ -35,8 +35,27 @@ def crumb(g):
 
 
 def pebble(g):
-    p = blob(g, n=int(g.integers(9, 12)), rmin=0.85, rmax=1.0, smooth=2, stretch=g.uniform(1.15, 1.5))
+    """Pebble: an irregular flat-faceted stone - 5-8 straight sides, a little longer than high.
+    (The hard light/shadow split is cut at draw time, see debris.add_piece.)"""
+    n = int(g.integers(5, 9))
+    a = (np.arange(n) + g.uniform(-0.28, 0.28, n)) * (TAU / n) + g.uniform(0, TAU)
+    r = g.uniform(0.78, 1.0, n)
+    p = np.stack([np.cos(a) * r * g.uniform(1.1, 1.45), np.sin(a) * r * g.uniform(0.78, 0.95)], 1)
     return [(p, 'main')]
+
+
+def mossy_pebble(g):
+    """A faceted stone with a small moss cushion on one face."""
+    parts = pebble(g)
+    p = parts[0][0]
+    top = p[np.argsort(p[:, 1])[:3]]                     # the three highest corners
+    c = top.mean(0) * 0.55
+    ang = np.linspace(math.pi * 1.05, math.pi * 1.95, 7)
+    w = g.uniform(0.45, 0.7)
+    cap = np.concatenate([np.stack([c[0] + np.cos(ang) * w, c[1] + np.sin(ang) * w * 0.55], 1),
+                          [[c[0] + w * 0.9, c[1] + 0.12], [c[0] - w * 0.9, c[1] + 0.12]]], 0)
+    parts.append((chaikin(cap, 1, closed=True), 'cap'))
+    return parts
 
 
 def moss_chunk(g):
@@ -116,7 +135,7 @@ def bark(g):
     return [(p, 'main'), (stroke_poly(ln, np.full(len(ln), 0.06)), 'grain')]
 
 
-KINDS = {'clod': clod, 'crumb': crumb, 'pebble': pebble, 'moss': moss_chunk, 'root': root,
+KINDS = {'clod': clod, 'crumb': crumb, 'pebble': pebble, 'mossy_pebble': mossy_pebble, 'moss': moss_chunk, 'root': root,
          'vine': vine, 'bark': bark}
 
 

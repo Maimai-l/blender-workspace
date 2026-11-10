@@ -194,6 +194,13 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   styles at the call sites (soil: Rise/S05; dust: S12/S14; wind: S13), rivet rust streaks, S13 without
   flame tongues (hot ground glow instead), S16B trail capped near the camera. The waiter now launches
   4 helper workers on the unfinished shots by itself when fewer than 4 main workers remain.
+- 20:50 v11 delivered (68 MB, QA, edge check 0, pushed to main). v11 render lost ~35 min: auto-steal fired
+  during the BG phase (gouache processes counted as workers) and its helpers raced the main workers on
+  the same tmp file names (libpng write errors, FileNotFoundError), killing whole chunks. Fixed: auto-steal
+  only after half the frames exist; workers write per-worker tmp names and survive a failed replace.
+  Old frame folders v2-v9 deleted on the PC (68 GB free).
+- 20:52 v12 launched (BG regen S12 S13 S11 S00): FX round 7, BG round 8 (S12 warm_amt 0.28), S09 aim,
+  S03 band desaturated. Reviewer on v11 running -> notes/review_v11.md.
 
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.

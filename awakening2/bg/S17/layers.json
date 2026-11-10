@@ -100,7 +100,7 @@
         -48
       ],
       "blend": "normal",
-      "coverage": 0.445,
+      "coverage": 0.426,
       "note": "stronger sunbeams through the gap onto the empty clearing"
     },
     {
@@ -136,16 +136,16 @@
       "note": "foreground: overhanging leaves at the top, vines, ferns in the bottom corners"
     }
   ],
-  "seconds": 9.6,
+  "seconds": 12.5,
   "layer_seconds": {
-    "sky": 0.9,
-    "far": 1.2,
-    "mist_far": 0.9,
-    "mid": 1.7,
+    "sky": 0.8,
+    "far": 1.4,
+    "mist_far": 1.5,
+    "mid": 3.0,
     "mist_mid": 1.1,
-    "beams": 1.1,
-    "near": 1.1,
-    "fg": 1.1
+    "beams": 1.6,
+    "near": 1.7,
+    "fg": 1.0
   },
   "source": "S01 end frame (rows 1860-2900)",
   "sun": [

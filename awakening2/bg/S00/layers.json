@@ -84,17 +84,17 @@
         -64
       ],
       "blend": "normal",
-      "coverage": 0.214,
+      "coverage": 0.2,
       "note": "near canopy: a misty back row of varied crowns, a low dark front band with a broken leafy top line, two framing corner crowns and two gnarled snags; branches against the misty valley, mist in the dips, rims on some crowns only"
     }
   ],
-  "seconds": 11.7,
+  "seconds": 13.8,
   "layer_seconds": {
     "sky": 1.9,
     "far": 3.6,
     "mist": 1.0,
-    "mid": 2.8,
-    "near": 2.0
+    "mid": 2.9,
+    "near": 3.9
   },
   "sun": [
     1930.0,

@@ -21,7 +21,7 @@
       ],
       "blend": "normal",
       "coverage": 1.0,
-      "note": "forest floor seen from above: moss, litter, roots, logs, stones; opaque"
+      "note": "forest floor seen from above: patches of dark moss, bright moss and grass, bare soil with fallen leaves, small ferns, roots, logs, stones; hard-edged canopy shadow and sun flecks; opaque"
     },
     {
       "name": "shrubs",
@@ -36,7 +36,7 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.157,
+      "coverage": 0.158,
       "note": "shrub tops"
     },
     {
@@ -68,7 +68,7 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.028,
+      "coverage": 0.023,
       "note": "a few big mossy limbs reaching from under the canopy over the rim of the clearing (trunk bases removed: from above they read as flat bands)"
     },
     {
@@ -84,17 +84,17 @@
         -40
       ],
       "blend": "normal",
-      "coverage": 0.361,
+      "coverage": 0.425,
       "note": "band of dense treetops seen from above framing the clearing (nearest layer; the wind ring can cross it)"
     }
   ],
-  "seconds": 27.0,
+  "seconds": 28.6,
   "layer_seconds": {
-    "ground": 16.5,
+    "ground": 18.6,
     "shrubs": 1.6,
-    "ferns": 3.7,
-    "trunks": 2.4,
-    "canopy": 2.2
+    "ferns": 3.2,
+    "trunks": 2.3,
+    "canopy": 2.3
   },
   "robot_centre": [
     950.0,
@@ -106,159 +106,147 @@
       930.6802368164062
     ],
     [
-      462.2418212890625,
-      926.78076171875
+      460.6951599121094,
+      925.01220703125
     ],
     [
-      468.4814758300781,
-      922.767578125
+      465.4086608886719,
+      919.314453125
     ],
     [
-      474.7259826660156,
-      918.7647094726562
+      470.1251220703125,
+      913.619384765625
     ],
     [
-      481.03338623046875,
-      914.896240234375
+      474.8802490234375,
+      907.95947265625
     ],
     [
-      487.4617614746094,
-      911.2861328125
+      479.70977783203125,
+      902.3673095703125
     ],
     [
-      494.0682067871094,
-      908.0554809570312
+      484.6449890136719,
+      896.8702392578125
     ],
     [
-      500.86114501953125,
-      905.2091064453125
+      489.6259765625,
+      891.3958740234375
     ],
     [
-      507.795654296875,
-      902.6561889648438
+      494.6506042480469,
+      885.9492797851562
     ],
     [
-      514.8262939453125,
-      900.3131103515625
+      499.75604248046875,
+      880.5821533203125
     ],
     [
-      521.9077758789062,
-      898.0963134765625
+      504.97955322265625,
+      875.3463134765625
     ],
     [
-      528.9946899414062,
-      895.9221801757812
+      510.3583984375,
+      870.2936401367188
     ],
     [
-      536.0662841796875,
-      893.7638549804688
+      515.9207153320312,
+      865.4547119140625
     ],
     [
-      543.2203979492188,
-      891.8500366210938
+      521.6346435546875,
+      860.7471313476562
     ],
     [
-      550.4234008789062,
-      890.0804443359375
+      527.4896240234375,
+      856.1861572265625
     ],
     [
-      557.6162719726562,
-      888.294921875
+      533.4826049804688,
+      851.8076171875
     ],
     [
-      564.740234375,
-      886.3331909179688
+      539.6104736328125,
+      847.6473999023438
     ],
     [
-      571.736328125,
-      884.0350952148438
+      545.8699951171875,
+      843.7413330078125
     ],
     [
-      578.559814453125,
-      881.2818603515625
+      552.2926025390625,
+      840.1594848632812
     ],
     [
-      585.2402954101562,
-      878.1575317382812
+      558.9259033203125,
+      836.9426879882812
     ],
     [
-      591.8245239257812,
-      874.7837524414062
+      565.7046508789062,
+      833.9761962890625
     ],
     [
-      598.358642578125,
-      871.2801513671875
+      572.5590209960938,
+      831.1398315429688
     ],
     [
-      604.888916015625,
-      867.7666015625
+      579.419189453125,
+      828.3134155273438
     ],
     [
-      611.4615478515625,
-      864.36279296875
+      586.2153930664062,
+      825.376953125
     ]
   ],
   "fern_kinds": [
     "sword",
+    "sword",
+    "lady",
+    "sword",
+    "lady",
+    "lady",
+    "sword",
+    "lady",
+    "bracken",
+    "bracken",
     "bracken",
     "hart",
+    "bracken",
+    "lady",
+    "lady",
     "sword",
+    "bracken",
+    "sword",
+    "lady",
     "lady",
     "sword",
     "sword",
     "hart",
-    "bracken",
+    "sword",
     "bracken",
     "sword",
     "bracken",
+    "lady",
+    "sword",
+    "lady",
+    "lady",
     "lady",
     "hart",
-    "sword",
-    "sword",
-    "lady",
-    "bracken",
-    "sword",
-    "sword",
-    "hart",
-    "hart",
-    "lady",
-    "sword",
-    "hart",
-    "sword",
-    "sword",
-    "sword",
-    "lady",
-    "lady",
-    "bracken",
-    "sword",
-    "lady",
-    "bracken",
-    "sword",
-    "lady",
     "sword",
     "hart",
     "sword",
     "sword",
-    "lady",
     "sword",
-    "sword",
-    "bracken",
-    "bracken",
     "hart",
     "sword",
-    "lady",
-    "bracken",
-    "hart",
-    "bracken",
-    "bracken",
-    "hart",
+    "sword",
+    "sword",
     "sword",
     "sword",
     "lady",
-    "sword",
     "hart",
-    "bracken",
-    "lady"
+    "sword",
+    "sword"
   ],
   "light_dir": [
     0.15,

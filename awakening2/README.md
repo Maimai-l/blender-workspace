@@ -261,3 +261,29 @@ lump, the rise wide lost the head in the canopy, and the flock and S10 moved lik
   in mist; S06's mid canopy is painted crowns; S10's sky card no longer shows its edge.
 - **Weathering:** rust runs bleed from a share of the rivets.
 - **S16B:** the trail no longer swells into a "pancake" where it passes the camera.
+
+### v12 (21:20)
+- **Smear frames drawn, not stretched (S14):** the two smear frames redraw the robot as flat
+  colour shapes taken from its own cel, dragged down into tapered smear fingers with speed
+  streaks and ghost edges, the flames showing through the notches.
+- **Effects (round 7):** debris leaves short tapered dashes instead of rods; overlapping
+  translucent dust merges instead of doubling in density; the wind ring's few billows lie flat
+  and pale under the white brush ring.
+- **Backgrounds (round 8):** S12's floor is in cool shade crossed by warm sunlit stripes with
+  dry-brush edges (no radial fan of soft rays); the trunk base that read as a purple river in
+  the top view is gone; the masses at the canopy gap are crisp and the outer ceiling varies;
+  the vista's near band is a low broken line of leaves with two crooked snags.
+- **S09:** the camera re-aimed so the standing robot's head is in the bright sky gap, not
+  against a dark crown.
+- **S03:** the sunlit band on the face is a little less saturated.
+
+### v13 (21:50)
+- **A face for the design:** a faded cream sun crest on each shoulder plate (the sunrise motif
+  of the film, chipped and rusted like the rest of the paint), on the model sheet too.
+- **Effects (round 8):** pebbles are faceted stones that hop from the ground (not grey spheres
+  appearing in the air); leaves tumble in 3D: they narrow edge-on as they roll and show their
+  paler underside; the smear frames have bigger, simpler colour shapes.
+- **Backgrounds (round 9):** the ending's imprint is ringed by broken clods and torn moss (no
+  pale outline); the top view's floor is moss, grass, soil and leaf litter with a hard canopy
+  shadow; the vista's corner crowns are backlit leaf clusters; S12's light is dappled golden
+  pools with leaf-shadow holes instead of converging stripes.

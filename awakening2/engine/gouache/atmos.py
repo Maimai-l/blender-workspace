@@ -319,3 +319,85 @@ def light_stripes(cv, rng, vp, stripes, warm_col, y_min, warm_amt=0.6, lift=0.1,
                    taper(3, 1.0, 0.0, max(1.5 * sc[i], 1.0)), jitter(C(255, 226, 150), rng, 1, dl=0.04)[0],
                    opacity=0.85, edge=0.3, bristle=0.2, rng=rng)
     return A
+
+
+def light_patches(cv, rng, vp, patches, warm_col, y_min, warm_amt=0.3, lift=0.03, cool_col=None, cool_amt=0.0,
+                  texture=1.0, blades=1.0, holes=1.0):
+    """A few irregular sunlit patches on a shaded floor (backlit scene). patches: (x, y, length, width, twist)
+    in px: each patch is elongated roughly along the light (radial from vp, turned by `twist` radians so the
+    patches do not all converge), built from overlapping ellipses with wobbling widths, cut by the shadows of
+    foliage (clusters of leaf-shaped holes); hard, dry-brush edges; painted as a warm tint that keeps the floor
+    texture. Returns the light mask."""
+    import cv2
+    from .canvas import PAPER
+    from .noise import fbm
+    h, w = cv.shape
+    M = np.zeros((h, w), np.uint8)
+    for (x, y, L, Wd, tw) in patches:
+        ang = np.arctan2(y - vp[1], x - vp[0]) + tw
+        ca, sa = np.cos(ang), np.sin(ang)
+        # light that came through leaves: many leaf-sized flecks, dense in the core, scattered at the edges
+        n = int(L * Wd / 60)
+        u = rng.normal(0, 0.32, n) * L                       # along the light
+        v_ = rng.normal(0, 0.3, n) * Wd                      # across
+        keep = (np.abs(u) < L * 0.6) & (np.abs(v_) < Wd * 0.65)
+        u, v_ = u[keep], v_[keep]
+        sc = 1.0 + 0.6 * np.clip((y - vp[1]) / 500.0, 0, 1)
+        for k in range(len(u)):
+            cx = x + ca * u[k] - sa * v_[k]
+            cy = y + sa * u[k] + ca * v_[k]
+            core = np.exp(-((u[k] / (L * 0.38)) ** 2 + (v_[k] / (Wd * 0.36)) ** 2))
+            r_ = rng.uniform(6, 14) * sc * (0.6 + 0.8 * core)
+            cv2.ellipse(M, (int(cx + cv.m), int(cy + cv.m)), (int(max(r_ * 1.4, 2)), int(max(r_ * 0.7, 2))),
+                        float(np.degrees(ang) + rng.normal(0, 25)), 0, 360, 1, -1)
+    # foliage shadows: leaf-shaped holes clustered inside the patches
+    if holes > 0:
+        ys, xs = np.nonzero(M)
+        if len(xs):
+            nh = int(holes * len(xs) / 1800)
+            pick = rng.choice(len(xs), min(nh, len(xs)), replace=False)
+            for i in pick:
+                r_ = rng.uniform(5, 11)
+                cv2.ellipse(M, (int(xs[i]), int(ys[i])), (int(r_ * rng.uniform(0.9, 1.4)), int(r_ * rng.uniform(0.4, 0.7))),
+                            float(rng.uniform(0, 180)), 0, 360, 0, -1)
+    inside = cv2.distanceTransform(M, cv2.DIST_L2, 3).astype(np.float32)
+    outside = cv2.distanceTransform(1 - M, cv2.DIST_L2, 3).astype(np.float32)
+    sd = np.where(M > 0, inside, -outside)
+    ph, pw = PAPER.shape
+    pap = PAPER[(np.arange(h) - cv.m)[:, None] % ph, (np.arange(w) - cv.m)[None, :] % pw]
+    nz = fbm(h, w, 40, rng, octaves=2) - 0.5
+    A = _edge_alpha(sd, nz, pap, soft=1.3, dry=0.6)
+    X, Y = cv.coords()
+    mot = fbm(h, w, 26, rng, octaves=2)
+    A = (A * (0.75 + 0.25 * mot) * (Y > y_min) * np.clip(cv.img[..., 3], 0, 1)).astype(np.float32)
+    if cool_col is not None and cool_amt > 0:
+        flo = (np.clip(cv.img[..., 3], 0, 1) * (Y > y_min)).astype(np.float32)
+        cv.lock_tint(cool_col, (flo * (1 - A) * cool_amt).astype(np.float32))
+    cv.lock_tint(warm_col, (A * warm_amt).astype(np.float32))
+    if lift > 0:
+        cv.img[..., :3] += (A * lift)[..., None] * cv.img[..., 3:4]
+        np.minimum(cv.img[..., :3], cv.img[..., 3:4], out=cv.img[..., :3])
+    th = np.arctan2(Y - vp[1], X - vp[0])
+    sel = np.flatnonzero((A > 0.5).ravel())
+    if texture > 0 and len(sel):
+        n = min(len(sel), int(texture * len(sel) / 320))
+        pick = rng.choice(sel, n, replace=False)
+        py, px = np.unravel_index(pick, A.shape)
+        cols = jitter(mix(np.broadcast_to(warm_col, (n, 3)), C(255, 236, 190), rng.uniform(0, 0.5, n)[:, None]), rng,
+                      dl=0.04, dc=0.12, dh=0.04)
+        dabs(cv, px - cv.m, py - cv.m, rng.uniform(10, 30, n), cols, aspect=rng.uniform(0.15, 0.3, n),
+             angle=th[py, px] + rng.normal(0, 0.15, n), shape='flat', edge=0.4, rag=0.45, bristle=0.6, dry=0.4,
+             opacity=rng.uniform(0.12, 0.3, n), mode='lock', rng=rng)
+    if blades > 0 and len(sel):
+        n = min(len(sel), int(blades * len(sel) / 1600))
+        pick = rng.choice(sel, n, replace=False)
+        py, px = np.unravel_index(pick, A.shape)
+        sc = np.clip((py - cv.m - y_min) / 400.0, 0.2, 1.4)
+        for i in range(n):
+            x0, y0 = px[i] - cv.m, py[i] - cv.m
+            hgt = rng.uniform(8, 20) * sc[i]
+            lean = rng.normal(0, 0.35)
+            stroke(cv, [[x0, y0], [x0 + lean * hgt * 0.5, y0 - hgt * 0.6], [x0 + lean * hgt, y0 - hgt]],
+                   taper(3, 1.0, 0.0, max(1.5 * sc[i], 1.0)), jitter(C(255, 226, 150), rng, 1, dl=0.04)[0],
+                   opacity=0.7, edge=0.3, bristle=0.2, rng=rng)
+    return A

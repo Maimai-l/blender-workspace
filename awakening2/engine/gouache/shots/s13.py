@@ -8,6 +8,7 @@ Ferns are their own layer (the wind ring flattens them radially): opaque, two-to
 fronds of four species with soft cast shadows. Light from the bottom of the frame.
 """
 import numpy as np
+import cv2
 
 from ..color import C, mix, ramp, jitter, aerial, smoothstep
 from ..noise import rng_for, fbm
@@ -36,24 +37,94 @@ def build(outdir, quick=False):
     # ---------------------------------------------------------------- ground
     cv = P.layer('ground', 0.3)
     X, Y = cv.coords()
-    n1 = fbm(cv.shape[0], cv.shape[1], 420, rng, octaves=4)
-    n2 = fbm(cv.shape[0], cv.shape[1], 120, rng, octaves=3)
-    clear = np.exp(-(((X - CENTRE[0]) / 650) ** 2 + ((Y - CENTRE[1]) / 480) ** 2))
-    v = np.clip(0.25 + 0.45 * n1 + 0.15 * (n2 - 0.5) + 0.25 * clear, 0, 1)
-    base = ramp([C(32, 48, 60), C(58, 86, 70), C(104, 128, 78), C(176, 176, 102)], v, [0, 0.35, 0.7, 1.0])
-    litter = smoothstep(0.62, 0.8, n2) * (1 - clear)
-    base = mix(base, C(132, 104, 84), (litter * 0.6)[..., None])
-    cv.img[..., :3] = base
+    hh_, ww_ = cv.shape
+    cx_, cy_, rx_, ry_ = OPEN
+    kc = np.hypot((X - cx_) / rx_, (Y - cy_) / ry_)
+    open_k = np.clip(1.15 - kc, 0, 1)                          # 1 in the open clearing, 0 under the canopy
+    f1 = fbm(hh_, ww_, 260, rng, octaves=3)
+    f2 = fbm(hh_, ww_, 90, rng, octaves=3)
+    f3 = (fbm(hh_, ww_, 34, rng, octaves=3) - 0.5) * 2.2       # ragged patch edges
+    # 0 soil/litter, 1 dark moss, 2 bright moss, 3 grass
+    dark_m = (f1 + 0.08 * f3 > 0.6 - 0.1 * (1 - open_k))
+    bright_m = (~dark_m) & (f1 + 0.08 * f3 > 0.44) & (f2 + 0.1 * f3 > 0.42)
+    grass_m = (~dark_m) & (~bright_m) & (f2 + 0.1 * f3 > 0.62 - 0.25 * open_k)
+    soil_c = mix(np.broadcast_to(C(80, 68, 58), X.shape + (3,)), C(98, 84, 66), f2[..., None])
+    cv.img[..., :3] = soil_c
     cv.img[..., 3] = 1
-    # moss / litter texture dabs over everything
-    n = 90000
-    xs = rng.uniform(-40, W + 40, n)
-    ys = rng.uniform(-40, H + 40, n)
-    ix = np.clip((xs + cv.m).astype(int), 0, cv.shape[1] - 1)
-    iy = np.clip((ys + cv.m).astype(int), 0, cv.shape[0] - 1)
-    cols = jitter(base[iy, ix], rng, dl=0.06, dc=0.18, dh=0.1)
-    dabs(cv, xs, ys, rng.uniform(6, 20, n), cols, aspect=rng.uniform(0.3, 0.8, n), shape='flat', edge=0.3, rag=0.5,
-         bristle=0.4, rng=rng)
+    pv = fbm(hh_, ww_, 160, rng, octaves=2)[..., None]
+    for msk, c0, c1 in ((dark_m, C(38, 60, 54), C(50, 78, 60)), (bright_m, C(64, 96, 66), C(84, 114, 72)),
+                        (grass_m, C(88, 108, 70), C(112, 126, 80))):
+        a_ = cv2.GaussianBlur(msk.astype(np.float32), (0, 0), 0.8)
+        cv.over(mix(np.broadcast_to(c0, X.shape + (3,)), c1, pv), a_)
+        # tufts breaking each patch edge outward
+        er = cv2.dilate(msk.astype(np.uint8), np.ones((9, 9), np.uint8)) & (~msk).astype(np.uint8)
+        sel_e = np.flatnonzero(er.ravel())
+        if len(sel_e):
+            ke = min(len(sel_e), int(len(sel_e) / 10))
+            pk = rng.choice(sel_e, ke, replace=False)
+            ey, ex = np.unravel_index(pk, er.shape)
+            ec = jitter(mix(np.broadcast_to(c0, (ke, 3)), c1, rng.random(ke)[:, None]), rng, dl=0.03, dc=0.1)
+            dabs(cv, ex - cv.m, ey - cv.m, rng.uniform(5, 14, ke), ec, aspect=rng.uniform(0.5, 0.9, ke),
+                 edge=0.3, rag=0.6, bristle=0.2, rng=rng)
+    # texture per class: moss = stipple, grass = blade stars seen from above, soil = flat strokes + crumbs
+    def pts_in(mask, n):
+        sel = np.flatnonzero(mask.ravel())
+        if len(sel) == 0:
+            return np.zeros(0), np.zeros(0)
+        pick = rng.choice(sel, min(n, len(sel)), replace=False)
+        py, px = np.unravel_index(pick, mask.shape)
+        return px.astype(np.float32) - cv.m, py.astype(np.float32) - cv.m
+    for msk, cols_, n_, sz in ((dark_m, (C(30, 50, 48), C(44, 72, 58), C(62, 94, 64)), 26000, (5, 12)),
+                               (bright_m, (C(56, 88, 62), C(82, 112, 70), C(112, 136, 80)), 22000, (5, 11))):
+        px, py = pts_in(msk, n_)
+        if len(px):
+            t = rng.random(len(px))
+            cc = jitter(ramp(list(cols_), t), rng, dl=0.03, dc=0.1, dh=0.05)
+            order = np.argsort(t)
+            dabs(cv, px[order], py[order], rng.uniform(*sz, len(px))[order], cc[order],
+                 aspect=rng.uniform(0.7, 1.0, len(px))[order], edge=0.3, rag=0.5, bristle=0.2, rng=rng)
+    px, py = pts_in(grass_m, 5000)
+    gtone = rng.random(len(px))
+    for i in range(len(px)):
+        nb = int(rng.integers(4, 7))
+        aa = rng.uniform(0, 2 * np.pi) + np.arange(nb) * 2 * np.pi / nb + rng.normal(0, 0.25, nb)
+        L = rng.uniform(6, 13, nb)
+        col = jitter(np.broadcast_to(ramp([C(66, 88, 60), C(100, 118, 72), C(136, 142, 88)], np.array([gtone[i]]))[0],
+                                     (nb, 3)), rng, dl=0.05, dc=0.12)
+        dabs(cv, px[i] + np.cos(aa) * L * 0.5, py[i] + np.sin(aa) * L * 0.5, L, col, aspect=0.22, angle=aa,
+             shape='leaf', edge=0.3, rag=0.1, rng=rng)
+    soil_m = ~(dark_m | bright_m | grass_m)
+    px, py = pts_in(soil_m, 9000)
+    if len(px):
+        cc = jitter(mix(np.broadcast_to(C(92, 72, 56), (len(px), 3)), C(140, 112, 80), rng.random(len(px))[:, None]),
+                    rng, dl=0.04, dc=0.1)
+        dabs(cv, px, py, rng.uniform(6, 16, len(px)), cc, aspect=rng.uniform(0.3, 0.7, len(px)), shape='flat',
+             edge=0.3, rag=0.5, bristle=0.4, rng=rng)
+    # fallen leaves: on soil densely, a few on the moss
+    for msk, n_ in ((soil_m, 1800), (dark_m | bright_m, 400)):
+        px, py = pts_in(msk, n_)
+        if len(px):
+            k = len(px)
+            lc = jitter(np.array([[(178, 140, 88), (156, 104, 72), (124, 92, 72), (196, 170, 104), (140, 122, 80),
+                                   (104, 82, 64)][i] for i in rng.integers(0, 6, k)], np.float32) / 255, rng, dl=0.05,
+                        dc=0.12, dh=0.05)
+            la = rng.uniform(0, 2 * np.pi, k)
+            Ls = rng.uniform(12, 26, k)
+            dabs(cv, px, py, Ls, lc, aspect=rng.uniform(0.38, 0.55, k), angle=la, shape='leaf', edge=0.25, rag=0.15,
+                 bristle=0.15, split=0.14, rng=rng)
+            j = rng.random(k) < 0.35                            # midribs on some
+            for i in np.flatnonzero(j)[:400]:
+                d_ = np.array([np.cos(la[i]), np.sin(la[i])]) * Ls[i] * 0.42
+                stroke(cv, [[px[i] - d_[0], py[i] - d_[1]], [px[i] + d_[0], py[i] + d_[1]]], 1.2, C(84, 58, 44),
+                       opacity=0.7, rng=rng, smooth=False)
+    # value key: compress the floor's values toward one mid tone so the robot (warm red, bright moss) reads
+    # first; detail stays as hue and texture
+    cv.lock_tint(C(64, 74, 62), (np.clip(1.3 - kc, 0, 1) * 0.22).astype(np.float32))
+    # small ferns in the moss (top-view rosettes)
+    px, py = pts_in((dark_m | bright_m) & (kc < 1.3), 26)
+    for i in range(len(px)):
+        fern(cv, rng, px[i], py[i], rng.uniform(26, 50), sun2=SUN2, light=rng.uniform(0.85, 1.05), spread=2.6,
+             droop=0.4, kind=str(rng.choice(['sword', 'lady'])), lean=rng.uniform(-1, 1), body=1.0)
     # roots radiating from the trunk bases
     bases = [(260, 200, 300), (2000, 260, 280), (180, 1060, 260)]
     specs = []
@@ -91,19 +162,40 @@ def build(outdir, quick=False):
     # stones
     for (x, y, r) in [(820, 560, 50), (1960, 560, 44), (640, 1060, 60), (1180, 820, 34), (300, 640, 40)]:
         stone(cv, rng, x, y, r, sun2=SUN2, moss=1.6, flatten=0.8)
-    # dappled light, flowers
-    xs = rng.uniform(100, W - 100, 14)
-    ys = rng.uniform(80, H - 80, 14)
-    dapple(cv, rng, xs, ys, rng.uniform(70, 130, 14), C(206, 200, 116), flatten=0.7, opacity=(0.25, 0.5), cluster=6,
-           mode='lock', edge=0.8)
-    fx = rng.uniform(0, W, 160)
-    fy = rng.uniform(0, H, 160)
-    flowers(cv, rng, fx, fy, rng.uniform(4, 8, 160))
+    fx = rng.uniform(0, W, 120)
+    fy = rng.uniform(0, H, 120)
+    flowers(cv, rng, fx, fy, rng.uniform(4, 8, 120))
+    # light: the sun is low toward the bottom of the frame, so the bottom canopy casts a hard-edged shadow
+    # up into the clearing; the rest of the clearing floor is in warm sun; sun flecks (hard-edged) fall
+    # through the leaves into the shadow, leaf shadows dot the lit floor near the shadow edge
     Xg, Yg = cv.coords()
-    cx_, cy_, rx_, ry_ = OPEN
-    kk = np.hypot((Xg - cx_) / rx_, (Yg + 70 - cy_) / ry_)
-    cv.lock_tint(C(30, 44, 58), (smoothstep(0.82, 1.02, kk) * 0.55).astype(np.float32))
-    P.add('ground', 0.3, cv, 'forest floor seen from above: moss, litter, roots, logs, stones; opaque')
+    off = 150.0
+    qx, qy = Xg + SUN2[0] * off, Yg + SUN2[1] * off            # walk toward the sun: is the canopy there?
+    th_ = np.arctan2(qy - cy_, qx - cx_)
+    rag = 1 + 0.12 * np.sin(th_ * 5 + 0.8) + 0.07 * np.sin(th_ * 11 + 2.0) + 0.05 * np.sin(th_ * 29 + 1.1)
+    kq = np.hypot((qx - cx_) / rx_, (qy - cy_) / ry_) / rag
+    leafy = fbm(cv.shape[0], cv.shape[1], 14, rng, octaves=2) - 0.5
+    dsh = (kq - 1.02 + 0.06 * leafy) * min(rx_, ry_)            # >0: in shadow (px from the shadow edge)
+    sh = np.clip(dsh / 1.5 + 0.5, 0, 1).astype(np.float32)
+    cv.lock_tint(C(30, 42, 60), (sh * 0.5).astype(np.float32))
+    cv.lock_tint(C(236, 214, 140), ((1 - sh) * 0.18).astype(np.float32))
+    # sun flecks inside the shadow near its edge, leaf shadows in the light near the edge
+    band_sh = np.flatnonzero(((dsh > 6) & (dsh < 120)).ravel())
+    band_lt = np.flatnonzero(((dsh < -6) & (dsh > -90)).ravel())
+    for band, n_, col, op in ((band_sh, 60, C(226, 206, 130), (0.45, 0.7)), (band_lt, 45, C(36, 50, 62), (0.35, 0.55))):
+        if len(band) == 0:
+            continue
+        pick = rng.choice(band, min(n_, len(band)), replace=False)
+        py, px = np.unravel_index(pick, sh.shape)
+        for i in range(len(px)):
+            m_ = int(rng.integers(2, 6))
+            r_ = rng.uniform(6, 22)
+            dabs(cv, px[i] - cv.m + rng.normal(0, r_ * 0.6, m_), py[i] - cv.m + rng.normal(0, r_ * 0.6, m_),
+                 rng.uniform(r_ * 0.6, r_ * 1.4, m_), jitter(np.broadcast_to(col, (m_, 3)), rng, dl=0.03),
+                 aspect=rng.uniform(0.6, 0.95, m_), angle=rng.uniform(0, np.pi, m_), edge=0.12, rag=0.45,
+                 bristle=0.1, opacity=rng.uniform(*op, m_), mode='lock', rng=rng)
+    P.add('ground', 0.3, cv, 'forest floor seen from above: patches of dark moss, bright moss and grass, bare soil '
+          'with fallen leaves, small ferns, roots, logs, stones; hard-edged canopy shadow and sun flecks; opaque')
 
     # ---------------------------------------------------------------- shrubs (tops seen from above)
     cv = P.layer('shrubs', 0.45)

@@ -12,7 +12,7 @@ from ..noise import rng_for
 from ..canvas import dabs, stroke, catmull, taper
 from ..layers import Painting
 from ..foliage import Blobs, vine
-from ..atmos import mist, beams, glow, clean_shaft, light_stripes
+from ..atmos import mist, beams, glow, clean_shaft, light_stripes, light_patches
 from ..trees import species, paint_tube, trunk_path, buttress_roots, Frame
 from ..canvas import catmull
 from ..forest import leafy_mass, far_trunks, broadleaf, floor, undergrowth, layered_mass
@@ -164,18 +164,20 @@ def build(outdir, quick=False):
         a_c = np.arctan2(HZ + 140 - VPG[1], x - VPG[0])
         a_w = np.arctan2(wb * 0.5, np.hypot(x - VPG[0], 140.0))
         occ.append((a_c - a_w, a_c + a_w, float(np.hypot(x - VPG[0], 140.0))))
-    stripes = []
-    for a_deg, w_deg in [(38, 3.0), (55, 1.2), (68, 5.0), (104, 3.6), (121, 1.1), (133, 5.5)]:
-        a_c = np.radians(a_deg + rng.normal(0, 1.5))
-        a_w = np.radians(w_deg * rng.uniform(0.8, 1.2))
-        stripes.append((float(a_c), float(a_w), float(rng.uniform(70, 180)), float(rng.uniform(1100, 2200))))
+    # a few wide, irregular sunlit patches where the sun reaches the floor through gaps (elongated roughly
+    # along the light, turned a little off true so they do not converge), broken by foliage shadows
+    patches = [(1500.0, 760.0, 260.0, 120.0, 0.12), (1720.0, 930.0, 380.0, 190.0, -0.1),
+               (1080.0, 860.0, 300.0, 150.0, 0.18), (330.0, 960.0, 360.0, 170.0, -0.15),
+               (1330.0, 680.0, 160.0, 70.0, -0.2)]
+    patches = [(x + rng.normal(0, 30), y + rng.normal(0, 15), L * rng.uniform(0.85, 1.15), w_ * rng.uniform(0.85, 1.2),
+                tw) for (x, y, L, w_, tw) in patches]
     # the shaded floor: cool violet in front, warmer near the glowing far edge
     Xf, Yf = cv.coords()
     tf = np.clip((Yf - HZ) / (H - HZ), 0, 1)
     cv.lock_tint(C(232, 196, 156), (np.clip(1 - tf * 3, 0, 1) * 0.22 * (Yf > HZ)).astype(np.float32))
     cv.lock_tint(C(46, 44, 86), (smoothstep(0.35, 1.0, tf) * 0.25 * (Yf > HZ)).astype(np.float32))
-    LT = light_stripes(cv, rng, VPG, stripes, C(214, 170, 112), HZ + 4, warm_amt=0.28, lift=0.035,
-                       cool_col=C(52, 50, 92), cool_amt=0.12, occluders=occ)
+    LT = light_patches(cv, rng, VPG, patches, C(236, 168, 82), HZ + 4, warm_amt=0.46, lift=0.035,
+                       cool_col=C(52, 50, 92), cool_amt=0.12)
     # backlit grass and fern clumps across the floor (rims glow), low glowing mist on the floor
     for i in range(26):
         y = HZ + 30 + (H - HZ) * rng.random() ** 1.4

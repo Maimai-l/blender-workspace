@@ -129,6 +129,14 @@ compilation (cached in `__pycache__` afterwards).
   light shaft with clean edges (flat fill, faint streaks), used instead of soft radial ray fans.
   (`ground_stripes()` and `floor_light()` are earlier attempts, kept but unused: one read as road
   markings, the other as a sunburst emblem.)
+- `atmos.light_patches()` (round 9, S12) — a few irregular sunlit pools on a shaded floor, built from
+  leaf-sized flecks (scalloped edges), with leaf-shaped foliage-shadow holes, each turned a little off the
+  sun's direction so they do not converge; hard dry-brush edges; replaces `light_stripes()` in S12.
+- `imprint.py` (round 9): the displaced-soil lip is no longer a pale raised ring but broken soil clods and
+  torn moss, each with a small cast shadow away from the sun and a lit sliver only on the sun side.
+- S13 floor (round 9): a patch map (dark moss, bright moss, grass, bare soil with fallen leaves) with ragged
+  edges and per-class texture, small fern rosettes, a value-key pass so the robot reads first, and a
+  hard-edged canopy shadow with sun flecks / leaf shadows along its edge.
 - `backlit_masses(..., palettes=, pal_p=, pocket=)` — per-mass palettes (olive, teal, russet) and light
   pockets for variety in large backlit ceilings (S11 outer canopy).
 - `imprint.py` — `paint_imprint()`: depressions pressed into the floor (round 6, S17):

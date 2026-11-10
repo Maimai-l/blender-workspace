@@ -22,28 +22,61 @@ def _colours(kind, role):
         if kind == 'vine':
             return c['lit'] * 1.08, c['shade'], c['ink']
         return c['lit'], c['shade'], c['ink']
-    c = palettes.DEBRIS[kind]
+    c = palettes.DEBRIS.get(kind, palettes.DEBRIS['pebble'])
     if role == 'grain':
         return c['ink'], c['ink'], c['ink']
     return c['lit'], c['shade'], c['ink']
 
 
-def add_piece(batch, kind, parts, pos, ang, size, light, ink_scale=1.0, alpha=1.0, flat=False):
-    """Add one transformed debris piece to a PolyBatch."""
+def _clip_half(P, o, nrm):
+    """Part of polygon P on the side (x - o).nrm >= 0 (Sutherland-Hodgman, one plane)."""
+    out = []
+    n = len(P)
+    for k in range(n):
+        a, b = P[k], P[(k + 1) % n]
+        da, db = float((a - o) @ nrm), float((b - o) @ nrm)
+        if da >= 0:
+            out.append(a)
+        if (da >= 0) != (db >= 0):
+            t = da / (da - db)
+            out.append(a + (b - a) * t)
+    return np.array(out) if len(out) >= 3 else None
+
+
+def add_piece(batch, kind, parts, pos, ang, size, light, ink_scale=1.0, alpha=1.0, flat=False, cols=None,
+              facet=0.0):
+    """Add one transformed debris piece to a PolyBatch.
+
+    cols: optional dict(lit, shade, ink) overriding the kind's colours (main parts).
+    Pebbles are drawn faceted: the shadow is a hard straight cut (angle jitter `facet`, rad)
+    instead of a curved terminator, with the thin line drawn last over both faces."""
     l = core.unit(light)
     c, s = math.cos(ang), math.sin(ang)
     R = size * 1.25
     term = (pos[0] + l[0] * 0.6 * R, pos[1] + l[1] * 0.6 * R, 1.05 * R)
     iw = float(np.clip(0.09 * size, 0.8, 1.4)) * ink_scale         # props stay lighter than the hero
+    faceted = kind in ('pebble', 'mossy_pebble')
     for poly, role in parts:
         P = np.empty_like(poly)
         P[:, 0] = (poly[:, 0] * c - poly[:, 1] * s) * size + pos[0]
         P[:, 1] = (poly[:, 0] * s + poly[:, 1] * c) * size + pos[1]
         lit, sh, ink = _colours(kind, role)
+        if cols is not None and role == 'main':
+            lit, sh, ink = cols['lit'], cols['shade'], cols['ink']
         if flat or size < 2.6:
             batch.add(P, sh, alpha=alpha)
         elif role == 'grain':
             batch.add(P, ink, alpha=alpha)
+        elif faceted and role == 'main':
+            batch.add(P, lit, alpha=alpha)
+            # hard light/shadow split along a facet: a straight cut across the stone
+            fa = math.atan2(l[1], l[0]) + facet
+            nrm = -np.array([math.cos(fa), math.sin(fa)])
+            o = np.asarray(pos, np.float64) + nrm * size * 0.08
+            shp = _clip_half(P, o, nrm)
+            if shp is not None:
+                batch.add(shp, sh, alpha=alpha)
+            batch.add(core.stroke_poly(np.concatenate([P, P[:1]], 0), iw), ink, alpha=alpha)
         else:
             batch.add(P, lit, sh, ink, iw, term, alpha)
 
@@ -97,7 +130,7 @@ class DebrisBurst:
     def __init__(self, name, origin, frame0, count=40, kinds=None, size=(4.0, 16.0),
                  direction=(0, -1), spread=1.2, speed=(8.0, 22.0), gravity=1.2, spin=0.35,
                  light=(0.55, -0.83), ground=None, bounce=0.3, friction=0.6, on=2, trails=0.25,
-                 origin_radius=0.0, ink=1.0, life=90, delay=0.0, trail_palette=None):
+                 origin_radius=0.0, ink=1.0, life=90, delay=0.0, trail_palette=None, flat_origin=None):
         self.name = name
         self.frame0 = int(frame0)
         self.light = light
@@ -129,14 +162,30 @@ class DebrisBurst:
         rr = origin_radius * np.sqrt(g.random(count))
         ra = g.uniform(0, 2 * math.pi, count)
         self.p0 = np.asarray(origin, np.float64)[None, :] + np.stack([np.cos(ra) * rr, np.sin(ra) * rr], 1)
+        # thrown from the ground: the start points spread along the ground (a flat band), never
+        # in mid-air above it or under it (flat_origin=False keeps the old disc)
+        if (ground is not None if flat_origin is None else flat_origin) and origin_radius > 0:
+            o = np.asarray(origin, np.float64)
+            self.p0[:, 0] = o[0] + g.uniform(-1, 1, count) * origin_radius
+            band = g.uniform(-0.05, 0.05, count) * origin_radius
+            top = (ground if ground is not None else o[1] + origin_radius) - self.size * 0.6
+            self.p0[:, 1] = np.minimum(o[1] + band, top)
         self.a0 = g.uniform(0, 2 * math.pi, count)
         self.w = g.uniform(-spin, spin, count) * (1.4 - 0.6 * u)
         self.delay = np.floor(g.uniform(0, delay, count)) if delay else np.zeros(count)
         self.trail = (u > 0.45) & (g.random(count) < trails * 2)
         self.z = g.random(count)
         self.parts = []
+        self.cols = []
+        self.facet = g.uniform(-0.45, 0.45, count)
         for i, k in enumerate(self.kind):
-            self.parts.append(shapes.KINDS[k](core.rng('debris_shape', name, i)))
+            gi = core.rng('debris_shape', name, i)
+            if k == 'pebble' and gi.random() < 0.15:
+                k = 'mossy_pebble'                       # a few mossy stones
+                self.kind[i] = k
+            self.parts.append(shapes.KINDS[k](gi))
+            self.cols.append(palettes.PEBBLES[int(gi.integers(0, len(palettes.PEBBLES)))]
+                             if k in ('pebble', 'mossy_pebble') else None)
 
     def _state(self, i, t):
         r = self.size[i]
@@ -180,7 +229,8 @@ class DebrisBurst:
                         wid = self.size[i] * wk * np.sin(np.pi * np.clip(q * 0.95 + 0.05, 0, 1)) ** 0.8 \
                             * (0.4 + 0.6 * q)
                         trails.add(core.stroke_poly(pts, wid), dpal[1], alpha=0.6 * fade)
-            add_piece(batch, self.kind[i], self.parts[i], p, a, self.size[i], light, self.ink)
+            add_piece(batch, self.kind[i], self.parts[i], p, a, self.size[i], light, self.ink,
+                      cols=self.cols[i], facet=self.facet[i])
         trails.draw(canvas)
         batch.draw(canvas)
         return canvas

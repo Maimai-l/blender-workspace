@@ -37,6 +37,15 @@ DEBRIS = {      # coloured lines (brown for soil and wood, dark green for plants
     'bark':   dict(lit=hexc('#8b7363'), shade=hexc('#4f4352'), ink=hexc('#43342f')),
 }
 
+# stone variants for pebbles (lit, shade, line): warm / cool / brown / blue greys, sandstone
+PEBBLES = [
+    dict(lit=hexc('#b9ada0'), shade=hexc('#776a68'), ink=hexc('#4f4542')),
+    dict(lit=hexc('#a9adb3'), shade=hexc('#666879'), ink=hexc('#45434e')),
+    dict(lit=hexc('#a8988a'), shade=hexc('#6c5e5e'), ink=hexc('#4a3f3c')),
+    dict(lit=hexc('#9ea6ab'), shade=hexc('#5d6473'), ink=hexc('#3f4350')),
+    dict(lit=hexc('#c6b497'), shade=hexc('#85726a'), ink=hexc('#57483f')),
+]
+
 # --- leaves: front lit/shade, back lit/shade, ink, vein ---------------------------------------
 LEAF = {
     'green':  dict(f_lit=hexc('#a9c45a'), f_sh=hexc('#557a4c'), b_lit=hexc('#cfd9a0'),

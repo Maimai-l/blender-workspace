@@ -23,28 +23,60 @@ def _pick(g, d, n):
     return [names[i] for i in g.choice(len(names), size=n, p=w / w.sum())]
 
 
+def _linger(theta, k=0.38):
+    """Time-warp a steady roll so the leaf lingers face-on and snaps through edge-on
+    (d/dtheta = 1 - 2k cos 2theta: slow at 0 and pi, fast at pi/2)."""
+    return theta - k * math.sin(2 * theta)
+
+
+def _clip_half(P, o, nrm):
+    """Part of polygon P on the side (x - o).nrm >= 0."""
+    out = []
+    n = len(P)
+    for k in range(n):
+        a, b = P[k], P[(k + 1) % n]
+        da, db = float((a - o) @ nrm), float((b - o) @ nrm)
+        if da >= 0:
+            out.append(a)
+        if (da >= 0) != (db >= 0):
+            t = da / (da - db)
+            out.append(a + (b - a) * t)
+    return np.array(out) if len(out) >= 3 else None
+
+
 def _bend(x, y, bend):
     """Curve a leaf along its length (local coords, x in -1..1)."""
     return x, y + bend * (x * x - 0.3)
 
 
 def add_leaf(batch, outline, pos, ang, length, flip, colours, light, ink_w=1.2, sunlit=0.0,
-             alpha=1.0, tilt=1.0, curl=0.0, bend=0.0, tint=None, veins=True):
+             alpha=1.0, tilt=1.0, curl=0.0, bend=0.0, tint=None, veins=True, pitch=0.0):
     """Add one leaf (outline in -1..1 local units, tip at +x) to a PolyBatch.
 
-    flip : radians about the long axis (cos < 0 shows the back);  tilt: length foreshortening.
-    curl : 0..1 one half of the blade turns away (narrower), as on a curled leaf;
+    The leaf is a thin plate turned in 3D and projected: ang = in-plane screen angle,
+    flip = roll about its long axis, pitch = tilt about its across axis.  Its width
+    foreshortens with |cos(flip)|, its length with |cos(pitch)|, the two together skew it,
+    and the side facing the camera (front: lit top colours, back: paler underside) follows
+    the plate normal.  tilt: extra length factor (old API).
+    curl : 0..1 one half of the blade turns away (narrower and toward the far side);
     bend : the midrib bends (local units);  tint: (r, g, b) multiplier for per-leaf variation."""
-    cf = math.cos(flip)
-    front = cf >= 0
-    wsc = max(abs(cf), 0.1)
+    cf, sf = math.cos(flip), math.sin(flip)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    nz = cp * cf                                         # plate normal toward the camera
+    front = nz >= 0
+    face = abs(nz)
     half = length * 0.5
     c, s = math.cos(ang), math.sin(ang)
+    # projected local axes (orthographic): long axis and across axis
+    Lx, Ly = cp * tilt, sp * sf * tilt
+    Ax, Ay = 0.0, cf
+    if abs(Ay) < 0.08:                                   # never fully a line
+        Ay = 0.08 if Ay >= 0 else -0.08
+    Lv = np.array([Lx * c - Ly * s, Lx * s + Ly * c])
+    Av = np.array([Ax * c - Ay * s, Ax * s + Ay * c])
     oy = outline[:, 1] * np.where(outline[:, 1] > 0, 1 - 0.75 * curl, 1.0)
     bx, by = _bend(outline[:, 0], oy, bend)
-    lx = bx * half * tilt
-    ly = by * half * wsc
-    P = np.stack([lx * c - ly * s + pos[0], lx * s + ly * c + pos[1]], 1)
+    P = pos + (bx * half)[:, None] * Lv[None, :] + (by * half)[:, None] * Av[None, :]
     lit = colours['f_lit'] if front else colours['b_lit']
     sh = colours['f_sh'] if front else colours['b_sh']
     if tint is not None:
@@ -55,32 +87,44 @@ def add_leaf(batch, outline, pos, ang, length, flip, colours, light, ink_w=1.2, 
     if sunlit > 0:
         lit = core.mix(lit, palettes.LIGHT_GOLD, 0.45 * sunlit)
         sh = core.mix(sh, lit, 0.25 * sunlit)
-    # edge-on leaves are mostly one tone
+    # 2 tones: the blade is folded a little along its midrib, so the half turned away from the
+    # light takes the shade colour (a hard split that flips as the leaf rolls); edge-on leaves
+    # are one darker tone
     l = core.unit(light)
-    R = half * 1.1
-    term = (pos[0] + l[0] * 0.55 * R, pos[1] + l[1] * 0.55 * R, 1.05 * R) if wsc > 0.3 else None
-    if term is None:
-        lit = core.mix(lit, sh, 0.5)
+    split = face > 0.32 and length > 7
+    if not split:
+        lit = core.mix(lit, sh, 0.6)
     iw = ink_w if length > 10 else ink_w * 0.7
 
     def to_screen(x, y):
         x, y = _bend(np.asarray(x, np.float64), np.asarray(y, np.float64), bend)
-        X = x * half * tilt
-        Y = y * half * wsc
-        return np.stack([X * c - Y * s + pos[0], X * s + Y * c + pos[1]], 1)
+        return pos + (x * half)[:, None] * Lv[None, :] + (y * half)[:, None] * Av[None, :]
 
     # stem
     S = to_screen([-1.0, -1.28], [0.0, 0.06 * (1 if front else -1)])
     batch.add(core.stroke_poly(S, [max(1.0, length * 0.035)] * 2), ink, alpha=alpha)
-    batch.add(P, lit, sh, ink, iw, term, alpha)
-    if wsc > 0.3 and length > 12 and veins:
+    if split:
+        batch.add(P, lit, alpha=alpha)
+        nl = float(np.hypot(Lv[0], Lv[1])) + 1e-9
+        npp = np.array([-Lv[1], Lv[0]]) / nl
+        if float(npp @ l) > 0:
+            npp = -npp
+        # fold line: the (bent) midrib, approximated by its chord through the leaf centre
+        o = np.asarray(pos, np.float64) + Av * (half * bend * 0.1)
+        shp = _clip_half(P, o, npp)
+        if shp is not None:
+            batch.add(shp, sh, alpha=alpha)
+        batch.add(core.stroke_poly(np.concatenate([P, P[:1]], 0), iw), ink, alpha=alpha)
+    else:
+        batch.add(P, lit, ink=ink, ink_w=iw, alpha=alpha)
+    if face > 0.3 and length > 11 and veins:
         # midrib (front: vein colour, back: paler raised rib) and side veins on larger leaves
         vc = colours['vein'] if front else core.mix(colours['b_lit'], colours['b_sh'], 0.6)
         if tint is not None:
             vc = np.clip(vc * np.asarray(tint, np.float32), 0, 1)
         M = to_screen(np.linspace(-0.95, 0.72, 6), np.zeros(6))
-        batch.add(core.stroke_poly(M, np.linspace(max(1.0, length * 0.03), 0.4, 6)), vc, alpha=alpha)
-        if length > 24:
+        batch.add(core.stroke_poly(M, np.linspace(max(1.0, length * 0.035), 0.4, 6)), vc, alpha=alpha)
+        if length > 22:
             for xv in (-0.45, -0.05, 0.32):
                 for side in (-1, 1):
                     wdt = float(np.interp(xv, outline[:, 0], np.abs(outline[:, 1]))) * 0.75
@@ -88,6 +132,11 @@ def add_leaf(batch, outline, pos, ang, length, flip, colours, light, ink_w=1.2, 
                         wdt *= (1 - 0.75 * curl)
                     V = to_screen([xv, xv + 0.22], [0.0, side * wdt])
                     batch.add(core.stroke_poly(V, [max(0.8, length * 0.018), 0.3]), vc, alpha=alpha * 0.9)
+    elif length > 11 and veins:
+        # edge-on: the curled rim shows as a lighter sliver along one edge
+        M = to_screen(np.linspace(-0.9, 0.8, 6), np.full(6, -0.25 if front else 0.25))
+        batch.add(core.stroke_poly(M, np.linspace(max(0.8, length * 0.03), 0.3, 6)),
+                  colours['b_lit'] if front else colours['f_lit'], alpha=alpha * 0.85)
 
 
 class _LeafSet:
@@ -108,20 +157,22 @@ class _LeafSet:
         self.g = g
 
     def paint(self, canvas, items, light, sunlit=None, ink=1.1):
-        """items: (z, i, x, y, ang, flip, scale)."""
+        """items: (z, i, x, y, ang, flip, scale[, pitch])."""
         if not items:
             return canvas
         items.sort(key=lambda it: it[0])
         b = PolyBatch()
         H, W = canvas.shape[:2]
-        for z, i, x, y, ang, flip, sc in items:
+        for it in items:
+            z, i, x, y, ang, flip, sc = it[:7]
+            pitch = it[7] if len(it) > 7 else 0.0
             L = self.len[i] * sc
             if x < -L or x > W + L or y < -L or y > H + L:
                 continue
             sl = float(sunlit(x, y)) if sunlit is not None else 0.0
             add_leaf(b, self.outline[i], (x, y), ang, L, flip, palettes.LEAF[self.col[i]], light,
                      min(1.4, ink * max(0.75, min(1.2, L / 30))), sl, curl=float(self.curl[i]),
-                     bend=float(self.bend[i]), tint=self.tint[i])
+                     bend=float(self.bend[i]), tint=self.tint[i], pitch=pitch)
         b.draw(canvas)
         return canvas
 
@@ -160,10 +211,13 @@ class LeafFall:
         self.ph = g.uniform(0, 2 * math.pi, count)
         self.start = g.uniform(-preroll, stagger, count)
         self.base = g.uniform(-0.6, 0.6, count) + math.pi * 0.5 * g.choice([-1, 1], count)
-        self.fl0 = g.uniform(0, 2 * math.pi, count)
+        # rocking leaves hang mostly face-on (top or underside) and swing through edge-on
+        self.fl0 = g.choice([0.0, math.pi], count) + g.uniform(-0.55, 0.55, count)
         self.flr = g.uniform(0.7, 1.4, count) * g.choice([-1, 1], count)
         self.spin = g.uniform(-0.02, 0.02, count)
         self.sp = g.random(count) < spiral
+        self.pp = g.uniform(0, 2 * math.pi, count)              # pitch phase (tumble wobble)
+        self.pa = g.uniform(0.25, 0.6, count)                   # pitch amplitude
 
     def items(self, frame):
         fh = held(frame, self.on, self.frame0)
@@ -181,7 +235,8 @@ class LeafFall:
                 dz = math.sin(a)
                 sc = 1 + self.depth * dz
                 ang = self.base[i] + 0.9 * math.sin(a) + self.spin[i] * t
-                flip = a + self.fl0[i]
+                flip = _linger(a + self.fl0[i])
+                pitch = self.pa[i] * 0.6 * math.sin(0.5 * a + self.pp[i])
             else:
                 # pendulum flutter: rises a little at the ends of each swing
                 x = self.x0[i] + self.A[i] * math.sin(a) + self.wind[0] * t
@@ -190,8 +245,10 @@ class LeafFall:
                 sc = 1.0
                 dz = 0.0
                 ang = self.base[i] + 0.75 * math.cos(a) + self.spin[i] * t
-                flip = self.fl0[i] + 0.9 * math.sin(a) + self.flr[i] * 0.03 * t
-            out.append((dz + 0.001 * i, i, x, y, ang, flip, sc))
+                # the rocking leaf rolls far enough to pass edge-on and show its underside
+                flip = self.fl0[i] + 1.25 * math.sin(a) + self.flr[i] * 0.02 * t
+                pitch = self.pa[i] * math.cos(a + self.pp[i])
+            out.append((dz + 0.001 * i, i, x, y, ang, flip, sc, pitch))
         return out
 
     def draw(self, canvas, frame, light=None, sunlit=None):
@@ -237,6 +294,13 @@ class LeafBurst:
         self.ph = g.uniform(0, 2 * math.pi, count)
         self.delay = np.floor(g.uniform(0, delay, count)) if delay else np.zeros(count)
         self.z = g.random(count)
+        # tumbling: every leaf keeps rolling over (one turn in 14-34 frames) and pitches; ~30 %
+        # go end over end
+        self.tf = 2 * math.pi / g.uniform(14, 34, count) * g.choice([-1, 1], count)
+        self.tp = 2 * math.pi / g.uniform(20, 44, count)
+        self.pp = g.uniform(0, 2 * math.pi, count)
+        self.eoe = g.random(count) < 0.3
+        self.spin2 = g.uniform(-0.05, 0.05, count)
 
     def items(self, frame):
         fh = held(frame, self.on, self.frame0)
@@ -254,9 +318,13 @@ class LeafBurst:
             slow = 1 - e                    # flutter grows as the leaf slows down
             a = 2 * math.pi * t / self.T[i] + self.ph[i]
             x += self.A[i] * slow * math.sin(a)
-            ang = self.a0[i] + self.w[i] * dist + 0.6 * slow * math.cos(a)
-            flip = self.fl0[i] + self.flr[i] * dist * 1.5 + 0.8 * slow * math.sin(a)
-            out.append((self.z[i], i, x, y, ang, flip, 1.0))
+            ang = self.a0[i] + self.w[i] * dist + self.spin2[i] * t + 0.5 * slow * math.cos(a)
+            flip = _linger(self.fl0[i] + self.flr[i] * dist * 1.5 + self.tf[i] * t) + 0.4 * slow * math.sin(a)
+            if self.eoe[i]:
+                pitch = _linger(self.pp[i] + self.tp[i] * t, 0.42)        # end over end
+            else:
+                pitch = 0.55 * math.sin(self.tp[i] * t + self.pp[i])
+            out.append((self.z[i], i, x, y, ang, flip, 1.0, pitch))
         return out
 
     def draw(self, canvas, frame, light=None, sunlit=None):

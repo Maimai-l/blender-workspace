@@ -112,8 +112,43 @@ def paint_imprint(cv, rng, origin, shapes, squash=0.34, box=None, sun=(0.45, -0.
     lab = lab + (labs[2] - lab) * t2[..., None]
     lab = lab + (labs[3] - lab) * (t3 * 0.8)[..., None]
     rgb = np.clip(from_oklab(lab), 0, 1).astype(np.float32)
-    a = np.maximum(a_in, a_lip * 0.85).astype(np.float32)
+    # the hollows only; the displaced-soil lip is painted separately below as broken clods and torn moss
+    a = a_in.astype(np.float32)
     cv.over_region(X0, Y0, rgb, a)
+    # --- the lip: broken soil and torn moss, darker than the floor, uneven, lit only on the sun side,
+    # each clod casting a small shadow away from the light (onto the floor)
+    chunk = fbm(hh, ww, 22, rng, octaves=2)
+    lipm = (lipk > 0.12) & (chunk > 0.42)
+    sel = np.flatnonzero(lipm.ravel())
+    if len(sel):
+        k = min(len(sel), int(len(sel) / 55))
+        pick = rng.choice(sel, k, replace=False)
+        py, px = np.unravel_index(pick, lipm.shape)
+        sz = rng.uniform(7, 20, k) * (0.6 + 0.8 * np.clip(lipk[py, px], 0, 1))
+        s2 = np.array([L[0], L[1] * squash], np.float32)
+        s2 /= np.hypot(*s2) + 1e-6
+        # shadows first (offset away from the sun, soft-edged, cool and dark)
+        dabs(cv, px + x0 - s2[0] * sz * 0.45, py + y0 - s2[1] * sz * 0.45 + sz * 0.15, sz * 1.15,
+             C(22, 24, 32), aspect=rng.uniform(0.45, 0.7, k), angle=rng.normal(0, 0.3, k), edge=0.55, rag=0.6,
+             bristle=0.2, opacity=0.5, rng=rng)
+        # the clods: dark soil or torn moss (green on top, brown torn underside)
+        moss_k = rng.random(k) < 0.45
+        base = np.where(moss_k[:, None], jitter(np.broadcast_to(moss[1], (k, 3)), rng, dl=0.04, dc=0.12),
+                        jitter(np.broadcast_to(C(64, 50, 46), (k, 3)), rng, dl=0.04, dc=0.12))
+        ang = rng.uniform(0, np.pi, k)
+        dabs(cv, px + x0, py + y0, sz, base, aspect=rng.uniform(0.5, 0.85, k), angle=ang, shape='flat', edge=0.3,
+             rag=0.7, bristle=0.3, rng=rng)
+        # lit edge only on the sun side of each clod (a thin warm sliver), torn moss shows brown underneath
+        lit = rng.random(k) < 0.7
+        lc = np.where(moss_k[:, None], jitter(np.broadcast_to(moss[2], (k, 3)), rng, dl=0.04),
+                      jitter(np.broadcast_to(C(150, 118, 84), (k, 3)), rng, dl=0.04))
+        j = np.flatnonzero(lit)
+        dabs(cv, px[j] + x0 + s2[0] * sz[j] * 0.25, py[j] + y0 + s2[1] * sz[j] * 0.25, sz[j] * 0.55, lc[j],
+             aspect=0.4, angle=ang[j], shape='flat', edge=0.35, rag=0.5, bristle=0.3, opacity=0.85, rng=rng)
+        j = np.flatnonzero(moss_k & (rng.random(k) < 0.5))
+        dabs(cv, px[j] + x0 - s2[0] * sz[j] * 0.2, py[j] + y0 - s2[1] * sz[j] * 0.2 + sz[j] * 0.2, sz[j] * 0.5,
+             C(96, 66, 50), aspect=0.35, angle=ang[j], shape='flat', edge=0.35, rag=0.5, bristle=0.3, opacity=0.8,
+             rng=rng)
     # brush strokes following the contours of the hollow (tangent to the depth isolines)
     gyy, gxx = np.gradient(cv2.GaussianBlur(D, (0, 0), 3.0))
     sel = np.flatnonzero((a.ravel() > 0.5))

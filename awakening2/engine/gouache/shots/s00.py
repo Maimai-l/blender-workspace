@@ -13,6 +13,7 @@ from ..noise import rng_for, fbm, noise1d
 from ..canvas import dabs, stroke, catmull, taper
 from ..layers import Painting
 from ..foliage import Blobs, spray
+from ..trees import species, paint_tube
 from ..sky import sky, plane_cloud, paint_planes, sculpted_blobs
 from ..atmos import mist, beams, glow
 
@@ -401,21 +402,31 @@ def build(outdir, quick=False):
         spray(cv, x0, float(np.interp(x0, xs_, top)) + 6, -np.pi / 2 + rng.normal(0, 0.45), rng.uniform(60, 120),
               rng.uniform(12, 18), C(24, 34, 42), C(80, 92, 66), rng, stem_col=C(22, 28, 38), droop=0.3,
               sun2=(0.8, -0.6), curl=rng.normal(0, 0.5), rim=C(236, 200, 140) if rng.random() < 0.35 else None)
-    # two framing crowns at the bottom corners (dark, painted planes, rim on the sun side)
-    for (cx, cy, R, rimc) in [(70, 900, 210, None), (2170, 880, 240, C(236, 196, 132))]:
+    # two framing crowns at the bottom corners: dark, backlit leaf clusters (lighter cluster tops, light
+    # glowing through the leaves at the sun-facing edges, rims that differ from cluster to cluster), a few
+    # limbs showing between the clusters
+    from ..forest import leafy_mass, layered_mass
+    for (cx, cy, R, flip) in [(70, 900, 210, 1.0), (2170, 880, 240, -1.0)]:
+        bark = species('camphor')
+        bark.dark, bark.mid, bark.lit = C(20, 22, 32), C(30, 30, 40), C(90, 80, 76)
+        for j in range(3):                                   # limbs from below the frame into the crown
+            p0 = np.array([cx + flip * rng.uniform(-40, 60), H + 120])
+            p1 = np.array([cx + flip * rng.uniform(-60, 140), cy - R * rng.uniform(0.2, 0.6)])
+            pm = (p0 + p1) / 2 + rng.normal(0, 25, 2)
+            paint_tube(cv, catmull(np.array([p0, pm, p1]), n=20), np.linspace(34, 10, 20), rng, bark,
+                       (0.7, -0.6, -0.4), moss=0.4, detail=0.4, flecks=0.0, end_fade=0.1)
         b = Blobs()
-        for k in range(int(rng.integers(14, 20))):
-            ang = rng.uniform(-np.pi, 0.3)
-            rd = R * np.sqrt(rng.random())
-            rr = R * rng.uniform(0.22, 0.42)
-            b.add(cx + np.cos(ang) * rd, cy + np.sin(ang) * rd * 0.75, rr, rr * rng.uniform(0.75, 0.95),
-                  rot=rng.uniform(0, np.pi), light=rng.uniform(0.75, 1.1), hue=rng.normal(0, 0.04), rng=rng, lumpy=0.26)
-        for k in range(8):                                   # the crown's body runs down out of frame
-            b.add(cx + rng.normal(0, R * 0.4), cy + R * 0.4 + k * 40, R * 0.5, R * 0.4, light=0.5, rng=rng, lumpy=0.2)
-        paint_planes(cv, rng, b, (C(18, 26, 38), C(28, 40, 48), C(60, 78, 64), C(206, 184, 126)),
-                     light3=(0.7, -0.6, -0.1), th=(0.55, 0.78, 0.94), strokes=1.4, stroke_size=22, rim=rimc,
-                     rim_amt=0.8 if rimc is not None else 0.0, sun2=(0.8, -0.6), leafy_edge=0.9, leaf_px=20,
-                     noise_amt=0.12, glob=0.0, form=0.0, soft=0.03, wrap=0.3, stroke_dl=0.06, stroke_op=(0.4, 0.8))
+        for k in range(int(rng.integers(6, 9))):
+            ang = rng.uniform(-np.pi, 0.4)
+            rd = R * 0.75 * np.sqrt(rng.random())
+            layered_mass(b, rng, cx + np.cos(ang) * rd, cy + np.sin(ang) * rd * 0.8, R * rng.uniform(0.28, 0.42),
+                         flat=0.7, droop=0.25)
+        for k in range(6):                                   # the crown's body runs down out of frame
+            b.add(cx + rng.normal(0, R * 0.35), cy + R * 0.45 + k * 45, R * 0.45, R * 0.38, light=0.55, rng=rng,
+                  lumpy=0.2)
+        leafy_mass(cv, rng, b, 0.0, MIST_SH, (0.7, -0.6, -0.5), (0.8, -0.6), 15, density=0.9, trans_amt=0.55,
+                   rim_amt=1.0, rim_vary=1.0, lz=-0.5, droop=0.4,
+                   stops=[C(14, 20, 32), C(22, 34, 44), C(38, 58, 56), C(90, 108, 70), C(196, 180, 110)])
     # two gnarled dead snags rising out of the band, silhouetted against the misty valley
     for (sx0, hh_) in [(640.0, 300.0), (1560.0, 250.0)]:
         snag(cv, rng, sx0, float(np.interp(sx0, xs_, top)) + 40, hh_, C(26, 32, 44), rim_col=C(214, 186, 150))

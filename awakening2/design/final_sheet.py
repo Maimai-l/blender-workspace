@@ -46,7 +46,7 @@ def main():
     sheet = Image.new('RGB', (len(tiles) * W + 2 * pad, H + 230), tuple(int(c * 255) for c in PAPER))
     d = ImageDraw.Draw(sheet)
     d.text((pad, 18), 'THE WARDEN  —  final model sheet', fill=(70, 40, 35), font=ImageFont.truetype(F_B, 46))
-    d.text((pad, 74), 'height 21 m standing / 13 m kneeling.  Oxidised red-brown lacquer over dark iron, riveted plates, verdigris shrine-roof carapace, '
+    d.text((pad, 74), 'height 21 m standing / 13 m kneeling.  Oxidised red-brown lacquer over dark iron, riveted plates, a faded sun crest on each shoulder, verdigris shrine-roof carapace, '
                       'brass fittings, amber lamp-eyes behind lid shutters, furnace grille in the chest, twin engine bells under the roof.',
            fill=(90, 70, 60), font=ImageFont.truetype(F_R, 22))
     for i, (img, label) in enumerate(tiles):

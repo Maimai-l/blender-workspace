@@ -105,7 +105,7 @@ def _sample(img, pts):
             + img[y0 + 1, x0] * (1 - fx_) * fy_ + img[y0 + 1, x0 + 1] * fx_ * fy_)
 
 
-def _flat_tones(cel, m, k=5, name='smear', detail=0.006):
+def _flat_tones(cel, m, k=5, name='smear', detail=0.009, min_island=0.004):
     """Posterize a cel into k flat colour regions (labels 1..k, 1 = darkest) that follow its
     own colour masses: raw colours inside the silhouette are clustered in Lab (lightness
     weighted down, so hues - paint, moss, glowing eyes - separate), the labels are
@@ -131,6 +131,28 @@ def _flat_tones(cel, m, k=5, name='smear', detail=0.006):
         ind = np.stack([cv2.GaussianBlur(((lab == q + 1) & m).astype(np.float32), (0, 0), s)
                         for q in range(k)], -1)
         lab = np.where(m, np.argmax(ind, -1) + 1, 0).astype(np.uint8)
+    # merge small islands into the region around them: bigger, simpler shapes
+    min_area = max(60, int(min_island * m.sum()))
+    ker = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    for _ in range(2):
+        changed = False
+        for q in range(1, k + 1):
+            nl, cc, stats, _ = cv2.connectedComponentsWithStats(((lab == q) & m).astype(np.uint8), connectivity=8)
+            for i in range(1, nl):
+                if stats[i, cv2.CC_STAT_AREA] >= min_area:
+                    continue
+                x, y, w_, h_ = stats[i, :4]
+                x0, y0 = max(0, x - 4), max(0, y - 4)
+                x1, y1 = min(m.shape[1], x + w_ + 4), min(m.shape[0], y + h_ + 4)
+                isl = cc[y0:y1, x0:x1] == i
+                ring = (cv2.dilate(isl.astype(np.uint8), ker) > 0) & ~isl & m[y0:y1, x0:x1]
+                vals = lab[y0:y1, x0:x1][ring]
+                vals = vals[(vals > 0) & (vals != q)]
+                if len(vals):
+                    lab[y0:y1, x0:x1][isl] = np.bincount(vals).argmax()
+                    changed = True
+        if not changed:
+            break
     cols = np.zeros((k + 2, 3), np.float32)
     for q in range(1, k + 1):
         sel = (lab == q) & m

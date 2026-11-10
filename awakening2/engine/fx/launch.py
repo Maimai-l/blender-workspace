@@ -105,12 +105,195 @@ def _sample(img, pts):
             + img[y0 + 1, x0] * (1 - fx_) * fy_ + img[y0 + 1, x0 + 1] * fx_ * fy_)
 
 
+def _flat_tones(cel, m, k=5, name='smear', detail=0.006):
+    """Posterize a cel into k flat colour regions (labels 1..k, 1 = darkest) that follow its
+    own colour masses: raw colours inside the silhouette are clustered in Lab (lightness
+    weighted down, so hues - paint, moss, glowing eyes - separate), the labels are
+    mode-filtered into clean shapes and each region takes its median colour."""
+    c = np.clip(cel[..., :3], 0, 1).astype(np.float32)
+    ys, xs = np.nonzero(m)
+    ext = max(int(xs.max() - xs.min()), int(ys.max() - ys.min()), 8)
+    s = max(2.0, detail * ext)
+    labc = cv2.cvtColor(c, cv2.COLOR_RGB2Lab)
+    X = labc[m].reshape(-1, 3).copy()
+    X[:, 0] *= 0.5
+    g = core.rng('smear_tones', name)
+    sub = X[g.choice(len(X), size=min(len(X), 20000), replace=False)]
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 1e-3)
+    cv2.setRNGSeed(int(core.seed(name)) % 100000)
+    k = int(min(k, len(sub)))
+    _, _, cen = cv2.kmeans(sub.astype(np.float32), k, None, crit, 3, cv2.KMEANS_PP_CENTERS)
+    cen = cen[np.argsort(cen[:, 0])]                 # label 1 = darkest
+    d2 = ((X[:, None, :] - cen[None, :, :]) ** 2).sum(-1)
+    lab = np.zeros(m.shape, np.uint8)
+    lab[m] = (np.argmin(d2, 1) + 1).astype(np.uint8)
+    for _ in range(2):                                # mode filter -> clean designed shapes
+        ind = np.stack([cv2.GaussianBlur(((lab == q + 1) & m).astype(np.float32), (0, 0), s)
+                        for q in range(k)], -1)
+        lab = np.where(m, np.argmax(ind, -1) + 1, 0).astype(np.uint8)
+    cols = np.zeros((k + 2, 3), np.float32)
+    for q in range(1, k + 1):
+        sel = (lab == q) & m
+        cols[q] = np.median(c[sel], 0) if sel.any() else 0.5
+    # glowing eyes / lamps (warm, very bright) keep their own flat colour on top
+    glow = m & (c[..., 0] > 0.85) & (c[..., 1] > 0.55) & (c[..., 2] < 0.6) & ((c[..., 0] - c[..., 2]) > 0.3)
+    if glow.any():
+        glow = clean_shape(glow, close=2, min_area=40, hole_area=80, smooth=1.0) & m
+    if glow.any() and glow.sum() < 0.05 * m.sum():
+        k += 1
+        lab[glow] = k
+        cols[k] = np.median(c[glow], 0)
+    lumc = c[m] @ np.array([0.3, 0.59, 0.11], np.float32)
+    ink = c[m][lumc <= np.quantile(lumc, 0.03)].mean(0) * 0.85
+    return lab, cols, ink, k
+
+
+def smear_drawn(cel, motion, stretch=0.35, tail=1.4, name='smear', frame=0, tones=5, fingers=8,
+                streaks=8, ghosts=2, line=2.0, comb=0.5):
+    """A drawn anime smear: the cel as a few flat colour shapes (tones sampled from the cel);
+    its leading part keeps the figure's design, the trailing `comb` fraction of its length is
+    dragged back into flat hard-edged smear fingers (each finger keeps the colour of the figure
+    where it was torn), with short stubs between them, a few hard speed streaks, ghost edges
+    (echoed contour lines) and a thin outline.  No pixel of the cel's texture is stretched.
+
+    motion: (dx, dy) px, direction of travel (the smear trails behind it); stretch: body
+    elongation; tail: smear reach relative to |motion| (capped at ~1.2 body lengths).
+    Returns straight RGBA, same size as `cel`."""
+    H0, W0 = cel.shape[:2]
+    mv = np.asarray(motion, np.float64)
+    mag = float(np.linalg.norm(mv))
+    m0 = cel[..., 3] > 0.5
+    if mag < 1e-6 or m0.sum() < 50:
+        return cel.copy()
+    d = mv / mag
+    n = np.array([-d[1], d[0]])
+    m = clean_shape(m0, close=4, min_area=200, hole_area=1500, smooth=1.5)
+    if m.sum() < 50:
+        m = m0
+    lab, cols, ink, tones = _flat_tones(cel, m, tones, name)
+    ys, xs = np.nonzero(m)
+    P = np.stack([xs + 0.5, ys + 0.5], 1)
+    c0 = P.mean(0)
+    al = (P - c0) @ d
+    ac = (P - c0) @ n
+    a_min, a_max, c_min, c_max = al.min(), al.max(), ac.min(), ac.max()
+    body_len = a_max - a_min
+    k_st = 0.35 * stretch
+    Lext = float(min(tail * mag * 0.6, 1.2 * body_len))
+    ua = a_min - body_len * k_st - Lext - 40
+    va = c_min - 40
+    Wd = int(a_max - ua + 40)
+    Hd = int(c_max - va + 40)
+    Mi = np.array([[d[0], n[0], c0[0] + ua * d[0] + va * n[0]],
+                   [d[1], n[1], c0[1] + ua * d[1] + va * n[1]]], np.float64)
+    Lr = cv2.warpAffine(lab, Mi, (Wd, Hd), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP, borderValue=0)
+    body = Lr > 0
+    if not body.any():
+        return cel.copy()
+    u_lead = float(np.nonzero(body.any(0))[0].max())
+    S = np.array([[1.0 / (1 + k_st), 0, u_lead * (1 - 1.0 / (1 + k_st))], [0, 1.0, 0]], np.float64)
+    Lr = cv2.warpAffine(Lr, S, (Wd, Hd), flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP, borderValue=0)
+    body = Lr > 0
+    g = core.rng('smear_drawn', name, frame)
+    areas = np.array([0] + [int((Lr == q).sum()) for q in range(1, tones + 1)], np.float64)
+    base_t = int(np.argmax(areas))
+    lumq = cols[:, :3] @ np.array([0.3, 0.59, 0.11], np.float32)
+    big = [q for q in range(1, tones + 1) if areas[q] >= 0.1 * areas.sum()]
+    big.sort(key=lambda q: lumq[q])
+    light_t = big[-1] if big else base_t
+    light_col = cols[light_t] if light_t != base_t else np.clip(cols[base_t] * 0.7 + 0.3, 0, 1)
+    has = body.any(1)
+    rows = np.nonzero(has)[0]
+    U = np.arange(Wd)[None, :]
+    xt = body.argmax(1)                                          # trailing edge per row
+    xl = Wd - 1 - body[:, ::-1].argmax(1)                        # leading edge per row
+    u_t = float(xt[has].min())
+    Lb = u_lead - u_t
+    u_cs = u_lead - (1 - comb) * Lb                              # where the smear starts
+    # finger profile across the rows: tapered peaks; between them the tear notches up into the
+    # body with rounded tops (no flat cut lines)
+    v = np.arange(Hd, dtype=np.float64)
+    span = max(1.0, float(rows.max() - rows.min()))
+    Fp = np.zeros(Hd)
+    ext_p = np.zeros(Hd)
+    for j in range(fingers):
+        ck = rows.min() + span * (j + g.uniform(0.2, 0.8)) / fingers
+        wk = span / fingers * g.uniform(0.45, 0.75)
+        pk = np.clip(1 - np.abs(v - ck) / wk, 0, 1) ** 1.2
+        Fp = np.maximum(Fp, pk * g.uniform(0.75, 1.0))
+        ext_p = np.maximum(ext_p, pk * g.uniform(0.3, 1.0))
+    notch = (1 - np.clip(Fp, 0, 1)) ** 1.5 * Lb * 0.06
+    Fp = np.maximum(Fp, 0.12)                                    # short stubs between fingers
+    us = np.minimum(u_cs + notch, xl).astype(np.float64)        # per row start of the smear
+    # colour of each row where it is torn: the body tone at its smear start, mode-filtered
+    idx = np.clip(us.astype(int), 0, Wd - 1)
+    tr = np.where(has, Lr[np.arange(Hd), idx], 0).astype(np.int64)
+    win = max(3, int(0.03 * len(rows)))
+    oh = np.stack([np.convolve((tr == q).astype(np.float64), np.ones(win * 2 + 1), 'same') for q in range(tones + 1)], 1)
+    oh[:, 0] = 0
+    trs = np.where(has, np.argmax(oh, 1), 0)
+    reach = Fp * (us - xt) + ext_p * Lext                       # smear length behind the start
+    smear = has[:, None] & (U < us[:, None]) & (U >= (us - reach)[:, None])
+    keep = body & (U >= us[:, None])
+    labf = np.where(keep, Lr, np.where(smear, trs[:, None], 0)).astype(np.int64)
+    F = labf > 0
+    img = np.zeros((Hd, Wd, 4), np.float32)
+    # ghost edges: the original contour echoed behind as translucent lines
+    edge = body & ~(cv2.erode(body.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))) > 0)
+    for gi in range(ghosts):
+        sh = int(Lb * (0.1 + 0.11 * gi))
+        gm = np.zeros_like(edge)
+        if 0 < sh < Wd:
+            gm[:, :Wd - sh] = edge[:, sh:]
+        gm &= ~F
+        img[gm, :3] = light_col
+        img[gm, 3] = 0.5 - 0.2 * gi
+    img[F, :3] = cols[labf[F]]
+    img[F, 3] = 1.0
+    # a light hard-edged stripe along each big finger
+    stripe = smear & (U >= (us - reach * 0.7)[:, None]) & (np.abs(v - np.round(v / 7) * 7) < 1.5)[:, None] \
+        & (Fp > 0.7)[:, None]
+    img[stripe & F, :3] = light_col
+    if line > 0:
+        r = max(1, int(round(line)))
+        er = cv2.erode(F.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1,) * 2)) > 0
+        ol = F & ~er
+        img[ol, :3] = ink
+    lay = core.Layer((Hd, Wd), 0, 0, Wd, Hd, pad=0)
+    pb = PolyBatch()
+    for _ in range(streaks):
+        vk = float(g.choice(rows))
+        x0 = float(us[int(vk)]) + Lb * g.uniform(-0.05, 0.06)
+        lk = float(reach[int(vk)]) * g.uniform(0.8, 1.3) + Lb * 0.2
+        wk = max(1.5, span * g.uniform(0.003, 0.009))
+        q = np.linspace(0, 1, 6)
+        pts = np.stack([x0 - q * lk, np.full(6, vk + 0.5)], 1)
+        pb.add(core.stroke_poly(pts, wk * (1 - q) ** 0.8 + 0.4), light_col if g.random() < 0.6 else cols[1])
+    pb.paint(lay)
+    sa = lay.buf[..., 3:4]
+    img[..., :3] = lay.buf[..., :3] + img[..., :3] * img[..., 3:4] * (1 - sa)
+    img[..., 3:4] = sa + img[..., 3:4] * (1 - sa)
+    img[..., :3] = np.where(img[..., 3:4] > 1e-6, img[..., :3] / np.maximum(img[..., 3:4], 1e-6), 0)
+    pm = img.copy()
+    pm[..., :3] *= pm[..., 3:4]
+    pm = cv2.GaussianBlur(pm, (0, 0), 0.6)
+    Mf = np.array([[d[0], d[1], -(c0 @ d) - ua], [n[0], n[1], -(c0 @ n) - va]], np.float64)
+    out = cv2.warpAffine(pm, Mf, (W0, H0), flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                         borderValue=(0, 0, 0, 0))
+    a_ = out[..., 3:4]
+    out[..., :3] = np.where(a_ > 1e-6, out[..., :3] / np.maximum(a_, 1e-6), 0)
+    return np.clip(out, 0, 1).astype(np.float32)
+
+
 def smear_stretch(cel, motion, stretch=0.35, tail=1.4, name='smear', frame=0, flatten=0.25,
-                  flat=None, ss=2, density=1.0, streaks=True):
-    """Stretched smear: the cel is stretched along `motion` (dx, dy px, the direction of travel)
-    from its leading edge, keeping its own colours, and tapered speed streaks in the robot's
-    colours trail from its trailing edge for up to tail * |motion| px, thinning and fading.
+                  flat=None, ss=2, density=1.0, streaks=True, mode='drawn'):
+    """Smear frame.  mode='drawn' (default since round 7): `smear_drawn` - flat colour shapes
+    elongated into tapered smear fingers with speed streaks and ghost edges (no stretched
+    texture).  mode='stretch': the older look - the cel stretched along `motion` keeping its
+    own colours with tapered speed streaks from its trailing edge.
     Returns a new straight RGBA image of the same size."""
+    if mode == 'drawn':
+        return smear_drawn(cel, motion, stretch=stretch, tail=tail, name=name, frame=frame)
     H0, W0 = cel.shape[:2]
     mv = np.asarray(motion, np.float64)
     mag = float(np.linalg.norm(mv))

@@ -453,7 +453,9 @@ class S03(Base):
             band = comp_warp(np.repeat(band[..., None], 4, -1), ctx['M'])[..., 0]
             band = cv2.GaussianBlur(band, (0, 0), 0.8)
             litw = comp_warp(lit, ctx['M'])
-            robot_rgb = robot_rgb * (1 - band[..., None]) + litw[..., :3] * band[..., None]
+            lw = litw[..., :3] * 0.95
+            lw = lw * 0.8 + lw.mean(-1, keepdims=True) * 0.2        # sunlit paint, not orange plastic
+            robot_rgb = robot_rgb * (1 - band[..., None]) + lw * band[..., None]
         return robot_rgb + rgb * (1 - a[..., None])
 
     def light_buf(self, lb, f, t, ctx):
@@ -630,14 +632,16 @@ class S07(S03):
         st = Base.style(self, tq, cam)
         st.update(eye_style(self.glow(tq)))
         return st
+    def beam(self, t):
+        return S03.beam(self, 6.0)
+    def robot_extra(self, robot_rgb, a, rgb, f, t, ctx):
+        return robot_rgb + rgb * (1 - a[..., None])
     def setup(self):
         cam = self.S.cam(0.0)
         q = project(cam, SD.anchor(SD.K, 'pauldron_L', (-0.6, 0.2, 2.15)))
         x = float(np.clip(q[0], 120, 1800)); y = float(np.clip(q[1], 200, 980))
         self.flee = birds.flee(x=x, y=y, scale=150, facing=-1, t_startle=31, t_flee=50)
         self.motes = fx.Motes('S07_motes', (0, 0, 1920, 1040), count=160)
-    def robot_extra(self, robot_rgb, a, rgb, f, t, ctx):
-        return robot_rgb + rgb * (1 - a[..., None])
     def fx_front(self, rgb, f, t, ctx):
         st = self.flee.state(f)
         if st is None:
@@ -660,8 +664,6 @@ class S07(S03):
                 ex, ey, ez = WD.EYE_C
                 q = project(ctx['cam'], SD.anchor(pose, 'head', (side * ex, ey + 0.3, ez)))
                 fx.glow(lb, (float(q[0]), float(q[1])), 220, colour=(1.0, 0.75, 0.35), intensity=0.5 * g)
-    def beam(self, t):
-        return S03.beam(self, 6.0)
 
 
 class Rise(Base):

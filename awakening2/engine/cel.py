@@ -55,6 +55,15 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
     L = np.asarray(style['light'], np.float32); L = L / np.linalg.norm(L)
     nrm = ps['nrm']
     lam = np.sum(nrm * L, -1)
+    tw = style.get('term_wobble', 0.0)
+    if tw and m.any():
+        # a hand-cut terminator: a smooth, object-anchored wobble of the light/shadow boundary
+        # (fixed to the part, so it never swims), instead of the perfectly smooth CG edge
+        op = ps['opos']; pid = ps['part'].astype(np.float32)
+        x, y, z = op[..., 0], op[..., 1], op[..., 2]
+        fld = (np.sin(1.9 * x + 0.7 * z + 1.3 * pid) * np.sin(2.3 * y - 0.5 * x + 0.4 * pid)
+               + 0.6 * np.sin(3.1 * z + 1.7 * y + 2.2 * pid))
+        lam = lam + tw * fld * m
     if style.get('cast_shadows', True) and m.any():
         P = ps['wpos'][m]
         ctr = np.median(P, 0)

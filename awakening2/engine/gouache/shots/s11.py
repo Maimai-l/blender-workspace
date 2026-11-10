@@ -137,7 +137,15 @@ def lit_fn(X, Y):
     return np.clip(Lp + 0.25 * np.exp(-np.hypot(X - SUN[0], Y - SUN[1]) / 450.0), 0, 1)
 
 
-def paint_backlit(cv, rng, centres, leaf, light_scale=1.0, cool=0.0, rim_amt=1.0, dark=1.0):
+OUTER_PALS = [
+    None,                                                                         # the cooled default greens
+    [C(40, 38, 40), C(78, 74, 48), C(128, 122, 60), C(186, 172, 80), C(236, 216, 122)],   # older olive leaves
+    [C(14, 30, 48), C(20, 62, 76), C(40, 112, 104), C(110, 178, 132), C(200, 236, 176)],  # deep teal
+    [C(44, 30, 40), C(96, 56, 50), C(150, 98, 62), C(206, 152, 84), C(244, 206, 132)],    # russet young leaves
+]
+
+
+def paint_backlit(cv, rng, centres, leaf, light_scale=1.0, cool=0.0, rim_amt=1.0, dark=1.0, variety=False):
     """Translucent backlit leaf masses at centres (x, y, R)."""
     b = Blobs()
     mob = []
@@ -158,8 +166,13 @@ def paint_backlit(cv, rng, centres, leaf, light_scale=1.0, cool=0.0, rim_amt=1.0
         mob.append(mi)
     Rm = float(np.median([c[2] for c in centres])) if centres else 100.0
     greens = [shade_c(g, cool, dark) for g in GREENS]
+    pals, pal_p, pocket = None, None, 0.0
+    if variety:
+        pals = [greens] + [[shade_c(g, cool * 0.5, dark) for g in P_] for P_ in OUTER_PALS[1:]]
+        pal_p = [0.35, 0.25, 0.25, 0.15]
+        pocket = 0.22
     backlit_masses(cv, rng, b, mob, lambda X, Y: lit_fn(X, Y) * light_scale, thick_px=Rm * 0.45, leaf=leaf,
-                   greens=greens, rim_amt=rim_amt, lp=LP)
+                   greens=greens, rim_amt=rim_amt, lp=LP, palettes=pals, pal_p=pal_p, pocket=pocket)
 
 
 def shade_c(c, cool, dark):
@@ -255,8 +268,31 @@ def build(outdir, quick=False):
     # ---------------------------------------------------------------- high canopy ring around the gap
     cv = P.layer('canopy_far', 0.3)
     # the shaded outer ceiling (far from the gap: cool, dark, little light comes through)
-    paint_backlit(cv, rng, ring_centres(rng, 1.6, 7.0, 120, 170), leaf=12, light_scale=0.55, cool=0.35,
-                  rim_amt=0.6)
+    paint_backlit(cv, rng, ring_centres(rng, 1.6, 7.0, 120, 170), leaf=12, light_scale=0.6, cool=0.3,
+                  rim_amt=0.6, variety=True)
+    # dark limbs in silhouette crossing the outer ceiling (closer to us than the leaves above them)
+    for i in range(7):
+        a_ = rng.uniform(0, 2 * np.pi)
+        p0 = np.array([VP[0] + np.cos(a_) * 1300, VP[1] + np.sin(a_) * 760])
+        d_ = np.array([VP[0], VP[1]]) - p0
+        d_ /= np.hypot(*d_)
+        L = rng.uniform(380, 640)
+        pts = [p0]
+        for j in range(5):
+            d_ = d_ + rng.normal(0, 0.18, 2)
+            d_ /= np.hypot(*d_)
+            pts.append(pts[-1] + d_ * L / 5)
+        pts = np.array(pts)
+        if gapk(pts[-1][0], pts[-1][1]) < 1.5:
+            continue
+        stroke(cv, pts, taper(len(pts), 1.0, 0.2, rng.uniform(10, 20)), C(20, 22, 30), bristle=0.25, rag=0.3, rng=rng)
+        for j in range(int(rng.integers(2, 4))):
+            q = pts[int(rng.integers(2, len(pts)))]
+            aa = np.arctan2(d_[1], d_[0]) + rng.choice([-1, 1]) * rng.uniform(0.4, 0.9)
+            Ls = rng.uniform(60, 150)
+            q1 = q + Ls * np.array([np.cos(aa), np.sin(aa)])
+            stroke(cv, [q, (q + q1) / 2 + rng.normal(0, 5, 2), q1], taper(3, 1.0, 0.1, rng.uniform(3, 7)),
+                   C(20, 22, 30), bristle=0.2, rag=0.3, rng=rng)
     # sky holes through the outer ceiling (small, clustered, leaf-edged)
     hx, hy = [], []
     for i in range(46):
@@ -269,11 +305,11 @@ def build(outdir, quick=False):
     hx, hy = np.concatenate(hx), np.concatenate(hy)
     dabs(cv, hx, hy, rng.uniform(10, 34, len(hx)), C(0, 0, 0), aspect=rng.uniform(0.45, 0.9, len(hx)), shape='leaf',
          angle=rng.uniform(0, np.pi, len(hx)), edge=0.3, rag=0.5, bristle=0.0, mode='erase', rng=rng)
-    # the translucent inner ring around the gap (light pours through it)
-    paint_backlit(cv, rng, ring_centres(rng, 1.08, 1.8, 60, 105), leaf=10, light_scale=1.0, rim_amt=1.0)
-    # haze layer 1: glowing air in front of the far canopy, strongest at the gap
-    haze_veil(cv, rng, VP, GAP_R, C(255, 236, 186), k_in=0.95, k_out=1.8, n=90, opacity=(0.03, 0.07),
+    # haze layer 1: glowing air between the outer ceiling and the inner ring (painted under the inner ring)
+    haze_veil(cv, rng, VP, GAP_R, C(255, 236, 186), k_in=1.4, k_out=2.4, n=90, opacity=(0.03, 0.07),
               size=(140, 360))
+    # the translucent inner ring around the gap (light pours through it), crisp on top of the haze
+    paint_backlit(cv, rng, ring_centres(rng, 1.08, 1.8, 60, 105), leaf=10, light_scale=1.0, rim_amt=1.0)
     P.add('canopy_far', 0.3, cv, 'the highest canopy around the gap: translucent backlit leaf masses (warm near '
           'the gap, cool and dark away from it), sky holes, a layer of glowing haze')
 
@@ -296,8 +332,9 @@ def build(outdir, quick=False):
         paint_tube(cv, pts, ww, rng, bark, (L2[0], L2[1], -0.45), moss=0.9, ivy=0.4 if sp == 'camphor' else 0.0,
                    twist=0.15 if sp == 'camphor' else 0.0, detail=0.8, flecks=0.3, end_fade=0.25, sky_side=0.2)
     # haze layer 2: soft shafts of light from the gap and glowing air between the canopy storeys
-    light_shafts(cv, rng, VP, GAP_R, C(255, 236, 184), n=11, length=(420, 900), width=(50, 130), opacity=0.14)
-    haze_veil(cv, rng, VP, GAP_R, C(255, 230, 172), k_in=0.95, k_out=2.4, n=110, opacity=(0.04, 0.09),
+    light_shafts(cv, rng, (VP[0], VP[1]), (GAP_R[0] * 1.5, GAP_R[1] * 1.5), C(255, 236, 184), n=9,
+                 length=(300, 700), width=(50, 120), opacity=0.09)
+    haze_veil(cv, rng, VP, GAP_R, C(255, 230, 172), k_in=1.7, k_out=2.8, n=90, opacity=(0.03, 0.07),
               size=(160, 420))
     P.add('trunks', 0.6, cv, 'trunks converging toward the zenith; haze shafts and glowing air between the storeys')
 
@@ -352,7 +389,7 @@ def build(outdir, quick=False):
     # haze layer 3 (between the mid and near storeys): the mid masses near the gap wash out a little
     Xm, Ym = cv.coords()
     km = gapk(Xm, Ym)
-    cv.lock_tint(C(250, 234, 184), (np.clip(1.6 - 0.55 * km, 0, 1) * 0.22).astype(np.float32))
+    cv.lock_tint(C(250, 234, 184), (np.clip(1.6 - 0.55 * km, 0, 1) * smoothstep(1.3, 1.7, km) * 0.12).astype(np.float32))
     P.add('canopy_mid', 0.75, cv, 'crowns of the converging trees (translucent, backlit) and dark branches and '
           'twigs in silhouette reaching into the gap')
 

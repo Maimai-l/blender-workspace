@@ -276,6 +276,8 @@ def paint_groups(canvas, groups, holes, palette, light, centre, size, line=2.5, 
             ts = np.where(ts < 0.28, 0.0, np.maximum(ts, 0.38))
         else:
             tl, ts = shade_params(A[:, 0], A[:, 1], centre, size, light, gb, vert, contrast)
+        if tone_alpha is not None and r0 < 0.55 * ref:
+            tl = np.zeros_like(tl)          # translucent styles: lit crowns on the big billows only
         own = A[:, 10] > 0.25
         if not own.any():                 # broken-up remnants: every piece shades itself
             own[:] = True
@@ -306,7 +308,7 @@ def paint_groups(canvas, groups, holes, palette, light, centre, size, line=2.5, 
         _apply_tone_alpha(layer, palette, tone_alpha)
     if texture > 0:
         core.brush_grain(layer, texture, centre if tex_anchor is None else tex_anchor, tex_scale, light)
-    layer.onto(canvas, opacity)
+    layer.onto(canvas, opacity, merge=tone_alpha is not None)
     return canvas
 
 

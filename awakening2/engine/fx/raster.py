@@ -864,3 +864,30 @@ def paint_disc_lines2(buf, ox, oy, D, LW, GY, col, lx, ly):
                 buf[y, x, 1] = col[1] * a + buf[y, x, 1] * ia
                 buf[y, x, 2] = col[2] * a + buf[y, x, 2] * ia
                 buf[y, x, 3] = a + buf[y, x, 3] * ia
+
+
+@njit(cache=True, fastmath=True)
+def merge_premul(canvas, buf, ox, oy, op):
+    """Like over_premul, but the alpha is max(dst, src) instead of src + dst(1 - src): translucent
+    dust layers drawn on top of each other merge into one translucent mass instead of doubling
+    their density where they overlap (colour still follows 'over')."""
+    H, W = canvas.shape[0], canvas.shape[1]
+    h, w = buf.shape[0], buf.shape[1]
+    for j in range(h):
+        y = oy + j
+        if y < 0 or y >= H:
+            continue
+        for i in range(w):
+            x = ox + i
+            if x < 0 or x >= W:
+                continue
+            sa = buf[j, i, 3] * op
+            if sa <= 1e-6:
+                continue
+            da = canvas[y, x, 3]
+            k = da * (1.0 - sa)
+            oa = sa + k
+            inv = 1.0 / oa
+            for c in range(3):
+                canvas[y, x, c] = (buf[j, i, c] * op + canvas[y, x, c] * k) * inv
+            canvas[y, x, 3] = da if da > sa else sa

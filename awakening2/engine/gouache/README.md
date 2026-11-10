@@ -122,6 +122,15 @@ compilation (cached in `__pycache__` afterwards).
   leaves near edges, leaves breaking the silhouette, and a rim that differs per mass
   (none / a few hot leaves / a soft glow, in varied colours, never a continuous line).
   `haze_veil()` and `light_shafts()` paint glowing air between the canopy storeys.
+- `atmos.light_stripes()` (round 8, S12) — sunlit stripes on a shaded floor in a backlit scene: wedges
+  radiating from the point on the horizon under the sun, with wandering widths, breaks from small
+  shadows, cut by the near trunks' cast shadows (`occluders`), hard dry-brush edges, a warm tint that
+  keeps the floor texture, mottling, grass catching the light. `atmos.clean_shaft()` — a translucent
+  light shaft with clean edges (flat fill, faint streaks), used instead of soft radial ray fans.
+  (`ground_stripes()` and `floor_light()` are earlier attempts, kept but unused: one read as road
+  markings, the other as a sunburst emblem.)
+- `backlit_masses(..., palettes=, pal_p=, pocket=)` — per-mass palettes (olive, teal, russet) and light
+  pockets for variety in large backlit ceilings (S11 outer canopy).
 - `imprint.py` — `paint_imprint()`: depressions pressed into the floor (round 6, S17):
   bowls and capsules in a foreshortened ground frame -> height field with a raised soil
   lip -> sun lighting with a cast shadow from the far rim -> flat painted soil planes,

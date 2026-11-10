@@ -95,10 +95,15 @@ class Layer:
     def full(cls, canvas_shape):
         return cls(canvas_shape, 0, 0, canvas_shape[1], canvas_shape[0], pad=0)
 
-    def onto(self, canvas, opacity=1.0):
+    def onto(self, canvas, opacity=1.0, merge=False):
+        """Composite onto a straight-alpha canvas.  merge=True: alpha = max(dst, src) (translucent
+        dust merges with dust already there instead of doubling its density)."""
         if self.empty or opacity <= 0:
             return canvas
-        raster.over_premul(canvas, self.buf, self.ox, self.oy, float(opacity))
+        if merge:
+            raster.merge_premul(canvas, self.buf, self.ox, self.oy, float(opacity))
+        else:
+            raster.over_premul(canvas, self.buf, self.ox, self.oy, float(opacity))
         return canvas
 
     def onto_light(self, light, gain=1.0):

@@ -281,6 +281,27 @@ fx.GroundDust(f'S14_wash{k}', ..., style='dust')
 ```
 Tests: `fx_tests/styles_*` (soil spray vs translucent blast + wash) and `fx_tests/wind_style_*`.
 
+## Round 7
+
+* **Drawn smears**: `smear_stretch(...)` now draws by default (`mode='drawn'` ->
+  `smear_drawn`): the cel is posterized into a few flat colour shapes that follow its own colour
+  masses (k-means in Lab: paint lit/shadow, moss, glowing eyes kept), the leading part keeps the
+  figure, the trailing half (`comb=0.5`) is dragged back into flat, hard-edged, tapered smear
+  fingers (each keeps the colour where it was torn; rounded notches and short stubs between
+  them), plus a few hard speed streaks, ghost edges (echoed contour lines) and a thin outline -
+  no texture is stretched.  Same signature; `mode='stretch'` gives the old look.
+  `fx.smear_drawn(cel, motion, stretch, tail, name, frame, tones=5, fingers=8, streaks=8,
+  ghosts=2, line=2.0, comb=0.5)` exposes the knobs.  ~0.6-1.0 s per call at 1920x1040.
+* **Debris trails**: a short tapered dash attached to each trailing piece plus one smaller dash
+  behind it, earthy (`SOIL_DUST`) and translucent, fading in ~20 frames (no long rods).
+* **Translucent dust merges**: every effect drawn with a translucent style composites with
+  `alpha = max(dst, src)` (`Layer.onto(..., merge=True)`, `raster.merge_premul`), so the S14
+  blast, ring dusts and veil no longer double their density where they overlap; small billows
+  of translucent styles get no lit crown (crowns only on billows >= 0.55 x the reference size).
+* **Wind mist**: in `style='wind'` the remaining wall billows and the floor mist are pale,
+  flattened (ground-hugging) and fainter (`mist` default 0.22); `wall=0` still removes the
+  billows entirely.
+
 ## Shot recipes (starting points at 1920×1040; frames = seconds × 24 from `audio/cues.json`)
 
 | shot | effect | starting call |

@@ -8,6 +8,6 @@ from .debris import DebrisBurst, SoilPour, add_piece
 from .leaves import LeafBurst, LeafFall, add_leaf
 from .wind import WindRing
 from .flame import EngineFlame
-from .launch import impact_frame, smear_multi, smear_stretch, speed_lines, streak_lines
+from .launch import clean_shape, impact_frame, smear_drawn, smear_multi, smear_stretch, speed_lines, streak_lines
 from .trail import LightTrail
 from .light import Motes, bloom, glow, lens_flare, sunbeams

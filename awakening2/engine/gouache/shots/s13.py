@@ -70,7 +70,24 @@ def build(outdir, quick=False):
         p0 = np.asarray(p0, np.float32)
         p1 = np.asarray(p1, np.float32)
         pts = catmull(np.array([p0, (p0 + p1) / 2 + rng.normal(0, 20, 2), p1]), n=30)
+        # its shadow on the ground, cast away from the light (up the frame), hard-edged
+        sh_off = np.array([-SUN2[0], -SUN2[1]]) * w * 0.45
+        stroke(cv, pts + sh_off, np.linspace(w * 1.05, w * 0.85, 30), C(24, 34, 40), opacity=0.55, edge=0.25,
+               bristle=0.3, rag=0.4, rng=rng)
         paint_tube(cv, pts, np.linspace(w, w * 0.8, 30), rng, bark, L3, moss=2.5, detail=0.8)
+        # the broken/cut end nearest the clearing shows pale wood with growth rings and a dark split
+        e = pts[-1] if np.hypot(*(pts[-1] - np.array(CENTRE))) < np.hypot(*(pts[0] - np.array(CENTRE))) else pts[0]
+        we = w * 0.8 if e is pts[-1] else w
+        dirn = pts[-1] - pts[-2] if e is pts[-1] else pts[0] - pts[1]
+        ang_e = float(np.arctan2(dirn[1], dirn[0]))
+        dabs(cv, [e[0]], [e[1]], [we * 1.0], C(200, 168, 120), aspect=0.55, angle=ang_e + np.pi / 2, edge=0.25,
+             rag=0.5, bristle=0.3, rng=rng)
+        for k, f in enumerate((0.75, 0.5, 0.28)):
+            dabs(cv, [e[0]], [e[1]], [we * f], [C(170, 132, 92), C(214, 182, 132), C(150, 110, 78)][k],
+                 aspect=0.55, angle=ang_e + np.pi / 2, edge=0.35, rag=0.4, bristle=0.4, opacity=0.8, rng=rng)
+        stroke(cv, [[e[0] - np.sin(ang_e) * we * 0.3, e[1] + np.cos(ang_e) * we * 0.3],
+                    [e[0] + np.sin(ang_e) * we * 0.15, e[1] - np.cos(ang_e) * we * 0.15]], 3.0, C(70, 46, 40),
+               opacity=0.8, rng=rng)
     # stones
     for (x, y, r) in [(820, 560, 50), (1960, 560, 44), (640, 1060, 60), (1180, 820, 34), (300, 640, 40)]:
         stone(cv, rng, x, y, r, sun2=SUN2, moss=1.6, flatten=0.8)
@@ -126,19 +143,38 @@ def build(outdir, quick=False):
         kinds.append(kind)
     P.add('ferns', 0.6, cv, 'fern rosettes (centres listed in layers.json: flatten radially from the robot)')
 
-    # ---------------------------------------------------------------- trunks leaning toward the camera
+    # ---------------------------------------------------------------- limbs at canopy height over the rim
+    # (the trunk bases themselves are hidden under the crowns when seen from this high; a few big
+    # mossy limbs reach out from under the canopy over the edge of the clearing, clear of the robot)
     cv = P.layer('trunks', 1.0)
     cx_, cy_, rx_, ry_ = OPEN
-    for (a_deg, w, sp) in [(205, 200, 'camphor'), (322, 170, 'beech'), (30, 210, 'camphor')]:
+    sprays = Blobs()
+    for (a_deg, w, L) in [(200, 46, 230), (338, 40, 200), (22, 52, 240), (128, 34, 170)]:
         a = np.radians(a_deg)
-        bx, by = cx_ + np.cos(a) * rx_ * 0.92, cy_ + np.sin(a) * ry_ * 0.92
-        tx, ty = cx_ + np.cos(a) * rx_ * 1.6, cy_ + np.sin(a) * ry_ * 1.7
-        pts, ww = trunk_path(rng, (bx, by), (tx, ty), w, w * 1.7, sway=0.02, bulge=0.06, flare=0.5, flare_h=0.12)
-        bark = species(sp)
-        bark.mid = mix(bark.dark, bark.mid, 0.5)
-        bark.lit = mix(bark.mid, bark.lit, 0.5)
-        paint_tube(cv, pts, ww, rng, bark, (L3[0], L3[1], -0.3), moss=1.4, ivy=0.0, detail=0.9, twist=0.1, flecks=0.0)
-    P.add('trunks', 1.0, cv, 'giant trunk bases on the rim of the clearing, leaning out under the canopy')
+        p0 = np.array([cx_ + np.cos(a) * rx_ * 1.12, cy_ + np.sin(a) * ry_ * 1.12])
+        d_ = -np.array([np.cos(a), np.sin(a) * ry_ / rx_])
+        d_ /= np.hypot(*d_)
+        pts = [p0]
+        for j in range(4):
+            d_ = d_ + rng.normal(0, 0.2, 2)
+            d_ /= np.hypot(*d_)
+            pts.append(pts[-1] + d_ * L / 4)
+        pts = catmull(np.array(pts), n=24)
+        bark = species('camphor')
+        # its shadow far below on the ground is not visible from here; the limb itself is lit from below-frame
+        paint_tube(cv, pts, np.linspace(w, w * 0.35, 24), rng, bark, L3, moss=2.0, ivy=0.0, detail=0.7,
+                   flecks=0.0, end_fade=0.1)
+        tip = pts[-1]
+        layered_mass(sprays, rng, tip[0], tip[1], rng.uniform(40, 60), flat=0.8, droop=0.0)
+        mid_ = pts[14]
+        layered_mass(sprays, rng, mid_[0] + rng.normal(0, 20), mid_[1] + rng.normal(0, 20), rng.uniform(26, 40),
+                     flat=0.8, droop=0.0)
+    G = render_gbuffer(cv, sprays, light3=(0.25, 0.8, 0.45), wrap=0.25, under=0.0)
+    paint_planes(cv, rng, sprays, (C(20, 32, 44), C(38, 64, 58), C(96, 130, 72), C(184, 190, 104)), G=G, glob=0.0,
+                 th=(0.36, 0.6, 0.88), noise_amt=0.08, strokes=0.6, leafy_edge=0.9, leaf_px=12,
+                 leaf_cols=[C(20, 32, 44), C(52, 86, 64), C(124, 152, 80)], rim=None, rim_amt=0.0, sun2=SUN2)
+    P.add('trunks', 1.0, cv, 'a few big mossy limbs reaching from under the canopy over the rim of the clearing '
+          '(trunk bases removed: from above they read as flat bands)')
 
     # ---------------------------------------------------------------- canopy: treetops seen from above
     cv = P.layer('canopy', 1.0)

@@ -161,7 +161,7 @@ SHOTS = [
          notes='On 3s. Anticipation: settles down 0.3-0.6 s, then pushes. Hold at 2.2-3.0 s. Debris and soil curtains from the forearm, chest and roof.'),
     dict(id='S09', t0=38.5, t1=43.0, step=3,
          desc='RISE B, low angle from the side near the ground: it rises to standing; the tree on its back sways; vines swing; soil curtains fall toward camera',
-         cam=[(0.0, v(-28, 31, 1.3), v(0, 0, 10.2), 22)],     # wider: the full figure, head clear of the canopy
+         cam=[(0.0, v(-28, 31, 1.3), v(8, 8, 11.0), 22)],     # wider, robot right of centre: the head in the sky gap
          pose=[(0.0, 'RISE_CROUCH'), (0.4, 'RISE_CROUCH'), (1.5, 'STAND_RISE'), (2.6, 'STAND_HUNCH'), (4.5, 'STAND_HUNCH')],
          light=SUN_BACK, bg='S09', shake=(0.3, 3.2, 1.0), impacts=[(0.6, 4.0), (2.6, 7.0)],
          notes='Trees measure the scale. Birds circle high. Hold at the top 2.8-4.5 s with a settle.'),

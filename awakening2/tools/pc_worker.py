@@ -40,9 +40,13 @@ def main():
                     continue
                 t0 = time.time()
                 rgb = S.frame(f)
-                tmp = p + '.tmp.png'
+                tmp = f'{p}.{name}_{wid}.tmp.png'          # unique per worker: helpers may race the main workers
                 cv2.imwrite(tmp, comp.to_u8(rgb)[..., ::-1])
-                os.replace(tmp, p)
+                try:
+                    os.replace(tmp, p)
+                except OSError:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
                 log.write(f'{sid} {f} {time.time() - t0:.1f}\n'); log.flush()
         except Exception:
             log.write(f'FAILED {sid} {a}-{b}\n{traceback.format_exc()}\n'); log.flush()

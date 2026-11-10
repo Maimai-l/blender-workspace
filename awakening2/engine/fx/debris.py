@@ -108,7 +108,7 @@ class DebrisBurst:
         self.ink = ink
         self.life = life
         self.g = gravity
-        self.trail_palette = palettes.DUST_DARK if trail_palette is None else trail_palette
+        self.trail_palette = palettes.SOIL_DUST if trail_palette is None else trail_palette
         kinds = DEFAULT_MIX if kinds is None else kinds
         names = list(kinds)
         w = np.array([kinds[k] for k in names], np.float64)
@@ -165,21 +165,21 @@ class DebrisBurst:
             if p[1] > H + 60 or p[0] < -80 or p[0] > W + 80:
                 continue
             if self.trail[i] and t > 1:
-                # a short dust streak dragged along the path: tapered, breaking up with age
-                n = 7
-                ts = np.linspace(max(0.0, t - 8.0), t, n)
-                pts = np.array([self._state(i, tt)[0] for tt in ts])
-                seg = np.linalg.norm(pts[-1] - pts[0])
-                if seg > self.size[i] * 1.5:
-                    q = np.linspace(0, 1, n)
-                    wid = self.size[i] * 1.1 * q ** 1.3
-                    fade = max(0.0, 1 - t / 30.0)
-                    if fade > 0.05:
-                        trails.add(core.stroke_poly(pts, wid), dpal[1], alpha=0.85 * fade)
-                        nrm, _ = core.polyline_normals(pts)
-                        side = np.sign(np.sum(nrm * l[None, :], 1, keepdims=True))
-                        trails.add(core.stroke_poly(pts + nrm * side * wid[:, None] * 0.22, wid * 0.45),
-                                   dpal[2], alpha=0.85 * fade)
+                # a short broken dust trail: a tapered dash attached to the piece and one smaller
+                # dash behind it, earthy and translucent, fading within ~20 frames
+                fade = max(0.0, 1 - t / 20.0)
+                if fade > 0.05:
+                    for (t0, t1, wk) in ((t - 2.0, t, 0.9), (t - 4.6, t - 3.0, 0.5)):
+                        if t0 < 0:
+                            continue
+                        ts = np.linspace(t0, t1, 5)
+                        pts = np.array([self._state(i, tt)[0] for tt in ts])
+                        if np.linalg.norm(pts[-1] - pts[0]) < self.size[i] * 0.8:
+                            continue
+                        q = np.linspace(0, 1, 5)
+                        wid = self.size[i] * wk * np.sin(np.pi * np.clip(q * 0.95 + 0.05, 0, 1)) ** 0.8 \
+                            * (0.4 + 0.6 * q)
+                        trails.add(core.stroke_poly(pts, wid), dpal[1], alpha=0.6 * fade)
             add_piece(batch, self.kind[i], self.parts[i], p, a, self.size[i], light, self.ink)
         trails.draw(canvas)
         batch.draw(canvas)

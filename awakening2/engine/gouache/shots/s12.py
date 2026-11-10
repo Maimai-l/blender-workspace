@@ -12,7 +12,7 @@ from ..noise import rng_for
 from ..canvas import dabs, stroke, catmull, taper
 from ..layers import Painting
 from ..foliage import Blobs, vine
-from ..atmos import mist, beams, glow
+from ..atmos import mist, beams, glow, clean_shaft, light_stripes
 from ..trees import species, paint_tube, trunk_path, buttress_roots, Frame
 from ..canvas import catmull
 from ..forest import leafy_mass, far_trunks, broadleaf, floor, undergrowth, layered_mass
@@ -152,8 +152,30 @@ def build(outdir, quick=False):
     leafy_mass(cv, rng, b, 0.1, HAZE, (0.0, 0.6, -0.8), (0.0, 1.0), 11, density=0.9, trans_amt=0.6, rim_amt=0.45,
                lz=-0.8)
     # ground: dark, backlit
-    floor(cv, rng, HZ, H + 40, -60, W + 60, HAZE_W, (0.0, -0.3, -0.9), (0.0, -1.0), warm,
-          near=C(30, 34, 56), mid=C(62, 70, 74), lit=C(255, 214, 140), patches=0, flowers_n=30, litter=True)
+    floor(cv, rng, HZ, H + 40, -60, W + 60, HAZE_W, (0.0, -0.3, -0.9), (0.0, -1.0),
+          lambda x, y: warm(x, y) * 0.35,
+          near=C(28, 32, 54), mid=C(54, 62, 72), lit=C(255, 214, 140), patches=0, flowers_n=30, litter=True)
+    # the sun sits on the treeline, so the floor is in shade except where it shines through gaps between
+    # the far trunks: a few long sunlit stripes radiating toward the camera from the point under the sun,
+    # kept out of the near trunks' shadows; hard, dry-brush edges, broken by small shadows
+    VPG = (SUN[0], HZ - 4)
+    occ = []
+    for (x, wb) in [(120, 150), (420, 64), (930, 48), (1560, 104), (1800, 180)]:
+        a_c = np.arctan2(HZ + 140 - VPG[1], x - VPG[0])
+        a_w = np.arctan2(wb * 0.5, np.hypot(x - VPG[0], 140.0))
+        occ.append((a_c - a_w, a_c + a_w, float(np.hypot(x - VPG[0], 140.0))))
+    stripes = []
+    for a_deg, w_deg in [(38, 3.0), (55, 1.2), (68, 5.0), (104, 3.6), (121, 1.1), (133, 5.5)]:
+        a_c = np.radians(a_deg + rng.normal(0, 1.5))
+        a_w = np.radians(w_deg * rng.uniform(0.8, 1.2))
+        stripes.append((float(a_c), float(a_w), float(rng.uniform(70, 180)), float(rng.uniform(1100, 2200))))
+    # the shaded floor: cool violet in front, warmer near the glowing far edge
+    Xf, Yf = cv.coords()
+    tf = np.clip((Yf - HZ) / (H - HZ), 0, 1)
+    cv.lock_tint(C(232, 196, 156), (np.clip(1 - tf * 3, 0, 1) * 0.22 * (Yf > HZ)).astype(np.float32))
+    cv.lock_tint(C(46, 44, 86), (smoothstep(0.35, 1.0, tf) * 0.25 * (Yf > HZ)).astype(np.float32))
+    LT = light_stripes(cv, rng, VPG, stripes, C(214, 170, 112), HZ + 4, warm_amt=0.28, lift=0.035,
+                       cool_col=C(52, 50, 92), cool_amt=0.12, occluders=occ)
     # backlit grass and fern clumps across the floor (rims glow), low glowing mist on the floor
     for i in range(26):
         y = HZ + 30 + (H - HZ) * rng.random() ** 1.4
@@ -167,24 +189,40 @@ def build(outdir, quick=False):
                  pal=dict(dark=C(24, 28, 46), mid=C(40, 54, 58), lit=C(150, 140, 80), tip=C(255, 214, 140)))
     mist(cv, rng, -100, 2020, HZ - 40, HZ + 160, HAZE_W, HAZE_C, light=warm, density=1.1, opacity=(0.05, 0.14),
          size=(140, 420), aspect=(0.08, 0.18), profile='mid')
-    # long shadows of the trunks toward the camera, light between them
-    for (x, wb) in [(120, 110), (420, 70), (930, 60), (1560, 90), (1800, 130)]:
-        x0, y0 = x, HZ + 140
-        dx, dy = x0 - SUN[0], y0 - SUN[1]
-        n_ = np.hypot(dx, dy)
-        L = 900
-        p1 = (x0 + dx / n_ * L, y0 + dy / n_ * L)
-        stroke(cv, [[x0, y0], [(x0 + p1[0]) / 2, (y0 + p1[1]) / 2], p1], [wb * 0.8, wb * 1.6, wb * 2.6],
-               C(34, 36, 62), opacity=0.45, edge=0.7, bristle=0.5, rag=0.2, mode='lock', rng=rng)
-    P.add('mid', 0.5, cv, 'mid trunks as dark silhouettes with gold rims; backlit floor with shadows toward us')
+    P.add('mid', 0.5, cv, 'mid trunks as dark silhouettes with gold rims; floor in cool shade crossed by hard-edged '
+          'sunlit stripes between the trunk shadows')
 
     # ---------------------------------------------------------------- beams toward the camera
     cv = P.layer('beams', 0.6)
-    angs = np.radians(np.array([60, 75, 92, 108, 122, 138, 150]) + rng.normal(0, 3, 7))
-    beams(cv, rng, SUN, angs, 1100, rng.uniform(40, 110, 7), C(255, 240, 200), opacity=0.3, spread_w=2.6,
-          streak=0.55, start_fade=0.05)
-    glow(cv, SUN[0], SUN[1], 260, C(255, 250, 230), 0.55)
-    P.add('beams', 0.6, cv, 'rays from the sun fanning toward the camera + bloom (robot goes above this)')
+    # three translucent shafts with clean edges, each continuing one of the ground stripes up to the sun
+    # pick the widest lit gaps along a ground arc and send a shaft from the sun to each
+    Xs, Ys = cv.coords()
+    th_s = np.linspace(np.radians(20), np.radians(160), 600)
+    rr_s = 330.0
+    gx_ = np.clip((VPG[0] + np.cos(th_s) * rr_s + cv.m).astype(int), 0, cv.shape[1] - 1)
+    gy_ = np.clip((VPG[1] + np.sin(th_s) * rr_s + cv.m).astype(int), 0, cv.shape[0] - 1)
+    lit = LT[gy_, gx_] > 0.5
+    runs, i = [], 0
+    while i < len(lit):
+        if lit[i]:
+            j = i
+            while j < len(lit) and lit[j]:
+                j += 1
+            runs.append((j - i, th_s[i], th_s[j - 1]))
+            i = j
+        else:
+            i += 1
+    for (n_, t0, t1) in sorted(runs, reverse=True)[:3]:
+        tc = (t0 + t1) / 2
+        p_ground = (VPG[0] + np.cos(tc) * rr_s * 1.5, VPG[1] + np.sin(tc) * rr_s * 1.5)
+        ang = float(np.arctan2(p_ground[1] - SUN[1], p_ground[0] - SUN[0]))
+        L = float(np.hypot(p_ground[0] - SUN[0], p_ground[1] - SUN[1]))
+        hw = float(np.arctan2(rr_s * 1.5 * (t1 - t0) / 2, L)) * 0.9
+        clean_shaft(cv, rng, SUN, ang, max(hw, np.radians(1.5)), 110, L, C(255, 236, 194),
+                    opacity=float(rng.uniform(0.09, 0.14)), fade_in=0.35, fade_out=0.25, streaks=4)
+    glow(cv, SUN[0], SUN[1], 150, C(255, 250, 230), 0.5)
+    P.add('beams', 0.6, cv, 'three translucent light shafts with clean edges, continuing the ground stripes; small '
+          'sun bloom (robot goes above this)', grain_amt=0.0)
 
     # ---------------------------------------------------------------- fg
     cv = P.layer('fg', 1.0)

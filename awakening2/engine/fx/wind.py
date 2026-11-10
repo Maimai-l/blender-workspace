@@ -35,6 +35,21 @@ def _h(*a):
     return (core.seed(*a) % 1000003) / 1000003.0
 
 
+def _squash(group, k):
+    """Flatten a billow group toward its base (ground-hugging mist)."""
+    lobes = group[1]
+    L = [list(l_) + [1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0][len(l_) - 4:] if len(l_) < 11 else list(l_) for l_ in lobes]
+    yb = max(l_[1] + l_[2] * l_[5] for l_ in L)
+    out = []
+    for l_ in L:
+        l_[1] = yb - (yb - l_[1]) * k
+        l_[5] = l_[5] * k
+        if l_[9] > 0:
+            l_[8] = yb - (yb - l_[8]) * k
+        out.append(tuple(l_))
+    return (group[0], out) + tuple(group[2:])
+
+
 class WindRing:
     def __init__(self, name, centre, frame0, radius=1100.0, duration=36, r0=60.0, ratio=0.45,
                  persp=0.3, tilt=0.0, light=(0.62, -0.78), on=2, slots=44, height=90.0, life=26,
@@ -67,10 +82,11 @@ class WindRing:
         # mist; the billow wall much smaller and translucent (wall=0 turns it off)
         self.style = style
         self.wall = (0.22 if style == 'wind' else 1.0) if wall is None else float(wall)
-        self.wall_alpha = palettes.TONE_ALPHA['wind'] if style == 'wind' else None
+        self.wall_alpha = palettes.TONE_ALPHA['mist'] if style == 'wind' else None
         if style == 'wind':
-            self.palette = palettes.WIND_DUST if palette is None else palette
-            mist = 0.32 if mist == 0.0 else mist
+            # round 7: the wind's billows are pale, low, translucent mist (not grey smoke)
+            self.palette = palettes.WIND_WHITE if palette is None else palette
+            mist = 0.22 if mist == 0.0 else mist
             mist_palette = palettes.WIND_WHITE if mist_palette is None else mist_palette
             self.band = False
         self.mist = mist
@@ -322,6 +338,8 @@ class WindRing:
             BR.append(float(np.clip(1 - fade, 0, 1)) * 0.8); PH.append(age / 30.0); Z.append(y)
         if ids:
             groups, holes = self.mist_b.groups(ids, PX, PY, RR, BR, PH, Z, drawing)
+            if self.style == 'wind':
+                groups = [_squash(g_, 0.6) for g_ in groups]          # ground-hugging, not smoke
             C = (float(np.mean(PX)), float(np.mean(PY)))
             paint_groups(canvas, groups, holes, self.mist_pal, self.light, C, self.height * 3.0,
                          line=0, opacity=self.mist * fade * self.opacity, local=0.6, vert=0.3)
@@ -601,6 +619,9 @@ class WindRing:
                 groups, holes, wisps = self.bil.groups(ids, PX, PY, RR, BR, PH, Z, drawing,
                                                        ground=np.array(self._gy), lead=np.array(self._lead),
                                                        wisps=True)
+                if self.style == 'wind':
+                    groups = [_squash(g_, 0.58) for g_ in groups]
+                    wisps = []
                 bias_by_id = dict(zip([i % self.bil.n for i in ids], GB))
                 gbias = [bias_by_id.get(g_[3], 0.0) for g_ in groups]
                 C = (float(np.mean(PX)), float(np.mean(PY)))

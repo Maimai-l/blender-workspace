@@ -12,7 +12,7 @@ while true; do
   echo "$(TZ=America/Toronto date +%H:%M) total=$t need=$NEED workers=$w"
   if [ -n "$t" ] && [ "$t" -ge "$NEED" ]; then python3 tools/pc.py kill > /dev/null 2>&1; echo DONE; break; fi
   # when the main workers start running out, help the slowest shots (once)
-  if [ -n "$w" ] && [ "$w" -gt 0 ] && [ "$w" -lt 4 ] && [ -z "$STOLE" ] && [ -n "$t" ] && [ "$t" -lt "$NEED" ]; then
+  if [ -n "$w" ] && [ "$w" -gt 0 ] && [ "$w" -lt 4 ] && [ -z "$STOLE" ] && [ -n "$t" ] && [ "$t" -lt "$NEED" ] && [ "$t" -gt $((NEED / 2)) ]; then
     inc=$(python3 tools/pc.py sh "cd /c/Users/blender/Documents/awakening2/$FD && for d in S*; do echo \$d \$(ls \$d | grep -c '_[0-9][0-9][0-9][0-9][.]png\$'); done" 2>&1 | python3 -c "
 import sys, json
 c = json.load(open('audio/cues.json'))

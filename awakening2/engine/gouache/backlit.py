@@ -27,7 +27,9 @@ RIMS = [C(255, 244, 206), C(255, 214, 128), C(214, 236, 120), C(255, 196, 160)]
 
 def backlit_masses(cv, rng, blobs, mass_of_blob, lit_fn, thick_px, leaf=12.0, density=1.0, greens=None,
                    gpos=None, rim_amt=1.0, cool=0.0, dark_leaves=1.0, glow_leaves=1.0, band_noise=0.08,
-                   lp=None):
+                   lp=None, palettes=None, pal_p=None, pocket=0.0):
+    """palettes: optional list of greens lists picked per mass (with probabilities pal_p) for colour
+    variety; pocket: share of masses that catch extra light (light pockets through sky holes)."""
     """blobs: Blobs; mass_of_blob: list, mass index per blob (same order); lit_fn(X, Y) -> light reaching
     the canopy there (0..1); thick_px: thickness scale (px) at which light is mostly absorbed;
     lp: light point (the gap / sun) for rim direction."""
@@ -60,6 +62,8 @@ def backlit_masses(cv, rng, blobs, mass_of_blob, lit_fn, thick_px, leaf=12.0, de
     mob = np.asarray(mass_of_blob, np.int64) if len(mass_of_blob) else np.zeros(1, np.int64)
     nm = int(mob.max() + 1)
     m_trans = rr.uniform(0.6, 1.3, nm)
+    if pocket > 0:
+        m_trans = m_trans * np.where(rr.random(nm) < pocket, rr.uniform(1.6, 2.4, nm), 1.0)
     m_hue = rr.normal(0, 0.12, nm)
     mid = np.where(cidr >= 0, mob[np.clip(cidr, 0, len(mob) - 1)], -1)
     TM = np.where(mid >= 0, m_trans[np.maximum(mid, 0)], 1.0).astype(np.float32)
@@ -69,13 +73,27 @@ def backlit_masses(cv, rng, blobs, mass_of_blob, lit_fn, thick_px, leaf=12.0, de
     if cool > 0:
         v = v * (1 - cool * 0.3)
     # 1. painted bands with ragged boundaries
-    labs = [oklab(g) for g in greens]
     pert = (fbm(hh, ww, max(leaf * 2.0, 8), rng, octaves=2) - 0.5) * 0.12
     vb = v + pert
-    lab = labs[0] + 0 * vb[..., None]
-    for i in range(1, len(labs)):
-        t = smoothstep(gpos[i] - 0.03, gpos[i] + 0.03, vb * 0.97)
-        lab = lab + (labs[i] - lab) * (t * (0.55 if i == len(labs) - 1 else 1.0))[..., None]
+
+    def banded(pal_):
+        labs = [oklab(g) for g in pal_]
+        lab_ = labs[0] + 0 * vb[..., None]
+        for i in range(1, len(labs)):
+            t = smoothstep(gpos[i] - 0.03, gpos[i] + 0.03, vb * 0.97)
+            lab_ = lab_ + (labs[i] - lab_) * (t * (0.55 if i == len(labs) - 1 else 1.0))[..., None]
+        return lab_
+    if palettes:
+        pp = np.asarray(pal_p if pal_p is not None else [1.0 / len(palettes)] * len(palettes), np.float64)
+        m_pal = rr.choice(len(palettes), nm, p=pp / pp.sum())
+        PI = np.where(mid >= 0, m_pal[np.maximum(mid, 0)], 0)
+        lab = np.zeros(vb.shape + (3,), np.float32)
+        for k_, pal_ in enumerate(palettes):
+            msk = PI == k_
+            if msk.any():
+                lab[msk] = banded(pal_)[msk]
+    else:
+        lab = banded(greens)
     Cc = np.hypot(lab[..., 1], lab[..., 2])
     hh_ = np.arctan2(lab[..., 2], lab[..., 1]) + HU
     lab = np.stack([lab[..., 0], Cc * np.cos(hh_), Cc * np.sin(hh_)], -1)

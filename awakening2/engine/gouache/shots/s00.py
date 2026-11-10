@@ -12,7 +12,7 @@ from ..color import C, mix, ramp, jitter, aerial, smoothstep
 from ..noise import rng_for, fbm, noise1d
 from ..canvas import dabs, stroke, catmull, taper
 from ..layers import Painting
-from ..foliage import Blobs
+from ..foliage import Blobs, spray
 from ..sky import sky, plane_cloud, paint_planes, sculpted_blobs
 from ..atmos import mist, beams, glow
 
@@ -91,6 +91,47 @@ def add_crown(b, rng, x, y, r, kind, lt=1.0, hue=0.0):
 
 
 KINDS = ['round', 'spire', 'flat', 'emergent']
+
+
+def snag(cv, rng, x, y_base, h, col, rim_col=None, w0=None):
+    """A dead tree in silhouette: a crooked, tapering trunk with a broken top, and a few branches that
+    curve up and fork into thin twigs (recursive); a thin warm rim on the sun side (right)."""
+    w0 = w0 or rng.uniform(12, 18)
+    n = 9
+    t = np.linspace(0, 1, n)
+    xs = x + np.cumsum(rng.normal(0, 7, n)) + np.sin(t * rng.uniform(2, 4) + rng.uniform(0, 6)) * h * 0.05
+    ys = y_base - t * h
+    trunk = np.stack([xs, ys], 1)
+    wd = w0 * (1 - 0.65 * t) * (1 + 0.35 * np.exp(-t / 0.08))
+    stroke(cv, trunk, wd, col, edge=0.3, bristle=0.4, rag=0.5, rng=rng)
+    # broken top: a jagged splinter
+    tp = trunk[-1]
+    stroke(cv, [tp, tp + [rng.normal(0, 4), -w0 * 0.9]], taper(2, 1.0, 0.0, wd[-1] * 0.9), col, rng=rng)
+    if rim_col is not None:
+        stroke(cv, trunk + [wd[:, None].mean() * 0.0 + 0, 0] + np.stack([wd * 0.38, np.zeros(n)], 1),
+               wd * 0.22, rim_col, opacity=0.55, edge=0.5, bristle=0.5, rag=0.4, rng=rng)
+
+    def branch(p0, ang, L, wb, depth):
+        k = 5
+        pts = [np.asarray(p0, np.float32)]
+        a = ang
+        for i in range(k):
+            a += rng.normal(0, 0.22) - 0.12 * np.cos(a)            # branches curve upward (toward -y)
+            pts.append(pts[-1] + L / k * np.array([np.cos(a), np.sin(a)], np.float32))
+        pts = np.array(pts)
+        stroke(cv, pts, taper(len(pts), 1.0, 0.15, wb), col, edge=0.3, bristle=0.3, rag=0.4, rng=rng)
+        if depth < 2:
+            for j in range(int(rng.integers(1, 3))):
+                i = int(rng.integers(2, k + 1))
+                branch(pts[i], a + rng.choice([-1, 1]) * rng.uniform(0.4, 0.9), L * rng.uniform(0.4, 0.65),
+                       max(wb * 0.55, 1.2), depth + 1)
+
+    for j in range(int(rng.integers(3, 6))):
+        tt = rng.uniform(0.35, 0.92)
+        i = int(tt * (n - 1))
+        sd = rng.choice([-1, 1])
+        ang = -np.pi / 2 + sd * rng.uniform(0.6, 1.25)
+        branch(trunk[i], ang, h * rng.uniform(0.18, 0.35) * (1.1 - tt * 0.5), max(wd[i] * 0.45, 2.0), 0)
 
 
 def shade_dark(c, dl):
@@ -261,28 +302,27 @@ def build(outdir, quick=False):
     # ---------------------------------------------------------------- near canopy silhouettes at the bottom edge
     cv = P.layer('near', 0.85)
     sil_cols = [C(30, 40, 46), C(24, 34, 52), C(36, 34, 54), C(28, 44, 42)]
-    for row, (ybase, rr_, dark_k, rim_p) in enumerate([(915, (60, 120), 0.0, 0.35), (1005, (90, 160), 1.0, 0.25)]):
+    for row, (ybase, rr_, dark_k, rim_p) in enumerate([(915, (60, 120), 0.0, 0.35)]):
         groups = [Blobs(), Blobs(), Blobs()]
         x = -140.0
         while x < W + 160:
             r = rng.uniform(*rr_)
             kind = str(rng.choice(['round', 'round', 'spire', 'flat', 'snag'], p=[0.45, 0.2, 0.15, 0.1, 0.1]))
             top = ybase + 45 * np.sin(x / 260 + row * 2.0) + rng.normal(0, 22)
+            if row == 1:
+                # the front row: a broken skyline - occasional big tall crowns, long low stretches
+                if rng.random() < 0.22:
+                    r = r * rng.uniform(1.5, 2.1)
+                    top -= r * rng.uniform(0.5, 0.9)
+                elif rng.random() < 0.35:
+                    r = r * rng.uniform(0.5, 0.75)
+                    top += rng.uniform(30, 70)
             if kind == 'snag':
-                # a dead snag / bare branches against the mist (stroked, not a blob)
-                h_ = rng.uniform(140, 240)
                 c0 = jitter(sil_cols[1], rng, 1, dl=0.02)[0]
-                k_ = 6
-                tx_ = x + np.cumsum(rng.normal(0, 9, k_))
-                ty_ = top + 120 - np.linspace(0, h_ + 120, k_)
-                stroke(cv, np.stack([tx_, ty_], 1), taper(k_, 1.0, 0.2, rng.uniform(14, 22)), c0, edge=0.3,
-                       bristle=0.4, rag=0.45, rng=rng)
-                for j in range(int(rng.integers(3, 6))):
-                    yb = top - h_ * rng.uniform(0.3, 0.9)
-                    sd = rng.choice([-1, 1])
-                    L = rng.uniform(40, 110)
-                    stroke(cv, [[x, yb], [x + sd * L * 0.6, yb - L * 0.35], [x + sd * L, yb - L * 0.6 + rng.normal(0, 8)]],
-                           taper(3, 1.0, 0.1, rng.uniform(3, 6)), c0, edge=0.3, bristle=0.3, rag=0.3, rng=rng)
+                if row == 0:
+                    c0 = mix(c0, MIST_SH, 0.25)
+                snag(cv, rng, x, top + 140, rng.uniform(220, 330), c0,
+                     rim_col=mix(C(236, 200, 150), MIST_LIT, 0.3) if rng.random() < 0.6 else None)
                 x += r * rng.uniform(0.8, 1.4)
                 continue
             b = groups[int(rng.integers(0, 3))]
@@ -296,10 +336,17 @@ def build(outdir, quick=False):
             for yy in np.arange(top + r, H + 220, r * 0.9):
                 b.add(x + rng.normal(0, r * 0.3), yy, r * rng.uniform(0.9, 1.3), r * 0.8, light=0.6, rng=rng, lumpy=0.2)
             x += r * rng.uniform(0.9, 1.6) * (0.75 if row == 1 else 1.0)
+            if row == 1 and rng.random() < 0.45:
+                # leafy twigs breaking the top line (silhouetted, a few lit leaves)
+                for j in range(int(rng.integers(1, 3))):
+                    aa = -np.pi / 2 + rng.normal(0, 0.6)
+                    spray(cv, x - r * rng.uniform(0.3, 1.0), top + r * rng.uniform(0.0, 0.3), aa, rng.uniform(70, 140),
+                          rng.uniform(14, 22), C(22, 30, 40), C(70, 84, 64), rng, stem_col=C(22, 28, 38), droop=0.3,
+                          sun2=(0.8, -0.6), curl=rng.normal(0, 0.5), rim=C(236, 200, 140) if rng.random() < 0.4 else None)
         for gi, b in enumerate(groups):
             if len(b) == 0:
                 continue
-            base = [C(30, 46, 44), C(24, 36, 54), C(38, 34, 56)][gi]
+            base = [C(30, 46, 44), C(24, 36, 54), C(34, 42, 56)][gi]
             if row == 0:
                 base = mix(base, MIST_SH, 0.28)                    # the back row sits in thin mist
             if row == 1:
@@ -319,7 +366,61 @@ def build(outdir, quick=False):
                      jitter(mix(MIST_SH, MIST_LIT, np.clip(mx / W, 0, 1)), rng, 3, dl=0.02),
                      aspect=rng.uniform(0.12, 0.25, 3), angle=rng.normal(0, 0.04, 3),
                      opacity=rng.uniform(0.15, 0.3, 3), edge=0.95, rag=0.4, bristle=0.5, rng=rng)
-    P.add('near', 0.85, cv, 'near canopy in two rows of painted silhouettes: varied crowns, a few snags and bare '
+    # ---- the front band: a low dark band of treetops with a finely broken top line (leaves and twigs,
+    # not lumps), two big framing crowns at the corners, two dead snags against the mist
+    xs_ = cv.xs()
+    nw = len(xs_)
+    top = 984 + 18 * (noise1d(nw, 9, rng) - 0.5) * 2 + 8 * (noise1d(nw, 40, rng) - 0.5) * 2 \
+        - 150 * np.exp(-((xs_ + 60) / 300) ** 2) - 170 * np.exp(-((xs_ - 2260) / 320) ** 2)
+    Xb, Yb = cv.coords()
+    band = np.clip(Yb - top[None, :] + 0.5, 0, 1).astype(np.float32)
+    tb = np.clip((Yb - top[None, :]) / 60.0, 0, 1)
+    bcol = mix(np.broadcast_to(C(42, 56, 60), Yb.shape + (3,)), C(20, 28, 40), tb[..., None])
+    cv.over(bcol, band)
+    # brush texture inside the band (alpha-locked flat strokes)
+    nst = 260
+    sx = rng.uniform(-60, W + 60, nst)
+    sy = np.interp(sx, xs_, top) + rng.uniform(6, 120, nst)
+    dabs(cv, sx, sy, rng.uniform(30, 70, nst), jitter(np.broadcast_to(C(30, 42, 50), (nst, 3)), rng, dl=0.03, dc=0.15),
+         aspect=rng.uniform(0.2, 0.4, nst), angle=rng.normal(0, 0.3, nst), shape='flat', edge=0.4, rag=0.5,
+         bristle=0.6, opacity=rng.uniform(0.3, 0.6, nst), mode='lock', rng=rng)
+    # leaves along the top line (small, irregular), a few lit on the sun side
+    xl = np.arange(-60, W + 60, 6.0) + rng.normal(0, 2, len(np.arange(-60, W + 60, 6.0)))
+    yl = np.interp(xl, xs_, top) + rng.uniform(-8, 10, len(xl))
+    nl = len(xl)
+    lit = (rng.random(nl) < 0.12 + 0.18 * (xl / W))
+    lc = np.where(lit[:, None], jitter(np.broadcast_to(C(150, 150, 96), (nl, 3)), rng, dl=0.04),
+                  jitter(np.broadcast_to(C(30, 42, 48), (nl, 3)), rng, dl=0.03))
+    la = -np.pi / 2 + rng.normal(0, 0.9, nl)
+    Ls = rng.uniform(10, 22, nl)
+    dabs(cv, xl + np.cos(la) * Ls * 0.4, yl + np.sin(la) * Ls * 0.4, Ls, lc, aspect=0.45, angle=la, shape='leaf',
+         edge=0.25, rag=0.25, split=0.1, rng=rng)
+    # leafy twigs sticking up out of the band here and there
+    for i in range(16):
+        x0 = rng.uniform(150, W - 150)
+        spray(cv, x0, float(np.interp(x0, xs_, top)) + 6, -np.pi / 2 + rng.normal(0, 0.45), rng.uniform(60, 120),
+              rng.uniform(12, 18), C(24, 34, 42), C(80, 92, 66), rng, stem_col=C(22, 28, 38), droop=0.3,
+              sun2=(0.8, -0.6), curl=rng.normal(0, 0.5), rim=C(236, 200, 140) if rng.random() < 0.35 else None)
+    # two framing crowns at the bottom corners (dark, painted planes, rim on the sun side)
+    for (cx, cy, R, rimc) in [(70, 900, 210, None), (2170, 880, 240, C(236, 196, 132))]:
+        b = Blobs()
+        for k in range(int(rng.integers(14, 20))):
+            ang = rng.uniform(-np.pi, 0.3)
+            rd = R * np.sqrt(rng.random())
+            rr = R * rng.uniform(0.22, 0.42)
+            b.add(cx + np.cos(ang) * rd, cy + np.sin(ang) * rd * 0.75, rr, rr * rng.uniform(0.75, 0.95),
+                  rot=rng.uniform(0, np.pi), light=rng.uniform(0.75, 1.1), hue=rng.normal(0, 0.04), rng=rng, lumpy=0.26)
+        for k in range(8):                                   # the crown's body runs down out of frame
+            b.add(cx + rng.normal(0, R * 0.4), cy + R * 0.4 + k * 40, R * 0.5, R * 0.4, light=0.5, rng=rng, lumpy=0.2)
+        paint_planes(cv, rng, b, (C(18, 26, 38), C(28, 40, 48), C(60, 78, 64), C(206, 184, 126)),
+                     light3=(0.7, -0.6, -0.1), th=(0.55, 0.78, 0.94), strokes=1.4, stroke_size=22, rim=rimc,
+                     rim_amt=0.8 if rimc is not None else 0.0, sun2=(0.8, -0.6), leafy_edge=0.9, leaf_px=20,
+                     noise_amt=0.12, glob=0.0, form=0.0, soft=0.03, wrap=0.3, stroke_dl=0.06, stroke_op=(0.4, 0.8))
+    # two gnarled dead snags rising out of the band, silhouetted against the misty valley
+    for (sx0, hh_) in [(640.0, 300.0), (1560.0, 250.0)]:
+        snag(cv, rng, sx0, float(np.interp(sx0, xs_, top)) + 40, hh_, C(26, 32, 44), rim_col=C(214, 186, 150))
+    P.add('near', 0.85, cv, 'near canopy: a misty back row of varied crowns, a low dark front band with a broken '
+          'leafy top line, two framing corner crowns and two gnarled snags; '
           'branches against the misty valley, mist in the dips, rims on some crowns only')
 
     P.save(sun=list(SUN), gap=list(GAP), camera='slow pan left -> right over 4.5 s (any 1920-wide window)')

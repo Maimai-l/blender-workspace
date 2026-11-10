@@ -115,6 +115,7 @@ class Shot:
         if 'dual' in extra:
             st2 = dict(st)
             st2['light'] = comp.light_from_screen(cam, self.fx.ray_az, self.fx.ray_el)
+            st2['high_thr'] = 0.8          # the sunlit face: lit tone, only small highlights (no salmon plastic)
             ent['lit_rgba'] = cel.render(rig, pose, cam, st2, skip=skip)
         if self.fx.ground:
             sc, _ = rig.scene(pose, skip=skip)
@@ -151,6 +152,8 @@ def _small_passes(ps, ss):
     out['mat'] = ps['mat'][::ss, ::ss][:h, :w]
     out['part'] = ps['part'][::ss, ::ss][:h, :w]
     out['lit'] = cv2.resize(ps['lit'].astype(np.float32), (w, h), interpolation=cv2.INTER_AREA)
+    if 'ink' in ps:
+        out['ink'] = cv2.resize(ps['ink'].astype(np.float32), (w, h), interpolation=cv2.INTER_AREA)
     return out
 
 

@@ -13,9 +13,10 @@ H_ = WD.hexc
 # (light, shadow, deep, high, sky-fill)
 PAL = {
     # one oxidised red-brown family: lit, shadow, deep shadow, highlight, sky fill (same hue, capped saturation)
-    WD.PAINT: (H_('a35844'), H_('5a3030'), H_('3c2226'), H_('c27a5d'), H_('774440')),
-    WD.LIDS: (H_('94503f'), H_('4f2a2b'), H_('361e22'), H_('b46f55'), H_('6a3c3a')),
-    WD.ROOF: (H_('79ad9f'), H_('3b5c6e'), None, H_('a9d1b6'), H_('5d8a93')),
+    # lighter, warmer weathered red-ochre that catches the sunrise; dark maroon only in the deep/cast shadow
+    WD.PAINT: (H_('b86a4a'), H_('70403a'), H_('3e2428'), H_('d6976f'), H_('8c5448')),
+    WD.LIDS: (H_('a86048'), H_('633832'), H_('3a2024'), H_('c78763'), H_('7e4c42')),
+    WD.ROOF: (H_('79ad9f'), H_('35574c'), None, H_('a9d1b6'), H_('557f74')),     # shadow: deep green, gaps read as moss shade
     WD.METAL: (H_('77706a'), H_('393545'), H_('2a2733'), None, H_('59576a')),
     WD.BRASS: (H_('d4a862'), H_('7a5a4c'), None, H_('f2d08a'), H_('a08068')),
     WD.LENS: (H_('3f4650'), H_('262a36')),

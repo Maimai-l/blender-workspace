@@ -42,6 +42,7 @@ def lerp(a, b, u):
 class Base:
     redraw_on_camera = False
     ground_growth = True          # world-fixed moss mounds around the kneel contacts
+    line_keep = 0.75              # how much of the ink's darkness survives haze and light wrap
     light_az, light_el = 118.0, 38.0
     painting = 'S01'
     fallback = None            # (painting, window(x0,y0), scale, blur) if the painting isn't ready
@@ -131,7 +132,7 @@ class Base:
         for L in self.P.layers:
             if L['name'] in names:
                 Ms.append(np.round(self.M_for(self.layer_k(L['depth']), t, shake=shake), 3).tobytes())
-        key = (tuple(names), tuple(Ms), tuple(round(self.layer_opacity(n, t), 3) for n in names))
+        key = (tuple(names), tuple(Ms), tuple(round(self.layer_opacity(n, t), 3) for n in names), self.warp_key(t))
         cache = self.__dict__.setdefault('_stack_cache', {})
         if key in cache:
             return cache[key]
@@ -150,6 +151,7 @@ class Base:
             lay = cv2.warpAffine(img, Mf[:2], (W, H), flags=cv2.INTER_LINEAR,
                                  borderMode=cv2.BORDER_REPLICATE if L.get('coverage', 0) > 0.98 else cv2.BORDER_CONSTANT,
                                  borderValue=(0, 0, 0, 0)).astype(np.float32) / 255.0
+            lay = self.layer_warp(L['name'], lay, t)
             if self.blur_bg:
                 lay = cv2.GaussianBlur(lay, (0, 0), self.blur_bg)
             op = self.layer_opacity(L['name'], t)
@@ -168,6 +170,13 @@ class Base:
 
     def layer_opacity(self, name, t):
         return 1.0
+
+    def layer_warp(self, name, lay, t):
+        """Per-layer 2D deformation after placement (e.g. foliage pushed by a gust). Default: none."""
+        return lay
+
+    def warp_key(self, t):
+        return None
 
     def split_layers(self):
         if self.P is None:
@@ -254,6 +263,16 @@ class Base:
                 robot_rgb = robot_rgb * (1 - hz) + mist * a[..., None] * hz
             if self.wrap > 0:
                 robot_rgb = comp.light_wrap(robot_rgb, a, rgb, radius=16, strength=self.wrap)
+            ink = ent['ps_small'].get('ink')
+            if ink is not None and (hz > 0 or self.wrap > 0):
+                # haze and light wrap soften the fills, but the drawn line must survive them: put back most of
+                # its darkness, tinted by the air it sits in (a colour line, not a black hole in the mist)
+                inkw = comp_warp(np.repeat(ink[..., None], 4, -1), M)[..., 0]
+                orig = cel_rgba[..., :3]                       # the line as drawn (brown on metal, green on moss)
+                if hz > 0:
+                    orig = orig * (1 - 0.5 * hz) + comp.blur_small(rgb, 25) * a[..., None] * 0.5 * hz
+                k = (self.line_keep * inkw)[..., None]
+                robot_rgb = robot_rgb * (1 - k) + orig * k
             rgb = self.robot_extra(robot_rgb, a, rgb, f, t, ctx)
             if self.vineset is not None:
                 cv_ = fx.new_canvas(H, W)
@@ -449,7 +468,7 @@ class S03(Base):
             p0 = np.clip(qc[:2] + d2 * 4000, -9000, 9000); p1 = np.clip(qc[:2] - d2 * 300, -9000, 9000)
             m = np.zeros((H, W), np.float32)
             cv2.line(m, (int(p0[0]), int(p0[1])), (int(p1[0]), int(p1[1])), 1.0, int(np.clip(r_px * 1.6, 4, 2000)), cv2.LINE_AA)
-            soft = cv2.GaussianBlur(m, (0, 0), max(8, r_px * 0.5)) * 0.13 * ease((t - 0.8) / 1.0)
+            soft = cv2.GaussianBlur(m, (0, 0), max(8, r_px * 0.5)) * 0.09 * ease((t - 0.8) / 1.0)
             lb += soft[..., None] * np.array([1.0, 0.86, 0.6], np.float32)
             self.motes.draw(lb, f, mask=np.clip(soft * 6, 0, 1))
 
@@ -500,6 +519,8 @@ class S04(Base):
             Nw = M[:3, :3] @ np.array([0, 1.0, 0], np.float32)
             parts_ok = [SD.rig().parts[n].index for n in ('grille', 'torso')]
             st['core_light'] = (C, Nw, 3.4 + 3.0 * g, (1.0, 0.68, 0.32), min(1.0, 0.5 + 0.6 * g), parts_ok)
+            st['core_light_excl'] = [SD.rig().parts[n].index for n in ('head', 'lid_R', 'lid_L', 'earhubs')
+                                     if n in SD.rig().parts]
         else:
             st['emissive'] = {WD.GLOW: np.array([0.20, 0.13, 0.15], np.float32)}
         return st
@@ -833,6 +854,33 @@ class S13(Base):
         self.flames = [fx.EngineFlame(f'S13_e{i}', ignite=-30, sputters=[]) for i in range(2)]
         self.leaves = fx.LeafBurst('S13_leaves', origin=(float(c[0]), float(c[1])), frame0=6, count=70, direction=(0, -1),
                                    spread=6.28, speed=(12, 30), size=(14, 26), origin_radius=200)
+    PUSH = {'canopy': 26.0, 'ferns': 18.0, 'shrubs': 14.0}
+    def warp_key(self, t):
+        f = int(round(t * 24))
+        age = f - self.ring.frame0
+        return (f // 2) if -2 <= age <= self.ring.duration + 40 else None
+    def layer_warp(self, name, lay, t):
+        amp = self.PUSH.get(name)
+        if amp is None:
+            return lay
+        f = (int(round(t * 24)) // 2) * 2                  # the wind is drawn on 2s
+        age = f - self.ring.frame0
+        if age < 0 or age > self.ring.duration + 40:
+            return lay
+        R = self.ring.R(age)
+        cx, cy = self.ring.c
+        ratio = self.ring.ratio
+        yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+        dx = xx - cx; dy = (yy - cy) / ratio
+        rho = np.sqrt(dx * dx + dy * dy) + 1e-3
+        s_ = (R - rho) / 150.0                              # distance behind the front, in widths
+        prof = np.where(s_ > 0, s_ * np.exp(1.0 - s_), 0.0) # peaks one width behind the front, then springs back
+        prof *= max(0.0, 1.0 - age / (self.ring.duration + 40.0)) ** 0.5
+        disp = (amp * prof).astype(np.float32)
+        mx = xx - disp * dx / rho
+        my = yy - disp * (dy * ratio) / rho
+        return cv2.remap(lay, mx.astype(np.float32), my.astype(np.float32), cv2.INTER_LINEAR,
+                         borderMode=cv2.BORDER_REPLICATE)
     def fx_behind(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
         self.ring.draw(cv_, f, part='back')
@@ -883,6 +931,9 @@ class S14(Base):
         self.leafburst = fx.LeafBurst('S14_leaves', origin=(float(g[0]), float(g[1]) - 200), frame0=8, count=60,
                                       direction=(0, -1), spread=3.0, speed=(14, 34), size=(16, 30), origin_radius=400)
         self.flames = [fx.EngineFlame(f'S14_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+        # continuity with S13: the engines are already roaring in the crouch, the downwash rolls dust out
+        self.wash = [fx.GroundDust(f'S14_wash{k}', start=(float(g[0]), float(g[1]) + 55), direction=(sd, 0), frame0=-6,
+                                   distance=420, duration=16, height=70) for k, sd in enumerate((-1, 1))]
     def fx_mid(self, rgb, f, t, ctx):
         # after the impact: the flame column under the robot as it rockets out of frame
         if f < 10:
@@ -901,13 +952,18 @@ class S14(Base):
     def fx_behind(self, rgb, f, t, ctx):
         # the engines fire from the back, so from the front the flames are behind the robot:
         # only their glow and the licks past the silhouette show
-        if f > 6:
+        if f > 7:
             return rgb
         import anim
         cv_ = fx.new_canvas(H, W)
         pose = anim.pose_at(self.shot, t)
+        lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
         for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
-            fl.draw(cv_, f, nozzle=noz, direction=(d[0] * 0.3, 1.0), radius=rad * 1.3, length=rad * 9)
+            # big enough to spill past the crouching silhouette on both sides
+            fl.draw(cv_, f, nozzle=noz, direction=(d[0] * 0.3, 1.0), radius=rad * 2.0, length=rad * 13)
+            fl.glow(lb, f, nozzle=noz, direction=(d[0] * 0.3, 1.0), radius=rad * 2.0, length=rad * 13)
+        for w_ in self.wash:
+            w_.draw(cv_, f)
         return comp.over_straight(rgb, cv_)
     def compose(self, f, t, cam):
         if 8 <= f <= 9:      # impact frames
@@ -972,6 +1028,9 @@ class S15(Base):
                                     direction=(0, 1), spread=3.0, speed=(10, 26), gravity=0.8, origin_radius=260)
         self.fall = fx.LeafFall('S15_fall', region=(0, -300, 1920, 900), frame0=fc + 6, count=40, size=(16, 30), spiral=0.8)
         self.flames = [fx.EngineFlame(f'S15_e{i}', ignite=-40, sputters=[]) for i in range(2)]
+        # seen from straight below, each jet is a ring of flame tongues around a white-hot core
+        # (one merged burst: two small discs side by side read as a pair of eyes)
+        self.petals = [fx.EngineFlame(f'S15_p{k}', ignite=-40, sputters=[]) for k in range(9)]
     def compose(self, f, t, cam):
         # below the canopy the robot is in front of every painted layer; once through, behind the near leaves
         self._t = t
@@ -987,11 +1046,19 @@ class S15(Base):
         pose = anim.pose_at(self.shot, t)
         cv_ = fx.new_canvas(H, W)
         lb = ctx.setdefault('lb', np.zeros((H, W, 3), np.float32))
-        for fl, (noz, d, rad, z) in zip(self.flames, Engines.nozzles(pose, ctx['cam'])):
-            if z < 1:
-                continue
-            fl.draw(cv_, f, nozzle=noz, direction=(0.0, 1.0), radius=rad * 1.0, length=rad * 2.5)
-            fx.glow(lb, noz, rad * 4.0, colour=(1.0, 0.8, 0.45), intensity=0.7)
+        nz = [n for n in Engines.nozzles(pose, ctx['cam']) if n[3] >= 1]
+        if nz:
+            c = np.mean([n[0] for n in nz], axis=0)
+            rad = float(np.mean([n[2] for n in nz]))
+            span = float(np.linalg.norm(np.asarray(nz[0][0]) - np.asarray(nz[-1][0]))) if len(nz) > 1 else 0.0
+            R0 = max(rad * 1.3, span * 0.8)
+            g = np.random.default_rng(1000 + f // 2)
+            for k, pf in enumerate(self.petals):
+                a = 2 * np.pi * k / len(self.petals) + g.uniform(-0.2, 0.2)
+                pf.draw(cv_, f, nozzle=(float(c[0]), float(c[1])), direction=(float(np.cos(a)), float(np.sin(a))),
+                        radius=R0 * 0.75, length=R0 * g.uniform(1.4, 2.4))
+            self.flames[0].draw(cv_, f, nozzle=(float(c[0]), float(c[1])), direction=(0.0, 1.0), radius=R0, length=R0 * 1.8)
+            fx.glow(lb, (float(c[0]), float(c[1])), R0 * 4.0, colour=(1.0, 0.8, 0.45), intensity=0.7)
         return comp.over_straight(rgb, cv_)
     def fx_front(self, rgb, f, t, ctx):
         cv_ = fx.new_canvas(H, W)
@@ -1100,7 +1167,7 @@ class S16A(Base):
     haze = 0.04
     robot_depth = 0.45
     wind = 0.0
-    light_az, light_el = 120, 22
+    light_az, light_el = 55, 34       # the sun ahead lights its front: a lit hero, not a dark lump
     SPEED = 950.0                    # px/s of the painting's x at depth 1 (the wisps)
     TILT = 22.0                      # dutch angle: the painting's +x points up-right on screen
     SCROLL_K = {'sky': 0.18, 'cloud_bank': 0.55, 'wisps': 1.5}

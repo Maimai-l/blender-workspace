@@ -442,12 +442,12 @@ DECAL_PARTS = {'torso': 1.0, 'pelvis': 1.0, 'head': 0.7, 'pauldron_R': 1.1, 'pau
                'shin_L': 1.0, 'foot_R': 0.9, 'foot_L': 0.9, 'roof_R': 0.7, 'roof_L': 0.7}
 
 DECAL_COLS = {   # (light, shadow) by decal label, for PAINT parts
-    FADE: (WD.hexc('b77a63'), WD.hexc('6c4240')),     # sun-faded paint: lighter, greyer, same hue
+    FADE: (WD.hexc('c78e70'), WD.hexc('7e5046')),     # sun-faded paint: lighter, greyer, same hue
     LICHEN: (WD.hexc('b9c19a'), WD.hexc('6a7466')),
     CHIP: (WD.hexc('5e5a57'), WD.hexc('34303c')),     # bare iron
-    RUST: (WD.hexc('8c4a28'), WD.hexc('4c2a24')),     # rust: browner and more orange than the paint
-    STREAK: (WD.hexc('7a3f27'), WD.hexc('472624')),
-    PRIMER: (WD.hexc('8b4436'), WD.hexc('512a2c')),
+    RUST: (WD.hexc('945024'), WD.hexc('543024')),     # rust: browner and more orange than the paint
+    STREAK: (WD.hexc('84482a'), WD.hexc('4e2c26')),
+    PRIMER: (WD.hexc('9a4c3a'), WD.hexc('5c3030')),
 }
 ROOF_DECAL_COLS = {  # verdigris roof: chips show dark bronze, "rust" is pale green patina
     FADE: (WD.hexc('a6cbb9'), WD.hexc('5b8189')),

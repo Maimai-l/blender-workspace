@@ -161,13 +161,13 @@ SHOTS = [
          notes='On 3s. Anticipation: settles down 0.3-0.6 s, then pushes. Hold at 2.2-3.0 s. Debris and soil curtains from the forearm, chest and roof.'),
     dict(id='S09', t0=38.5, t1=43.0, step=3,
          desc='RISE B, low angle from the side near the ground: it rises to standing; the tree on its back sways; vines swing; soil curtains fall toward camera',
-         cam=[(0.0, v(-21, 23, 1.2), v(0, 0, 10.6), 22)],
+         cam=[(0.0, v(-28, 31, 1.3), v(0, 0, 10.2), 22)],     # wider: the full figure, head clear of the canopy
          pose=[(0.0, 'RISE_CROUCH'), (0.4, 'RISE_CROUCH'), (1.5, 'STAND_RISE'), (2.6, 'STAND_HUNCH'), (4.5, 'STAND_HUNCH')],
          light=SUN_BACK, bg='S09', shake=(0.3, 3.2, 1.0), impacts=[(0.6, 4.0), (2.6, 7.0)],
          notes='Trees measure the scale. Birds circle high. Hold at the top 2.8-4.5 s with a settle.'),
     dict(id='S10', t0=43.0, t1=46.5, step=2,
          desc='RISE C, low-angle front: it lifts its head toward the gap in the canopy; sunlight on the face; eyes resolute',
-         cam=[(0.0, v(-5, 17, 2.0), v(0, 2, 15), 30), (3.5, v(-5, 17, 2.0), v(0, 2, 18), 30)],
+         cam=[(0.0, v(-5, 17, 2.0), v(0, 2, 17.4), 30)],      # held: the head lift plays on 2s, no tilt
          pose=[(0.0, 'STAND_HUNCH'), (0.5, 'STAND_HUNCH'), (1.3, 'STAND_TORSO_UP'), (2.2, 'STAND_LOOKUP'), (3.5, 'STAND_LOOKUP')],
          light=SUN_FACE, bg='S10', notes='Slow tilt up on 1s following the head. Hold at the end.'),
     dict(id='S11', t0=46.5, t1=48.5, step=2,
@@ -197,13 +197,13 @@ SHOTS = [
     dict(id='S15', t0=56.5, t1=59.5, step=2,
          desc='From below: it tears through the canopy gap; branches and leaves explode outward; light flare',
          cam=[(0.0, v(1, 6, 1.0), v(0.2, 2, 90), 24)],
-         pose=[(0.0, 'LAUNCH_UP', dict(lift=2.0)), (0.3, 'LAUNCH_UP', dict(lift=14.0)), (0.6, 'LAUNCH_UP', dict(lift=40.0)),
-               (0.9, 'LAUNCH_UP', dict(lift=80.0)), (1.4, 'LAUNCH_UP', dict(lift=170.0)), (3.0, 'LAUNCH_UP', dict(lift=520.0))],
+         pose=[(0.0, 'LAUNCH_UP', dict(lift=2.0)), (0.35, 'LAUNCH_UP', dict(lift=12.0)), (0.75, 'LAUNCH_UP', dict(lift=32.0)),
+               (1.2, 'LAUNCH_UP', dict(lift=62.0)), (1.9, 'LAUNCH_UP', dict(lift=118.0)), (3.0, 'LAUNCH_UP', dict(lift=260.0))],
          spacing='linear', light=SUN_BACK, bg='S11',
          notes='Robot silhouette punches through the gap at 0.4 s, gone by 1.0 s; leaves burst and fall.'),
-    dict(id='S16A', t0=59.5, t1=62.5, step=3,
+    dict(id='S16A', t0=59.5, t1=62.5, step=2,
          desc='Tracking beside the robot as it climbs: it fills the frame, moss and soil stream off, engines roar',
-         cam=[(0.0, v(-28.0, 34.0, 2.0), v(0.0, 0.0, 9.0), 24)],
+         cam=[(0.0, v(-25.5, 18.5, 6.0), v(0.5, -0.5, 13.8), 22)],
          pose=None,
          light=SUN_BACK, bg='S16A', notes='The camera flies with it; the sky and clouds stream past (down-left).'),
     dict(id='S16B', t0=62.5, t1=67.5, step=3,
@@ -318,12 +318,40 @@ for _s in SHOTS:
     if _s['id'] == 'S16B':
         _s['pose'] = _s16_keys()
     if _s['id'] == 'S16A':
+        # hero flight: drawn key poses with holds (on 2s) - out of the canopy, arms swept back with the head
+        # up to the sun, the right arm reaching ahead for the sky, swept back again
+        _FK = [
+            (0.00, dict(PZ.FLY, head=(8, 0, 0), upperarm_R=(-18, 30, 0), upperarm_L=(-18, -30, 0),
+                        forearm_R=(20, 0, 0), forearm_L=(20, 0, 0), thigh_R=(-6, 6, 0), shin_R=(-20, 0, 0),
+                        thigh_L=(4, -6, 0), shin_L=(-34, 0, 0), lid_R=(-14, 10, 0), lid_L=(-14, -10, 0))),
+            (0.40, None),
+            (0.85, dict(PZ.FLY, head=(34, 0, -10), torso=(6, 0, 0), upperarm_R=(-62, 22, 0), upperarm_L=(-58, -22, 0),
+                        forearm_R=(8, 0, 0), forearm_L=(10, 0, 0), thigh_R=(-22, 8, 0), shin_R=(-24, 0, 0),
+                        thigh_L=(-6, -8, 0), shin_L=(-46, 0, 0), lid_R=(-6, 10, 0), lid_L=(-6, -10, 0))),
+            (1.25, None),
+            (1.75, dict(PZ.FLY, head=(30, 0, -24), torso=(4, 0, -6), upperarm_R=(-22, 46, 0), upperarm_L=(-56, -24, 0),
+                        forearm_R=(34, 0, 0), forearm_L=(10, 0, 0), hand_R=(-10, 0, 0), thigh_R=(-24, 8, 0),
+                        shin_R=(-20, 0, 0), thigh_L=(-4, -8, 0), shin_L=(-50, 0, 0), lid_R=(-4, 10, 0), lid_L=(-4, -10, 0))),
+            (2.25, None),
+            (2.70, dict(PZ.FLY, head=(38, 0, -12), torso=(8, 0, 0), upperarm_R=(-66, 22, 0), upperarm_L=(-62, -24, 0),
+                        forearm_R=(6, 0, 0), forearm_L=(8, 0, 0), thigh_R=(-24, 8, 0), shin_R=(-26, 0, 0),
+                        thigh_L=(-8, -8, 0), shin_L=(-48, 0, 0), lid_R=(-6, 10, 0), lid_L=(-6, -10, 0))),
+        ]
+        _FK2 = []
+        for i, (tk, pk) in enumerate(_FK):
+            _FK2.append((tk, pk if pk is not None else _FK[i - 1][1]))        # None = hold the previous drawing
         def _fly(t):
-            u = ease(t / 2.2)
-            return dict(PZ.FLY, head=(18 + 16 * u, 0, -14 * u),
-                        upperarm_R=(-30 - 10 * u, 26, 0), upperarm_L=(-30 - 10 * u, -26, 0),
-                        forearm_R=(6 + 8 * u, 0, 0), forearm_L=(6 + 8 * u, 0, 0),
-                        lid_R=(-10 + 6 * u, 10, 0), lid_L=(-10 + 6 * u, -10, 0))
+            if t <= _FK2[0][0]:
+                return dict(_FK2[0][1])
+            for (ta, pa), (tb, pb) in zip(_FK2[:-1], _FK2[1:]):
+                if ta <= t <= tb:
+                    u = ease((t - ta) / max(tb - ta, 1e-6))
+                    out = {}
+                    for k in set(pa) | set(pb):
+                        a_ = np.asarray(pa.get(k, (0, 0, 0)), np.float32); b_ = np.asarray(pb.get(k, (0, 0, 0)), np.float32)
+                        out[k] = tuple((a_ + (b_ - a_) * u).tolist())
+                    return out
+            return dict(_FK2[-1][1])
         _s['pose'] = [(k / 8.0, _fly(k / 8.0), dict(M=s16a_root(k / 8.0))) for k in range(0, 3 * 8 + 1)]
 
 

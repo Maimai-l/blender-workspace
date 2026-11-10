@@ -144,6 +144,7 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
         toward = -np.sum(nrm * Pv, -1) / dist
         front = np.sum(Pv * np.asarray(Nw, np.float32), -1)
         okp = np.isin(part, list(parts_ok)) | (front > 0.35)
+        okp &= ~np.isin(part, list(style.get('core_light_excl', ())))     # e.g. keep the lids dark (no false 'eyes')
         hit = m & okp & (toward > 0.15) & (dist < R) & (front > -0.2)
         hit = look.clean_mask(hit, 1.0 * ss, 1.0 * ss, 10 * ss * ss, 0.7 * ss, valid=m)
         hit &= ~np.isin(mat, [gm])
@@ -228,11 +229,13 @@ def render(rig, pose, cam, style, extra=None, skip=(), return_passes=False, mats
     cov = ink.draw_strokes((H, W), hard_s)
     rgb = rgb * (1 - cov[..., None]) + inkc * cov[..., None]
     a = np.maximum(a, cov)
+    ps['ink'] = cov
     if soft_s:
         cov2 = ink.draw_strokes((H, W), soft_s)
         trace = np.asarray(style.get('soft_ink', (0.13, 0.22, 0.17)), np.float32)
         rgb = rgb * (1 - cov2[..., None]) + trace * cov2[..., None]
         a = np.maximum(a, cov2)
+        ps['ink'] = np.maximum(cov, cov2)
 
     if style.get('rivets'):
         _draw_rivets(rgb, ps, camS, mats, style, L, lit, ss, inkc)

@@ -196,3 +196,30 @@ robot read as a red vinyl toy, the film moved like CG, and the hero vanished at 
   edges that dissolves into wisps (no colour fringe), a pressure band of flattened grass leads
   the ring of wind, curled bark and S-curve roots, thin coloured outlines on debris.
   The S16B trail now has perspective: thin at the far robot, wide where it passes the camera.
+
+### v8 (17:20)
+- **Centuries of growth at the base:** the forest floor has grown up around the knee, both feet
+  and the hand: moss mounds with grass and flowers, fixed in the world, so when the robot rises
+  it leaves them behind with the hollow where it knelt. What touches the ground dissolves into
+  the painted floor instead of ending on a hard line.
+- **A heavier machine:** riveted armour plates (flank plates in two rows, a helmet cap, pauldron
+  lames, bands on the thighs, shins and upper arms) with rows of rivets along the seams; fewer,
+  shorter rust runs (the regular vertical stripes are gone).
+- **Acting:** the robot blinks slowly as the bird flies off (S07), and its eyes stay wide during
+  the push (S08) instead of showing two lit crescents under the lids.
+- **Effects (round 5):** soil slides off the ledges as ragged sheets that tear into clumps (no
+  more beads or stick-like rods); the dust at the hand, knee and feet sprays low along the
+  ground in broken clusters instead of one smooth blob; the launch blast keeps its single mass.
+- **Fixes:** no glare from the trail over the robot's chest in S16A; S14's focus lines are a
+  short burst with the impact.
+
+### v9 (17:50, encoded 19:40)
+- **S03:** the sunlit face is warm brick with small highlights instead of salmon plastic.
+- **S13:** the ring of wind now moves the forest: the treetops, ferns and shrubs bend outward as
+  the front passes and spring back (a travelling 2D deformation of the painted layers, on 2s).
+- **S04:** the chest furnace no longer lights the undersides of the lids (two lit crescents
+  read as eyes opening before the eyes actually open in S07).
+- **S15:** seen from straight below, the two jets merge into one ring of flame tongues (two
+  small discs side by side read as a pair of eyes).
+- **Sound:** a soft servo-and-click blink in S07.
+- (The session was paused 17:25–19:35 by a usage limit; v9 had finished rendering on the PC.)

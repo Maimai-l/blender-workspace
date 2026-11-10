@@ -173,6 +173,22 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   seams + rivet rows, fewer rust streaks, S07 blink, wider lids in PUSH_UP, rise puffs on the ground,
   FX round 5 (soil streams as ragged sheets, no chopsticks, broken contact sprays; S14 blast keeps
   one mass via main=True), S16A trail glow 0.3 (no glare over the robot), S14 focus lines shorter.
+- 17:05 for v9 (sandbox, tested): S03 sunlit face toned down (dual render high_thr 0.8, beam glow
+  0.09) so it is warm brick, not salmon plastic; S13 wind pushes the canopy/fern/shrub layers
+  outward as the front passes (Base.layer_warp/warp_key hook, cv2.remap on 2s); S04 chest light no
+  longer lights the lids (core_light_excl) - the lit lid undersides read as eyes before S07;
+  a blink sound (event eye_blink 37.72 s, audio regenerated: -17.0 LUFS, TP -1.3).
+  Tried and dropped: an old dissolving trail in the S17 sky (hidden by the far trees, read as smudges).
+- 17:21 v8 delivered (66 MB). 17:20 v9 launched. 17:25-19:35 session paused (usage limit); both helpers
+  stopped mid-round (FX round 6, BG round 7: partial edits in engine/fx and engine/gouache, not synced).
+- 19:40 v9 encoded + QA (edge check 0). Review of v7 saved: notes/review_v7.md (ours 6.4 vs MK 5.9 by
+  its scores; robot still reads dim maroon with washed-out contour; S16A dark lump; S13 ring moves no
+  trees; one puff asset for all effects; S09 head merges with the canopy; vines look like clip art;
+  S10 3D tilt + pink card edge; S06 flock on 1s; S11/S15 canopy cut-outs; S14 flameless crouch).
+- v10 in the sandbox: lighter warmer palette (PAINT b86a4a/70403a/3e2428), lines restored after haze
+  and light wrap (cel ink coverage -> compose line_keep 0.75), S16A re-staged (front-lit, closer 22 mm,
+  key poses with holds on 2s: out of the canopy, arms swept back + head to the sun, a balancing arm,
+  swept back), S10 camera held, S09 camera wider, S15 slower rise, S14 engines roaring in the crouch.
 
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.

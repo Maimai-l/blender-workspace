@@ -49,7 +49,7 @@ TP_CEIL = -1.35               # limiter ceiling on the 4x true-peak estimate
 STEM_GAIN = {"music": 0.0, "fx": 8.0, "amb": 9.0}      # dB, applied before the master
 PRE_LUFS = -20.0              # the summed stems are brought here before the compressor
 KNOWN_TRANSIENTS = {"bird_wings_flare", "bird_touchdown", "bird_hop", "bird_chirp", "core_flicker", "core_heartbeat",
-                    "birds_burst", "eye_lids_open", "eyes_ignite", "small_bird_flees", "hand_presses_ground", "rise_groan",
+                    "birds_burst", "eye_lids_open", "eye_blink", "eyes_ignite", "small_bird_flees", "hand_presses_ground", "rise_groan",
                     "roots_tear", "stands_full_thud", "head_lift_creak", "back_plates_open", "crouch_anticipation",
                     "engine_sputter", "engine_ignite", "wind_ring", "impact_frame", "canopy_burst", "bird_returns", "sun_spark"}
 

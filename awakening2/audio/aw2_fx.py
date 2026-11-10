@@ -800,6 +800,17 @@ def h_lids(ctx, t, k):
     ctx.add(du / (np.abs(du).max() + 1e-9), t + 0.1, g=-43, near=0.2, name="dust trickle")
 
 
+@on("eye_blink")
+def h_blink(ctx, t, k):
+    """A slow blink: the lid shutters slide down and back up (two soft servo strokes, felt clicks)."""
+    r = rng_for("fx", "blink", k)
+    for j, (st, f0, f1) in enumerate(((0.0, 230, 160), (0.3, 160, 240))):
+        d = 0.17
+        s = servo(r, d, [0, 0.05, d], [f0, (f0 + f1) / 2, f1], gear=6.1, env_pts=[(0, 0), (0.03, 1), (0.13, 0.7), (d, 0)])
+        ctx.add(s, t + st, g=-33, near=0.3, name="blink servo", sync=(j == 0))
+        ctx.add(clank(r, 880, 0.25, bright=0.2, low=0.2, n_modes=5), t + st + d - 0.02, g=-41, near=0.3, name="blink stop")
+
+
 @on("eyes_ignite")
 def h_eyes(ctx, t, k):
     """The eyes light: an electric 'fwoom' gliding up a fifth (A3+E4 -> E4+A4, in key),

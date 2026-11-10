@@ -1,4 +1,4 @@
-# Awakening II — a 75-second 2D anime short, drawn by our own look engine
+# Awakening II — a 79.5-second 2D anime short, drawn by our own look engine
 
 A giant robot has knelt in an ancient forest for so long that moss, wildflowers and an old tree
 grow over it. At sunrise a small bird lands on its shoulder, the first ray of light crosses its
@@ -6,8 +6,8 @@ face, a light flickers on inside its chest; the ground trembles, birds burst fro
 it rises, lifts its head to a gap in the canopy, ignites its engines and tears into the golden
 sky, leaving a curving trail of light and mist.
 
-- Film: `deliver/awakening2.mp4` (latest) and `deliver/awakening2_vN.mp4` (each version):
-  1920×1040 (1.85:1), 24 fps, H.264 + AAC.
+- Film: `deliver/awakening2.mp4` (the final version, v13) and `deliver/awakening2_vN.mp4` (each
+  version, v1–v13): 1920×1040 (1.85:1), 24 fps, H.264 + AAC, 79.5 s.
 - Benchmark study and scorecard: `notes/benchmark.md`. Progress log: `notes/progress.md`.
 
 ## How the frames are made (no image or video models anywhere)
@@ -19,11 +19,11 @@ sky, leaving a curving trail of light and mist.
 | Passes | `engine/r3d.py` | Our own numba rasteriser writes passes, never final pixels: part / material id, depth, normals, world and part-space positions, cast-shadow map. |
 | Look engine | `engine/cel.py`, `engine/ink.py`, `engine/look.py` | Turns passes into a drawn cel: designed hard-edged shadow shapes (threshold → clean-up → no islands → smooth edge), a sky-fill tone and a deep tone, hand-designed chipped paint / primer / rust patches / rust streaks (box-projected label maps with smooth edges), rivets, painted moss tufts, flowers, cel lamp-eyes; ink traced from id / depth / normal discontinuities into tapered, pressure-varied strokes that sit exactly on the fill edges. |
 | Backgrounds | `engine/gouache/` | A gouache painting engine (bristle strokes, wet edges, dry brush, Oklab mixing, unique trees, aerial perspective) paints every shot's multiplane layers in screen space from the storyboard layouts. |
-| Effects | `engine/fx/` | Drawn cel effects in 2–3 hard tones on 2s: billowing dust, soil pours and debris, leaves, the wind ring, engine flames, smears and impact frames, the light trail with mist billows; airbrushed light only in the photography pass. |
-| Birds | `engine/birds/` | A Japanese white-eye drawn as a cel from one model (landing, hops, chirps, startle, take-off), and flocks. |
+| Effects | `engine/fx/` | Drawn cel effects in 2–3 hard tones on 2s, with separate looks for soil (clods and dirt sprays), dust (translucent warm grey) and wind (a dry-brush shock ring): soil pours and debris, tumbling leaves, engine flames, drawn smears and impact frames, the light trail with mist billows; airbrushed light only in the photography pass. |
+| Birds | `engine/birds/` | A small songbird drawn as a cel from one model, painted as a blue-and-white flycatcher so it stands out from the moss (landing, hops, chirps, startle, take-off), and flocks drawn on 2s. |
 | Vines | `engine/vines.py` | Verlet chains drawn as inked strokes with cel leaves; rooted vines tear loose as the robot rises. |
 | Shots | `shots/shotdefs.py`, `shots/anim.py`, `shots/shotfx.py`, `shots/render_shot.py` | Cameras, key poses (drawn on 2s/3s with holds), lights, layer order and effects per shot. The robot is redrawn only when its drawing changes; between drawings the cel and the painted layers move as 2D layers under a rostrum-style camera synced to the 3D camera, so pushes and tilts never read as a CG dolly. |
-| Photography | `engine/comp.py` | Ground shadows, aerial haze, light wrap, bloom, grade, vignette, paper tooth and grain on 2s. |
+| Photography | `engine/comp.py` | Ground shadows, aerial haze (the ink line is put back after it), light wrap, bloom, grade, vignette, a static paper tooth; no screen grain. |
 | Sound | `audio/` | A fully synthesized score and sound design driven by `audio/cues.json`. |
 
 Design work: `design/` (three concepts, the decision, model sheets, face states), storyboard
@@ -32,7 +32,7 @@ and layouts: `board/`, style frame: `style/`, QA sheets: `qa/<version>/`.
 ## Running it
 
 - Sandbox (4 CPUs): `python3 shots/render_shot.py S08` renders a shot to `/home/user/aw2_frames/S08/`;
-  `python3 tools/assemble.py vN --qa` encodes and writes the QA sheets.
+  `python3 tools/assemble.py vN --qa-only` writes the QA sheets for a delivered `deliver/awakening2_vN.mp4`.
 - The Windows PC (28 threads) through the exec MCP: `python3 tools/pc.py sync`, `pc.py bg S01 ...`,
   `pc.py render vN --workers 7`, `pc.py status vN`, `pc.py encode vN`.
 
@@ -59,31 +59,47 @@ and layouts: `board/`, style frame: `style/`, QA sheets: `qa/<version>/`.
   a shaft from the canopy above: the robot's bowed face points down, so only a low sun can light
   the face itself — and at sunrise that is what the sun does.
 
-## Self-assessment (updated every version)
+## Self-assessment (final, v13)
 
-Three independent reviews (fresh agents given only the two films, our QA sheets and the brief)
-scored the films on eight criteria. v1: benchmark 5.4, ours 4.3. v4: benchmark 6.1, ours 5.8.
-v7: **ours 6.4, benchmark 5.9** — ours ahead on composition, colour, timing, effects, climax and
-backgrounds; the benchmark still ahead on robot design and line. v10 targets exactly those two.
+Four independent reviews (each a fresh agent given only the two films, our QA sheets and the
+brief) scored both films out of 10 on design, composition, line, colour, timing, effects, climax
+and backgrounds. Each review had a different reviewer, so the scores drift from one review to
+the next; what holds is that ours has been ahead since v7. v12 and v13 were not reviewed.
+
+| Review of | The Moss Keeper | Awakening II |
+|---|---|---|
+| v1 (`notes/review_v1.md`) | 5.4 | 4.3 |
+| v4 (`notes/review_v4.md`) | 6.1 | 5.8 |
+| v7 (`notes/review_v7.md`) | 5.9 | 6.4 |
+| v11 (`notes/review_v11.md`) | 5.4 | 6.0 (6 of the 10 matched beats) |
 
 Where it beats The Moss Keeper:
 - **Light and depth.** Backgrounds painted per shot in screen space with layered mist and real
   sunrise light; the benchmark reuses one clearing with clone trees.
-- **Timing.** The robot is drawn on 2s/3s from key poses with holds, overlapping action on the
-  head, lids, hands and roof; camera shake only on impacts; impact frames and smears at the
-  launch. The benchmark's robot barely changes pose.
+- **Timing and acting.** The robot is drawn on 2s/3s from key poses with holds, with overlapping
+  action on the head, lids, hands and roof; the eyes open in two stages and blink; camera shake
+  only on impacts; smears and impact frames at the launch. The benchmark's robot barely changes
+  pose.
 - **The beats, staged.** Bird landing, first ray across the face, furnace heartbeat, the eyes
-  opening with a blink, a three-angle rise from a real kneel, the head lifting to the gap, the
-  engines, the wind ring bending the forest, the launch, the climb through the canopy, the
-  hero flight and the trail to the sun, the empty imprint with the bird.
-- **Effects.** Drawn flames, soil sheets and clods, translucent dust, a dry-brush wind ring,
-  leaves and debris, all in 2–3 tones on 2s.
+  opening, a three-angle rise from a real kneel, the head lifting to the gap, the engines, the
+  wind ring bending the forest, the launch, the climb through the canopy, the hero flight and the
+  trail to the sun, the empty imprint with the bird.
 
-Where it still falls short:
-- The robot is still built from clean primitives; plate seams, rivets, rust runs and ground
-  growth help, but it is less iconic than the benchmark's design.
-- Some painted foliage repeats its brush shapes (S00, S06 mid canopy).
-- The sound is synthesized; good, but not an orchestra.
+Where it still falls short (the v11 review's main points; v12 and v13 fixed effects and
+background details, not these):
+- The robot still reads as a cel-shaded 3D model. Its shadows follow the geometry, its ink line
+  is even, its rivets and panels are regular, and every move is the rigid model turned in
+  perspective. The benchmark's robot design is more iconic.
+- The in-betweens are computer-smooth (the head lift is a symmetric bell curve), and the stand
+  has no overshoot or settle.
+- The launch (59.5–61 s) lacks power: the robot leaves the frame early and the rest is empty
+  forest.
+- The eyes stay at the same sleepy half-mast from the waking to the flight.
+- In the wide shots the head is small and the tree on the back merges with the canopy.
+- The trail across the sky (67–72 s) is a pale ribbon rather than light, and the sky is flat.
+- The ring of wind (56.5–59.5 s) is a thin ring that is over in under a second.
+- Some backgrounds repeat (pale distant trunks, stamped ivy).
+- The sound is synthesized: good synths, not an orchestra.
 
 ## Version history
 
@@ -277,7 +293,7 @@ lump, the rise wide lost the head in the canopy, and the flock and S10 moved lik
   against a dark crown.
 - **S03:** the sunlit band on the face is a little less saturated.
 
-### v13 (21:50)
+### v13 — final film (rendered 21:43, encoded the next morning at 07:46)
 - **A face for the design:** a faded cream sun crest on each shoulder plate (the sunrise motif
   of the film, chipped and rusted like the rest of the paint), on the model sheet too.
 - **Effects (round 8):** pebbles are faceted stones that hop from the ground (not grey spheres
@@ -287,3 +303,14 @@ lump, the rise wide lost the head in the canopy, and the flock and S10 moved lik
   pale outline); the top view's floor is moss, grass, soil and leaf litter with a hard canopy
   shadow; the vista's corner crowns are backlit leaf clusters; S12's light is dappled golden
   pools with leaf-shadow holes instead of converging stripes.
+- **Not in the film.** From about 21:45 until 07:44 the session was stopped by a usage limit,
+  so the last hours before the 04:30 deadline were lost, and the work started after v13 was
+  never rendered or reviewed. It is kept as `notes/post_v13_wip.patch` (apply from the
+  repository root with `git apply awakening2/notes/post_v13_wip.patch`):
+  - a 15 % bigger, raised head;
+  - a resolute eye state from the head lift on (lids up, white-hot cores, a flare on the cue);
+  - a fade straight to black;
+  - bigger tumbling leaves in S16A and bigger pebbles in S05;
+  - the first parts of two helper rounds: an opaque dust wall for the launch, and an
+    amber-to-blue dawn sky for S16B.
+  The source in the tree is exactly the code that rendered v13.

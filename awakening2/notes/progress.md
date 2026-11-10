@@ -201,6 +201,22 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   Old frame folders v2-v9 deleted on the PC (68 GB free).
 - 20:52 v12 launched (BG regen S12 S13 S11 S00): FX round 7, BG round 8 (S12 warm_amt 0.28), S09 aim,
   S03 band desaturated. Reviewer on v11 running -> notes/review_v11.md.
+- 21:43 v13 rendered on the PC (sun crest, FX round 8, BG round 9, S12 pools warm_amt 0.46). Review of v11
+  saved (notes/review_v11.md: ours 6.0, MK 5.4). FX round 9 and BG round 10 sent to the helpers; post-v13
+  work started (bigger head, resolute eyes, fade to black).
+- ~21:45-07:44 session stopped by the weekly usage limit (both helpers stopped mid-round too); the 04:30
+  deadline passed while stopped.
+- 07:46 **v13 encoded and delivered as the final film** (deliver/awakening2_v13.mp4 = deliver/awakening2.mp4,
+  79.5 s, 1920x1040, H.264 + AAC, 66 MB; qa/v13, edge check 0). The source tree was restored to exactly the
+  code that rendered v13 (checked file by file against the sync tarball). The unrendered post-v13 work is
+  in notes/post_v13_wip.patch. Final README self-assessment written.
+
+## Final state
+- Final film: v13. Nothing is rendering on the PC; its frames_v10..v13 folders (~19 GB) are still there.
+- Next steps if work resumes: apply notes/post_v13_wip.patch (bigger head, resolute eyes, fade to
+  black), finish FX round 9 (opaque launch dust wall, thicker longer ring of wind, warmer soil clumps,
+  a glowing S16B trail) and BG round 10 (dawn sky in S16, varied distant trunks, ivy clusters, S17
+  light shafts), then render, review and deliver v14.
 
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.

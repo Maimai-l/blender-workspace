@@ -1,0 +1,423 @@
+diff --git a/awakening2/engine/fx/debris.py b/awakening2/engine/fx/debris.py
+index a3f896f..7e90228 100644
+--- a/awakening2/engine/fx/debris.py
++++ b/awakening2/engine/fx/debris.py
+@@ -129,7 +129,7 @@ class DebrisBurst:
+ 
+     def __init__(self, name, origin, frame0, count=40, kinds=None, size=(4.0, 16.0),
+                  direction=(0, -1), spread=1.2, speed=(8.0, 22.0), gravity=1.2, spin=0.35,
+-                 light=(0.55, -0.83), ground=None, bounce=0.3, friction=0.6, on=2, trails=0.25,
++                 light=(0.55, -0.83), ground=None, bounce=0.3, friction=0.6, on=2, trails=0.0,
+                  origin_radius=0.0, ink=1.0, life=90, delay=0.0, trail_palette=None, flat_origin=None):
+         self.name = name
+         self.frame0 = int(frame0)
+diff --git a/awakening2/engine/fx/dust.py b/awakening2/engine/fx/dust.py
+index e924660..489b858 100644
+--- a/awakening2/engine/fx/dust.py
++++ b/awakening2/engine/fx/dust.py
+@@ -391,6 +391,10 @@ class DustPuff:
+             self.tone_alpha = palettes.TONE_ALPHA['soil']
+             self.dust_life = int(min(self.life, 18))
+             self.line = min(self.line, 1.5)
++        elif style == 'wall':
++            # opaque 3-tone dust wall (launch): warm lit tops, cool underside, hard tone edges
++            self.palette = palettes.DUST_WALL
++            self.line = min(max(self.line, 2.0), 3.0)
+         g = core.rng('dustpuff', name)
+         a0 = math.atan2(direction[1], direction[0])
+         u = (np.arange(n) + g.uniform(0.2, 0.8, n)) / n          # stratified across the fan
+@@ -430,6 +434,8 @@ class DustPuff:
+                 k += 1
+         if style == 'soil':
+             self.rad = self.rad * 0.62                            # only a little dust
++        if style == 'wall':
++            self.rise = min(self.rise, 0.12)                       # the wall rolls out, it does not rise
+         self.aspect = aspect
+         self.delay = g.uniform(0, 0.05, n) + 0.04 * edge
+         self.brk = g.uniform(-0.08, 0.08, n)
+@@ -625,6 +631,14 @@ class GroundDust:
+             self.tone_alpha = palettes.TONE_ALPHA['soil']
+             self.life = max(10, int(self.life * 0.65))           # earthy dust settles fast
+             self.line = min(self.line, 1.5)
++        elif style == 'wall':
++            # an opaque rolling wall: a bigger head, tail billows that stay low and long enough to
++            # join into one continuous lumpy wall behind the front
++            self.palette = palettes.DUST_WALL
++            self.life = int(self.life * 1.7)
++            self.line = min(max(self.line, 2.0), 3.0)
++            head = max(head, 4)
++        self.wall = style == 'wall'
+         self.nh = head
+         self.nsp = int(math.ceil(self.duration / on)) + 1
+         n = head + self.nsp
+@@ -636,6 +650,8 @@ class GroundDust:
+         self.lj = g.uniform(0.8, 1.2, n)
+         self.hoff = np.array([[-0.15, 0.62, 0.0], [-0.75, 0.48, -0.15], [0.32, 0.34, 0.25],
+                               [-1.2, 0.38, -0.3]])[:head]
++        if head > len(self.hoff):
++            self.hoff = np.concatenate([self.hoff, np.array([[-1.6, 0.42, -0.35]] * (head - len(self.hoff)))])
+         self.bil = _Billow(name, n, (4, 7))
+ 
+     def front(self, age):
+@@ -692,6 +708,17 @@ class GroundDust:
+             sc = 1 + self.grow * s_b / max(self.distance, 1)
+             h = self.height * sc * (0.40 + 0.60 * (v_b / vmax) ** 0.6) * self.u[i]
+             s = s_b - 0.45 * self.height * sc + h * self.fw[i] + h * 0.5 * (1 - math.exp(-a / 5.0)) * (v_b / vmax)
++            if self.wall:
++                h = h * 1.25
++                R = h * 0.5 * (0.6 + 0.4 * ease_out(min(1, a / 8), 2)) * (1 + 0.2 * t)
++                lat = self.lat[i] * self.depth * h * 0.5
++                x, y = self._place(s, R, lat)
++                GY.append(self._gy if t < 0.7 else self._gy + 1e6)
++                ids.append(i); PX.append(x); PY.append(y - h * 0.12 * t); RR.append(R)
++                BR.append(smoothstep(0.62, 1.0, t + self.brk[i]))
++                PH.append(sgn * TAU * self.roll * 0.4 * a / 18.0)
++                Z.append(b + lat * 0.05)
++                continue
+             R = h * 0.46 * (0.55 + 0.45 * ease_out(min(1, a / 8), 2)) * (1 + 0.3 * t)
+             lat = self.lat[i] * self.depth * h
+             x, y = self._place(s, R, lat)
+@@ -796,6 +823,9 @@ class DustVeil:
+             base = palettes.DUST_WARM
+         elif style == 'soil':
+             base = palettes.SOIL_DUST
++        elif style == 'wall':
++            base = palettes.DUST_WALL
++            opacity = max(opacity, 0.95)                         # a solid back row of the wall
+         P = np.asarray(base, np.float32).copy()
+         P[1] = P[2] * 0.55 + P[1] * 0.45            # 2 tones: a light top and a cool underside
+         P[2] = P[1]
+diff --git a/awakening2/engine/fx/palettes.py b/awakening2/engine/fx/palettes.py
+index 61478ce..43a4f25 100644
+--- a/awakening2/engine/fx/palettes.py
++++ b/awakening2/engine/fx/palettes.py
+@@ -21,6 +21,13 @@ WIND_WHITE = pal('#c9cfd6', '#eef0ee', '#ffffff', '#b8c0c8')  # wind ring brush
+ 
+ # tone opacities (shadow, mid, lit) for the translucent styles
+ WIND_DUST = pal('#a9a6a8', '#d6d1c9', '#f6f1e6', '#9a979b')   # light mist / dust thrown by the wind ring
++# round 9
++DUST_WALL = pal('#7a6c86', '#c2a07c', '#f4dcae', '#5e5168')   # opaque launch dust wall: cool violet
++                                                              # underside, warm tan body, cream-gold tops
++EARTH = dict(lit=hexc('#b88a56'), shade=hexc('#7a5139'), ink=hexc('#4f3426'))   # warm rise soil
++EARTH_DUST = pal('#8a7468', '#b89a7a', '#dcc29c', '#6f5a50')  # light two-tone soil dust
++TRAIL_ENV = pal('#b7a3d8', '#f4d4b8', '#fff2d2', '#9d89c4')   # trail mist envelope: lilac shadow side,
++                                                              # warm peach body, warm cream sun side
+ 
+ TONE_ALPHA = {'dust': (0.6, 0.62, 0.86), 'soil': (0.8, 0.86, 0.94), 'mist': (0.3, 0.38, 0.5),
+               'wind': (0.42, 0.48, 0.74)}
+diff --git a/awakening2/engine/gouache/shots/s16.py b/awakening2/engine/gouache/shots/s16.py
+index 3f9ac92..2999d2b 100644
+--- a/awakening2/engine/gouache/shots/s16.py
++++ b/awakening2/engine/gouache/shots/s16.py
+@@ -56,33 +56,67 @@ def build(outdir, quick=False):
+ 
+     # ---------------------------------------------------------------- sky
+     cv = P.layer('sky', 0.0)
+-    stops = [C(196, 164, 194), C(236, 180, 162), C(250, 198, 136), C(255, 210, 128), C(255, 222, 146),
+-             C(255, 232, 172), C(255, 236, 190)]
+-    pos = [0.0, 0.1, 0.24, 0.4, 0.55, 0.68, 1.0]
+-    sky(cv, rng, stops, pos, sun=SUN, glow=(1000, C(255, 238, 186), 1.0), tilt=0.12, n_strokes=0.8,
+-        stroke_w=(24, 80), stroke_len=(260, 900), angle=-0.06)
+-    glow(cv, SUN[0], SUN[1], 520, C(255, 236, 170), 0.35)
+-    # long thin high cloud streaks in the upper left (lilac tops, gold undersides)
++    # an amber-to-blue dawn: clear blue-violet high up (strongest at the upper left, away from the sun),
++    # lilac-rose, peach, then amber and gold down to the cloud sea; the whole sky warms toward the sun
++    stops = [C(70, 92, 168), C(104, 118, 186), C(160, 146, 196), C(222, 168, 172), C(248, 184, 132),
++             C(255, 198, 112), C(255, 214, 136), C(255, 226, 168)]
++    pos = [0.0, 0.08, 0.2, 0.32, 0.44, 0.54, 0.64, 1.0]
++    X, Y = cv.coords()
++    dsun = np.hypot(X - SUN[0], (Y - SUN[1]) * 1.15)
++    warp = (fbm(cv.shape[0], cv.shape[1], 700, rng, octaves=3) - 0.5) * 0.04
++    t = Y / float(H) + 0.1 * (X / float(W) - 0.5) + 0.14 * np.exp(-(dsun / 900.0) ** 2) + warp
++    base = ramp(stops, np.clip(t, 0, 1), pos)
++    # warm glow around the sun: amber far out, gold nearer, pale cream at the core
++    for (r_, col_, k_) in [(1300, C(255, 196, 120), 0.45), (650, C(255, 214, 140), 0.55), (260, C(255, 238, 196), 0.7)]:
++        g_ = np.exp(-(dsun / r_) ** 2) * k_
++        base = mix(base, col_, g_[..., None])
++    cv.img[..., :3] = base
++    cv.img[..., 3] = 1.0
++    # brushed over with broad strokes that sample the sky (paint, not a gradient)
++    n = 900
++    xs = rng.uniform(-0.05, 1.05, n) * W
++    ys = rng.uniform(-0.05, 0.75, n) * H
++    ix = np.clip((xs + cv.m).astype(int), 0, cv.shape[1] - 1)
++    iy = np.clip((ys + cv.m).astype(int), 0, cv.shape[0] - 1)
++    cols = jitter(base[iy, ix], rng, dl=0.02, dc=0.1, dh=0.04)
++    for k in range(n):
++        L = rng.uniform(260, 900)
++        a_ = -0.06 + rng.normal(0, 0.05)
++        dx_, dy_ = np.cos(a_) * L / 2, np.sin(a_) * L / 2
++        stroke(cv, [[xs[k] - dx_, ys[k] - dy_], [xs[k], ys[k] + rng.normal(0, 8)], [xs[k] + dx_, ys[k] + dy_]],
++               taper(12, 0.35, 0.25, rng.uniform(24, 80)), cols[k], opacity=rng.uniform(0.25, 0.55), edge=0.55,
++               bristle=0.6, rag=0.25, spacing=6.0, rng=rng)
++    # long thin high cloud streaks in the upper left (cool lilac bodies, warm undersides)
+     for k in range(7):
+         y0 = rng.uniform(60, 330)
+         x0 = rng.uniform(-100, 1100)
+         L = rng.uniform(500, 1100)
+         if trail_dist(x0 + L / 2, y0) < 140:
+             continue
+-        n = 10
+-        xs = np.linspace(x0, x0 + L, n)
+-        ys = y0 + np.cumsum(rng.normal(0, 6, n)) - np.linspace(0, L * 0.06, n)
++        n_ = 10
++        xs_ = np.linspace(x0, x0 + L, n_)
++        ys_ = y0 + np.cumsum(rng.normal(0, 6, n_)) - np.linspace(0, L * 0.06, n_)
+         th = rng.uniform(8, 22)
+-        base = mix(C(214, 170, 180), C(246, 196, 160), (y0 / 330))
++        base_c = mix(C(150, 140, 196), C(222, 172, 176), (y0 / 330))
+         for j in range(5):
+             off = (j - 2) * th * 0.35
+-            c = mix(base, C(255, 224, 180), np.clip(j / 4, 0, 1) * 0.8)
+-            stroke(cv, np.stack([xs + rng.normal(0, 10, n), ys + off], 1), taper(n, 0.2, 0.1, th * rng.uniform(0.5, 1.0)),
++            c = mix(base_c, C(255, 214, 170), np.clip(j / 4, 0, 1) * 0.8)
++            stroke(cv, np.stack([xs_ + rng.normal(0, 10, n_), ys_ + off], 1), taper(n_, 0.2, 0.1, th * rng.uniform(0.5, 1.0)),
+                    jitter(c, rng, 1, dl=0.02)[0], opacity=rng.uniform(0.25, 0.55), edge=0.6, bristle=0.7, rag=0.3,
+                    rng=rng)
+-    sun_disc(cv, SUN[0], SUN[1], 46, rng=rng)
+-    glow(cv, SUN[0], SUN[1], 260, C(255, 244, 214), 0.6)
+-    P.add('sky', 0.0, cv, 'gold sunrise sky, sun at upper right; opaque')
++    # the sun: a painted halo (soft concentric bands of warm light, brushed), a bright disc with a hot core
++    for (rr_, col_, op_, n_) in [(300, C(255, 222, 160), 0.1, 50), (190, C(255, 234, 184), 0.16, 40),
++                                 (120, C(255, 244, 214), 0.24, 30)]:
++        aa = rng.uniform(0, 2 * np.pi, n_)
++        rd = rr_ * np.sqrt(rng.uniform(0.3, 1.0, n_))
++        dabs(cv, SUN[0] + np.cos(aa) * rd * 0.6, SUN[1] + np.sin(aa) * rd * 0.6, rng.uniform(rr_ * 0.6, rr_ * 1.1, n_),
++             jitter(np.broadcast_to(col_, (n_, 3)), rng, dl=0.02, dc=0.06), aspect=rng.uniform(0.7, 1.0, n_),
++             angle=rng.uniform(0, np.pi, n_), opacity=op_, edge=0.95, rag=0.35, bristle=0.4, rng=rng)
++    glow(cv, SUN[0], SUN[1], 150, C(255, 246, 220), 0.55)
++    sun_disc(cv, SUN[0], SUN[1], 52, col=C(255, 252, 238), halo=C(255, 236, 190), rng=rng)
++    dabs(cv, [SUN[0]], [SUN[1]], [72], C(255, 255, 248), aspect=1.0, edge=0.35, rag=0.0, bristle=0.0, rng=rng)
++    P.add('sky', 0.0, cv, 'amber-to-blue dawn sky; bright sun disc with a painted halo at upper right '
++          '(where the trail ends); opaque')
+ 
+     # ---------------------------------------------------------------- high clouds (upper left, calm)
+     cv = P.layer('high_clouds', 0.08)
+diff --git a/awakening2/engine/rig.py b/awakening2/engine/rig.py
+index 38d69ce..9c01b7d 100644
+--- a/awakening2/engine/rig.py
++++ b/awakening2/engine/rig.py
+@@ -30,6 +30,7 @@ class Part:
+         self.mesh = None
+         self.index = -1
+         self.world = False          # True: fixed in the world (ground growth), ignores the root
++        self.scale = 1.0            # uniform scale of the part (and everything parented to it)
+ 
+ 
+ class Rig:
+@@ -94,6 +95,8 @@ class Rig:
+                 if rr is not None:
+                     r = (rr[0], -rr[1], -rr[2])     # mirror the rotation
+             L = mat4(rot_matrix(*r), p.joint)
++            if p.scale != 1.0:
++                L = L @ np.diag([p.scale, p.scale, p.scale, 1.0]).astype(np.float32)
+             if p.world:
+                 mats[nm] = L
+             elif p.parent is None or p.parent == '':
+diff --git a/awakening2/robot/poses.py b/awakening2/robot/poses.py
+index 5d907c5..382e0ef 100644
+--- a/awakening2/robot/poses.py
++++ b/awakening2/robot/poses.py
+@@ -52,7 +52,7 @@ STAND_HUNCH = dict(
+ # 4) head lifted toward the canopy gap
+ STAND_LOOKUP = dict(STAND_HUNCH, torso=(-2, 0, 0), head=(34, 0, 0), pelvis=(2, 0, 0),
+                     upperarm_R=(4, 12, 0), upperarm_L=(4, -12, 0),
+-                    lid_R=(-16, 10, 0), lid_L=(-16, -10, 0))
++                    lid_R=(-6, -5, 0), lid_L=(-6, 5, 0))          # resolute: lids up, set level-to-stern
+ # launch anticipation: deep squat, arms swept back, roof wings open, head up
+ LAUNCH_CROUCH = dict(
+     thigh_R=(84, 10, 0), shin_R=(-110, 0, 0), foot_R=(28, 0, 0),
+@@ -61,7 +61,7 @@ LAUNCH_CROUCH = dict(
+     upperarm_R=(-38, 24, 0), forearm_R=(14, 0, 0), hand_R=(-10, 0, 0),
+     upperarm_L=(-38, -24, 0), forearm_L=(14, 0, 0), hand_L=(-10, 0, 0),
+     roof_R=(0, -34, 0), roof_L=(0, 34, 0),
+-    lid_R=(-18, 10, 0), lid_L=(-18, -10, 0))
++    lid_R=(-8, -5, 0), lid_L=(-8, 5, 0))
+ # launch extension: stretched up, arms down and back
+ LAUNCH_UP = dict(
+     thigh_R=(-6, 4, 0), shin_R=(-4, 0, 0), foot_R=(-40, 0, 0),
+@@ -70,7 +70,7 @@ LAUNCH_UP = dict(
+     upperarm_R=(-24, 16, 0), forearm_R=(6, 0, 0), hand_R=(-20, 0, 0),
+     upperarm_L=(-24, -16, 0), forearm_L=(6, 0, 0), hand_L=(-20, 0, 0),
+     roof_R=(0, -40, 0), roof_L=(0, 40, 0),
+-    lid_R=(-10, 10, 0), lid_L=(-10, -10, 0))
++    lid_R=(-5, -5, 0), lid_L=(-5, 5, 0))
+ # flight: body pitched forward, roof wings spread, legs trailing
+ FLY = dict(LAUNCH_UP, pelvis=(-8, 0, 0), torso=(-6, 0, 0), head=(18, 0, 0),
+            thigh_R=(-14, 6, 0), shin_R=(-22, 0, 0), thigh_L=(-6, -6, 0), shin_L=(-30, 0, 0),
+diff --git a/awakening2/robot/warden.py b/awakening2/robot/warden.py
+index 56598bd..58d3eb0 100644
+--- a/awakening2/robot/warden.py
++++ b/awakening2/robot/warden.py
+@@ -219,6 +219,7 @@ def sdf_forearm(p):
+ 
+ 
+ HAND_VERSION = '2'
++HEAD_SCALE = 1.15
+ 
+ 
+ def _finger(p, base, d1, d2, w):
+@@ -304,7 +305,8 @@ def build(voxel=0.06, head_voxel=0.03):
+     r.add(Part('grille', 'torso', (0, 0, 0), sdf_grille, (-1.6, 3.3, 3.0), (1.6, 3.9, 5.7), v * 0.4, METAL, version=VERSION))
+     r.add(Part('bells', 'torso', (0, 0, 0), sdf_bells, (-3.0, -6.0, 2.0), (3.0, -2.8, 6.2), v, METAL, version=VERSION))
+     r.add_pair('roof', 'torso', ROOF_PIVOT, sdf_roof_half, (-0.5, -3.4, -4.2), (6.4, 2.3, 1.4), v * 0.8, ROOF, version=VERSION)
+-    r.add(Part('head', 'torso', (0, 1.2, 7.35), sdf_head, (-2.5, -1.7, -0.6), (2.5, 3.0, 3.5), hv, PAINT, version=VERSION))
++    hd = r.add(Part('head', 'torso', (0, 1.25, 7.7), sdf_head, (-2.5, -1.7, -0.6), (2.5, 3.0, 3.5), hv, PAINT, version=VERSION))
++    hd.scale = HEAD_SCALE          # a bigger head, raised so the eyes clear the shoulder plates
+     r.add(Part('earhubs', 'head', (0, 0, 0), sdf_earhubs, (-2.5, -0.1, 0.6), (2.5, 1.0, 1.8), hv, BRASS, version=VERSION))
+     r.add(Part('eyes', 'head', (0, 0, 0), sdf_eyes, (-1.3, 1.4, 0.6), (1.3, 2.6, 1.8), hv * 0.6, LENS, version=VERSION))
+     r.add_pair('lid', 'head', EYE_C, sdf_lid, (-0.7, -0.7, -0.7), (0.7, 0.7, 0.7), hv * 0.5, LIDS, version=VERSION)
+@@ -484,6 +486,13 @@ def eye_colour(o, glow, lit):
+         e_rim, e_mid, e_core = hexc('6e2a22'), hexc('a9442a'), hexc('d9702f')
+         b_rim, b_mid, b_core = hexc('e08436'), hexc('ffb552'), hexc('fff3c8')
+         rim = e_rim * (1 - g) + b_rim * g; mid = e_mid * (1 - g) + b_mid * g; core = e_core * (1 - g) + b_core * g
+-        col = np.where((r < 0.36)[:, None], core, np.where((r < 0.7)[:, None], mid, rim))
++        rc, rm = 0.36, 0.7
++        if glow > 1.0:
++            # resolute: a white-hot core that fills more of the lamp
++            h = float(np.clip(glow - 1.0, 0, 1))
++            core = core * (1 - h) + hexc('fffcef') * h
++            mid = mid * (1 - h) + hexc('ffd27a') * h
++            rc, rm = 0.36 + 0.16 * h, 0.7 + 0.1 * h
++        col = np.where((r < rc)[:, None], core, np.where((r < rm)[:, None], mid, rim))
+         out = col.astype(np.float32)
+     return out.astype(np.float32)
+diff --git a/awakening2/shots/shotdefs.py b/awakening2/shots/shotdefs.py
+index b6dc7f5..d4f74f0 100644
+--- a/awakening2/shots/shotdefs.py
++++ b/awakening2/shots/shotdefs.py
+@@ -336,19 +336,19 @@ for _s in SHOTS:
+         _FK = [
+             (0.00, dict(PZ.FLY, head=(8, 0, 0), upperarm_R=(-18, 30, 0), upperarm_L=(-18, -30, 0),
+                         forearm_R=(20, 0, 0), forearm_L=(20, 0, 0), thigh_R=(-6, 6, 0), shin_R=(-20, 0, 0),
+-                        thigh_L=(4, -6, 0), shin_L=(-34, 0, 0), lid_R=(-14, 10, 0), lid_L=(-14, -10, 0))),
++                        thigh_L=(4, -6, 0), shin_L=(-34, 0, 0), lid_R=(-8, -5, 0), lid_L=(-8, 5, 0))),
+             (0.40, None),
+             (0.85, dict(PZ.FLY, head=(34, 0, -10), torso=(6, 0, 0), upperarm_R=(-62, 22, 0), upperarm_L=(-58, -22, 0),
+                         forearm_R=(8, 0, 0), forearm_L=(10, 0, 0), thigh_R=(-22, 8, 0), shin_R=(-24, 0, 0),
+-                        thigh_L=(-6, -8, 0), shin_L=(-46, 0, 0), lid_R=(-6, 10, 0), lid_L=(-6, -10, 0))),
++                        thigh_L=(-6, -8, 0), shin_L=(-46, 0, 0), lid_R=(-5, -5, 0), lid_L=(-5, 5, 0))),
+             (1.25, None),
+             (1.75, dict(PZ.FLY, head=(30, 0, -24), torso=(4, 0, -6), upperarm_R=(-22, 46, 0), upperarm_L=(-56, -24, 0),
+                         forearm_R=(34, 0, 0), forearm_L=(10, 0, 0), hand_R=(-10, 0, 0), thigh_R=(-24, 8, 0),
+-                        shin_R=(-20, 0, 0), thigh_L=(-4, -8, 0), shin_L=(-50, 0, 0), lid_R=(-4, 10, 0), lid_L=(-4, -10, 0))),
++                        shin_R=(-20, 0, 0), thigh_L=(-4, -8, 0), shin_L=(-50, 0, 0), lid_R=(-4, -5, 0), lid_L=(-4, 5, 0))),
+             (2.25, None),
+             (2.70, dict(PZ.FLY, head=(38, 0, -12), torso=(8, 0, 0), upperarm_R=(-66, 22, 0), upperarm_L=(-62, -24, 0),
+                         forearm_R=(6, 0, 0), forearm_L=(8, 0, 0), thigh_R=(-24, 8, 0), shin_R=(-26, 0, 0),
+-                        thigh_L=(-8, -8, 0), shin_L=(-48, 0, 0), lid_R=(-6, 10, 0), lid_L=(-6, -10, 0))),
++                        thigh_L=(-8, -8, 0), shin_L=(-48, 0, 0), lid_R=(-5, -5, 0), lid_L=(-5, 5, 0))),
+         ]
+         _FK2 = []
+         for i, (tk, pk) in enumerate(_FK):
+diff --git a/awakening2/shots/shotfx.py b/awakening2/shots/shotfx.py
+index 23698a8..9191711 100644
+--- a/awakening2/shots/shotfx.py
++++ b/awakening2/shots/shotfx.py
+@@ -296,12 +296,7 @@ class Base:
+             a_, b_ = self.fade_out
+             if t > a_:
+                 fo = 1 - ease((t - a_) / (b_ - a_))
+-                # fade out through a cool dark, not a muddy olive: desaturate and cool as it darkens
+-                lum = rgb.mean(-1, keepdims=True)
+-                cool = lum * np.array([0.78, 0.88, 1.12], np.float32)
+-                k = 1 - fo
+-                rgb = rgb * (1 - k) + cool * k
+-                fade = min(fade, fo)
++                fade = min(fade, fo)               # straight to black
+         return rgb * fade
+ 
+     def robot_extra(self, robot_rgb, a, rgb, f, t, ctx):
+@@ -546,11 +541,11 @@ class S05(Base):
+ 
+     def setup(self):
+         self.pebbles = fx.DebrisBurst('S05_hop', origin=(960, 900), frame0=8, count=26,
+-                                      kinds={'pebble': 0.5, 'crumb': 0.4, 'moss': 0.1}, size=(5, 14),
++                                      kinds={'pebble': 0.5, 'crumb': 0.4, 'moss': 0.1}, size=(8, 20),
+                                       direction=(0, -1), spread=1.6, speed=(3, 7), gravity=0.9,
+                                       ground=930, bounce=0.35, origin_radius=520)
+         self.pebbles2 = fx.DebrisBurst('S05_hop2', origin=(900, 950), frame0=30, count=20,
+-                                       kinds={'pebble': 0.6, 'crumb': 0.4}, size=(4, 12),
++                                       kinds={'pebble': 0.6, 'crumb': 0.4}, size=(7, 17),
+                                        direction=(0, -1), spread=1.4, speed=(3, 8), gravity=0.9,
+                                        ground=990, bounce=0.3, origin_radius=600)
+         self.dust = fx.GroundDust('S05_dust', start=(1200, 960), direction=(-1, 0), frame0=20,
+@@ -754,7 +749,11 @@ class S10(Base):
+     ground = False
+     light_az, light_el = 150, 68      # from the canopy gap above: the upturned face catches it
+     def glow(self, tq):
+-        return 0.7 + 0.3 * ease((tq - 1.6) / 0.8)
++        if tq < 2.2:
++            return 0.7 + 0.3 * ease((tq - 1.4) / 0.7)
++        if tq < 2.3:
++            return 1.75                    # the flare as it resolves
++        return 1.4
+     def robot_state(self, tq):
+         return ('glow', round(self.glow(tq), 2))
+     def style(self, tq, cam):
+@@ -809,7 +808,7 @@ class Engines:
+ 
+ 
+ class S12(Base):
+-    eye_glow = 1.0
++    eye_glow = 1.4          # resolute after S10: white-hot cores
+     painting = 'S12'
+     fallback = ('S01', (0.0, 1500.0), 1.0, 4)
+     robot_depth = 0.55
+@@ -842,7 +841,7 @@ class S12(Base):
+ 
+ 
+ class S13(Base):
+-    eye_glow = 1.0
++    eye_glow = 1.4          # resolute after S10: white-hot cores
+     painting = 'S13'
+     haze_auto = False
+     haze = 0.08
+@@ -909,7 +908,7 @@ class S13(Base):
+ 
+ class S14(Base):
+     """Launch: anticipation hold, smears, impact frames, exit upward."""
+-    eye_glow = 1.0
++    eye_glow = 1.4          # resolute after S10: white-hot cores
+     vines = False
+     painting = 'S08'
+     fallback = ('S01', (0.0, 1860.0), 1.0, 0)
+@@ -1004,7 +1003,7 @@ class S14(Base):
+ class S15(Base):
+     """From below: it tears up through the canopy gap; the canopy bursts; leaves rain down."""
+     ground_growth = False
+-    eye_glow = 1.0
++    eye_glow = 1.4          # resolute after S10: white-hot cores
+     painting = 'S11'
+     ground = False
+     vines = False
+@@ -1083,7 +1082,7 @@ class S15(Base):
+ class S16B(Base):
+     """Golden sky: the robot climbs along a big S-curve to the sun; the trail of light and mist."""
+     ground_growth = False
+-    eye_glow = 1.0
++    eye_glow = 1.4          # resolute after S10: white-hot cores
+     painting = 'S16'
+     win0 = (400.0, 0.0)
+     haze_auto = False
+@@ -1164,7 +1163,7 @@ class S16B(Base):
+ class S16A(Base):
+     """Tracking beside the climbing robot: it fills the frame; sky and clouds stream past."""
+     ground_growth = False
+-    eye_glow = 1.0
++    eye_glow = 1.4          # resolute after S10: white-hot cores
+     painting = 'S16A'
+     fallback = ('S16', (0.0, 120.0), 1.7, 0)
+     ground = False
+@@ -1212,9 +1211,9 @@ class S16A(Base):
+                                    glow=0.3)
+         d = (-0.93, 0.37)
+         self.leaves = fx.LeafBurst('S16A_leaves', origin=(1000, 420), frame0=0, count=70, direction=d,
+-                                   spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=260, wind=(-0.7, 0.28))
++                                   spread=1.1, speed=(18, 34), size=(18, 34), origin_radius=260, wind=(-0.7, 0.28))
+         self.leaves2 = fx.LeafBurst('S16A_leaves2', origin=(900, 500), frame0=30, count=50, direction=d,
+-                                    spread=1.1, speed=(18, 34), size=(14, 28), origin_radius=300, wind=(-0.7, 0.28))
++                                    spread=1.1, speed=(18, 34), size=(18, 34), origin_radius=300, wind=(-0.7, 0.28))
+         self.debris = fx.DebrisBurst('S16A_soil', origin=(980, 460), frame0=2, count=60,
+                                      kinds={'clod': 0.3, 'crumb': 0.3, 'moss': 0.25, 'vine': 0.15}, size=(5, 16),
+                                      direction=d, spread=0.9, speed=(16, 36), gravity=0.0, origin_radius=240)

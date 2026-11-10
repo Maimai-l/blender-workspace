@@ -189,6 +189,11 @@ Wake-ups scheduled (send_later, this session): hourly 11:36 → 03:36, plus 04:0
   and light wrap (cel ink coverage -> compose line_keep 0.75), S16A re-staged (front-lit, closer 22 mm,
   key poses with holds on 2s: out of the canopy, arms swept back + head to the sun, a balancing arm,
   swept back), S10 camera held, S09 camera wider, S15 slower rise, S14 engines roaring in the crouch.
+- 20:17 v10 rendered (20:15) and encoding; container restarted 20:15 (background waiters lost, files kept).
+  v11 launched on the PC (frames_v11, 8 workers, BG regen S11 S00 S10 S06 for round 7) with FX round 6
+  styles at the call sites (soil: Rise/S05; dust: S12/S14; wind: S13), rivet rust streaks, S13 without
+  flame tongues (hot ground glow instead), S16B trail capped near the camera. The waiter now launches
+  4 helper workers on the unfinished shots by itself when fewer than 4 main workers remain.
 
 ## Next (old list)
 1. v2: encode `pc.py encode v2 frames_v2 S07=frames_v2b S14=frames_v2b S09=frames_v2c S10=frames_v2c S17=frames_v2d S15=frames_v2e`, QA, commit + push.

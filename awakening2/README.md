@@ -247,3 +247,17 @@ lump, the rise wide lost the head in the canopy, and the flock and S10 moved lik
   leaves darker and without outlines. The flock is drawn on 2s as hard-edged silhouettes.
 - **S17:** the bird's breast stays white in shadow (its overridden colour now drives the
   shadow tone).
+
+### v11 (20:45)
+- **Three effect vocabularies instead of one puff:** soil is dark brown clods and dirt sprays
+  on arcs with a little earthy dust (the rise, the hand on the ground); dust is translucent warm
+  grey that thins out (the launch, the engine wash); wind is a white dry-brush shock ring with
+  flattened grass, torn leaves and a little mist (S13), no more ring of cream puffs.
+- **S13:** seen from above, the jets are a hot pool of light under the robot instead of two
+  candle flames on its back.
+- **Backgrounds (round 7):** the canopy seen from below (S11, S15) is painted as backlit,
+  translucent leaf masses with branches reaching into the gap and haze between the storeys (no
+  more purple cut-outs with yellow rim lines); S00's near band is painted crowns and dead snags
+  in mist; S06's mid canopy is painted crowns; S10's sky card no longer shows its edge.
+- **Weathering:** rust runs bleed from a share of the rivets.
+- **S16B:** the trail no longer swells into a "pancake" where it passes the camera.

@@ -6,8 +6,12 @@ face, a light flickers on inside its chest; the ground trembles, birds burst fro
 it rises, lifts its head to a gap in the canopy, ignites its engines and tears into the golden
 sky, leaving a curving trail of light and mist.
 
-- Film: `deliver/awakening2.mp4` (the final version, v14) and `deliver/awakening2_vN.mp4` (each
-  version, v1–v14): 1920×1040 (1.85:1), 24 fps, H.264 + AAC, 79.5 s.
+- Film: on the PC at `D:\Blender\Projects\awakening2\deliver\awakening2.mp4` (the final version, v14):
+  1920×1040 (1.85:1), 24 fps, H.264 + AAC, 79.5 s. On 2026-11-11 the project folder moved from C: to D: (the old
+  path `C:\Users\blender\Documents\awakening2` is a junction to it), the earlier versions v1–v13 and their frames
+  were deleted, and the films, audio renders, QA sheets and effect/bird test videos were taken out of the
+  repository to keep it small. `audio/` keeps the generator and cues; `tools/assemble.py vN --qa-only` rebuilds
+  QA sheets.
 - Benchmark study and scorecard: `notes/benchmark.md`. Progress log: `notes/progress.md`.
 
 ## How the frames are made (no image or video models anywhere)
@@ -27,7 +31,7 @@ sky, leaving a curving trail of light and mist.
 | Sound | `audio/` | A fully synthesized score and sound design driven by `audio/cues.json`. |
 
 Design work: `design/` (three concepts, the decision, model sheets, face states), storyboard
-and layouts: `board/`, style frame: `style/`, QA sheets: `qa/<version>/`.
+and layouts: `board/`, style frame: `style/`, QA sheets: rebuilt by `tools/assemble.py` (not kept in the repository).
 
 ## Running it
 

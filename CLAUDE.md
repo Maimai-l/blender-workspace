@@ -2,7 +2,8 @@
 
 ## 约定
 - 仓库改动默认直接提交并推送到 `main` 分支（用户已明确授权），不另开分支，也不建 PR。
-- 工作文件存到 `C:\Users\blender\Documents\`，保存时写绝对路径。
+- 工作文件存到 `D:\Blender\Projects\<项目>\`，保存时写绝对路径。C 盘是系统盘，大文件不要放 C 盘。2026-11-11 之前的项目（`xingyuan`、`qiting`、`awakening` 等）仍在 `C:\Users\blender\Documents\` 下；`awakening2` 已迁到 `D:\Blender\Projects\awakening2`，原路径是指向它的目录联接。
+- 渲染帧序列、视频、音频、QA 截图这类大文件或生成物只放在电脑的项目文件夹里，不提交到仓库（`.gitignore` 已排除视频和音频）；仓库里的图片只放缩小的预览，每张不超过约 1 MB。旧版本的渲染输出确认不用后就删掉。2026-11-11 清理过一次：仓库里的 Awakening 视频、音频和测试图都已移出。
 
 ## 环境（2026-10 实测）
 - 用户电脑：Windows，CPU 为 i7-14700KF，显卡为 RTX 5070 Ti，有 C:、D: 两个盘。
@@ -52,7 +53,7 @@
     - MCP clients for Blender (`bmcp.py`) and exec (`execc.py`);
     - push / run / render / fetch loops (`xy`, `rl`, `rh`, `rvs`, `fetch.py`);
     - reference/render side-by-sides and camera fitting.
-    They derive the PC folder from the project folder name (`C:\Users\blender\Documents\<project>`); see `xingyuan/tools/README.md`.
+    They derive the PC folder from the project folder name: `D:\Blender\Projects\<project>` for new projects, `C:\Users\blender\Documents\<project>` for the older ones (`xyp.py`); see `xingyuan/tools/README.md`.
   - `xingyuan/scripts/lib/` (Chinese timber architecture):
     - roofs: curved roofs with instanced tiles, ridges, bargeboards and finials (`xy_roof.py`);
     - parts: brackets, columns, bases, balusters and lanterns as instanced parts (`xy_parts.py`);
@@ -60,7 +61,7 @@
     - halls with doors and windows (`xy_hall.py`); platforms and paving (`xy_site.py`); plaques, couplets and steles (`xy_props.py`);
     - materials (`xy_mats.py`); sky, sun and render settings (`xy_light.py`); viewport proxies (`xy_proxy.py`); trees and plants (`xy_plants.py`).
     Geometry checks are `xingyuan/scripts/check_*.py`. When copying, change `ROOT` in `xy_core.py` and `LIB` at the top of the run scripts to the new project.
-- Before running anything that changes the Blender scene, print `bpy.data.filepath` and the object count. Blender may have been restarted or switched to another project. Give every project its own .blend under `C:\Users\blender\Documents\<project>\`.
+- Before running anything that changes the Blender scene, print `bpy.data.filepath` and the object count. Blender may have been restarted or switched to another project. Give every project its own .blend under `D:\Blender\Projects\<project>\`.
 - Derive random seeds with `zlib.crc32(name.encode())`; Python's `hash()` changes between Blender sessions.
 - MCP servers listed in `.mcp.json` that a session did not load as tools can still be called directly over HTTP, with the same handshake as `xingyuan/tools/bmcp.py`.
   - Send a `User-Agent` header, or the proxy answers 403.

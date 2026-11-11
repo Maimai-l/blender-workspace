@@ -1,3 +1,11 @@
 __pycache__/
 *.pyc
 .sync-state.json
+
+# large media and render outputs stay in the project folders on the PC (CLAUDE.md)
+*.mp4
+*.mov
+*.webm
+*.wav
+*.blend
+*.blend1

@@ -9,7 +9,7 @@ All tools work under one root folder S (env XY_WORK, default ~/.cache/<project f
   crops/ renders/ deliver/                                (outputs, created here)
 Running `python3 xyp.py` sets the folder up and prints S; `--pc-root` prints the project folder on the PC.
 To reuse the tools in another project, copy this folder to <project>/tools next to <project>/scripts/lib and
-<project>/refs; the PC folder defaults to C:\\Users\\blender\\Documents\\<project>."""
+<project>/refs; the PC folder defaults to D:\\Blender\\Projects\\<project> (older projects: C:\\Users\\blender\\Documents\\<project>)."""
 import os
 
 TOOLS = os.path.dirname(os.path.abspath(__file__))
@@ -18,7 +18,12 @@ SCRIPTS = os.path.join(PROJ, 'scripts')
 LIB = os.path.join(SCRIPTS, 'lib')
 REFS = os.path.join(PROJ, 'refs')
 # the project folder on the Blender PC: same name as the repo project folder unless XY_PC_ROOT says otherwise
-PC_ROOT = os.environ.get('XY_PC_ROOT') or 'C:\\Users\\blender\\Documents\\' + os.path.basename(PROJ)
+# New projects live under D:\Blender\Projects (C: is the system drive); the projects started before 2026-11-11
+# stay where they are, under C:\Users\blender\Documents.
+_OLD_C_PROJECTS = ('xingyuan', 'qiting', 'awakening')
+_name = os.path.basename(PROJ)
+PC_ROOT = os.environ.get('XY_PC_ROOT') or (('C:\\Users\\blender\\Documents\\' if _name in _OLD_C_PROJECTS
+                                            else 'D:\\Blender\\Projects\\') + _name)
 S = os.environ.get('XY_WORK') or os.path.join(os.path.expanduser('~'), '.cache', os.path.basename(PROJ))
 _CA = '/root/.ccr/ca-bundle.crt'                    # cloud-session proxy CA; ignored where absent
 CA = os.environ.get('XY_CA_BUNDLE') or (_CA if os.path.exists(_CA) else None)

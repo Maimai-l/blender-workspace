@@ -7,8 +7,9 @@ trembles, birds burst from the trees, and the robot rises and launches into the 
 The film is rendered as hand-drawn-looking 2D anime (Studio Ghibli as the style reference)
 from a 3D scene that is built entirely from code, on the Blender PC, through the Blender MCP.
 
-- Deliverable: `deliver/awakening.mp4` (1920×1080, 24 fps, H.264 + AAC), also on the PC at
-  `C:\Users\blender\Documents\awakening\deliver\awakening.mp4`.
+- Deliverable: on the PC at `C:\Users\blender\Documents\awakening\deliver\awakening.mp4` (1920×1080, 24 fps,
+  H.264 + AAC). The film, the soundtrack WAV and the generated textures (`paint/out/`) were taken out of the
+  repository on 2026-11-11 to keep it small; `paint/make_all.py` and `audio/make_audio.py` regenerate them.
 - Project file on the PC: `C:\Users\blender\Documents\awakening\awakening.blend` (rebuilt by
   `scripts/build_all.py`; textures in `tex\`, frames in `frames_final\`).
 

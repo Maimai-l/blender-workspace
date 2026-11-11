@@ -5,7 +5,7 @@ These scripts run in the cloud session (Linux, Python 3 with numpy, Pillow, SciP
 ## Setup
 
 - Environment: `BLENDER_MCP_URL` and `EXEC_MCP_URL`, from the environment the repo's `.mcp.json` uses. In the cloud session the proxy adds the credentials, and its CA bundle (`/root/.ccr/ca-bundle.crt`) is used when present. Override it with `XY_CA_BUNDLE`.
-- Project folder on the PC: `XY_PC_ROOT`, default `D:\Blender\Projects\<project folder name>` (the projects started before 2026-11-11, including this one, stay under `C:\Users\blender\Documents\`; see `xyp.py`).
+- Project folder on the PC: `XY_PC_ROOT`, default `D:\Blender\Projects\<project folder name>`. The older projects moved there on 2026-11-11; `C:\Users\blender\Documents\<project>` is a junction to the new folder.
 - Work folder: `XY_WORK`, default `~/.cache/<project folder name>`. `xyp.py` creates it on first use:
   - output folders `crops/`, `renders/`, `deliver/`;
   - links to the reference images in `../refs/` and the camera fits in `cal/`.

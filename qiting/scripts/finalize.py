@@ -7,7 +7,8 @@ if LIB not in sys.path: sys.path.insert(0, LIB)
 import xy_core, xy_light
 for m in (xy_core, xy_light): importlib.reload(m)
 TARGET = os.path.join(xy_core.ROOT, 'qiting.blend')
-if bpy.data.filepath.lower() != TARGET.lower():
+import os
+if not bpy.data.filepath or os.path.realpath(bpy.data.filepath).lower() != os.path.realpath(TARGET).lower():   # C: path is a junction to D:
     raise SystemExit('open file is %r, not %s' % (bpy.data.filepath, TARGET))
 sc = bpy.context.scene
 for name in [o.name for o in bpy.data.objects]:

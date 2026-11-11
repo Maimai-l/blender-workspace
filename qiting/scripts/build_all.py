@@ -12,7 +12,8 @@ for m in (xy_core, xy_mats, xy_roof, xy_parts, xy_props, qt_dims, qt_mats, qt_ro
 C, D = xy_core, qt_dims
 
 TARGET = r'C:\Users\blender\Documents\qiting\qiting.blend'
-if bpy.data.filepath.lower() != TARGET.lower():
+import os
+if not bpy.data.filepath or os.path.realpath(bpy.data.filepath).lower() != os.path.realpath(TARGET).lower():   # C: path is a junction to D:
     raise SystemExit('open file is %r, not %s - refusing to build' % (bpy.data.filepath, TARGET))
 
 STEPS = globals().get('STEPS') or ['all']

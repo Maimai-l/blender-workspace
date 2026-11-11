@@ -2,7 +2,13 @@
 
 ## 约定
 - 仓库改动默认直接提交并推送到 `main` 分支（用户已明确授权），不另开分支，也不建 PR。
-- 工作文件存到 `D:\Blender\Projects\<项目>\`，保存时写绝对路径。C 盘是系统盘，大文件不要放 C 盘。2026-11-11 之前的项目（`xingyuan`、`qiting`、`awakening` 等）仍在 `C:\Users\blender\Documents\` 下；`awakening2` 已迁到 `D:\Blender\Projects\awakening2`，原路径是指向它的目录联接。
+- 工作文件存到 `D:\Blender\Projects\<项目>\`，保存时写绝对路径。C 盘是系统盘，大文件不要放 C 盘。
+- 2026-11-11 把之前的项目都迁到了 D 盘：
+  - Blender 项目（`xingyuan`、`qiting`、`awakening`、`awakening2`、`DungeonEscape`、`WordDefense`、`donut`）在 `D:\Blender\Projects\`；
+  - Unity 工程在 `D:\Unity\Projects\`，包括误建的空工程 `My project`；
+  - 小工具 `LDAdBlock`、`wawa` 在 `D:\Projects\`。
+  - `C:\Users\blender\Documents\` 下的同名文件夹和 `C:\Users\blender\My project` 是指向 D 盘的目录联接，脚本里写死的旧路径照样能用。比较路径时先用 `os.path.realpath` 解析联接。
+  - `Documents` 里只剩 `vocabulary.db`：Word Defense 按这个路径读词库。
 - 渲染帧序列、视频、音频、QA 截图这类大文件或生成物只放在电脑的项目文件夹里，不提交到仓库（`.gitignore` 已排除视频和音频）；仓库里的图片只放缩小的预览，每张不超过约 1 MB。旧版本的渲染输出确认不用后就删掉。2026-11-11 清理过一次：仓库里的 Awakening 视频、音频和测试图都已移出。
 
 ## 环境（2026-10 实测）
@@ -53,7 +59,7 @@
     - MCP clients for Blender (`bmcp.py`) and exec (`execc.py`);
     - push / run / render / fetch loops (`xy`, `rl`, `rh`, `rvs`, `fetch.py`);
     - reference/render side-by-sides and camera fitting.
-    They derive the PC folder from the project folder name: `D:\Blender\Projects\<project>` for new projects, `C:\Users\blender\Documents\<project>` for the older ones (`xyp.py`); see `xingyuan/tools/README.md`.
+    They derive the PC folder from the project folder name, `D:\Blender\Projects\<project>` (`xyp.py`; the older projects' `C:\Users\blender\Documents\<project>` paths are junctions to it); see `xingyuan/tools/README.md`.
   - `xingyuan/scripts/lib/` (Chinese timber architecture):
     - roofs: curved roofs with instanced tiles, ridges, bargeboards and finials (`xy_roof.py`);
     - parts: brackets, columns, bases, balusters and lanterns as instanced parts (`xy_parts.py`);

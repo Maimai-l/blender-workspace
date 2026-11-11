@@ -7,7 +7,7 @@ A script-built Blender replica of 旗亭, the round double-eaved pavilion on the
 
 ## Deliverables
 
-All on the PC, in `C:\Users\blender\Documents\qiting\`:
+All on the PC, in `D:\Blender\Projects\qiting\` (moved from `C:\Users\blender\Documents\qiting\` on 2026-11-11; the old path is a junction to it):
 
 | What | Where |
 | --- | --- |

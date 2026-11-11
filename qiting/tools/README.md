@@ -5,7 +5,7 @@ These are copied from [`../../xingyuan/tools`](../../xingyuan/tools/README.md) a
 ## Setup
 
 - Environment: `BLENDER_MCP_URL` and `EXEC_MCP_URL`, as in the Xingyuan tools.
-- Project folder on the PC: `C:\Users\blender\Documents\qiting`.
+- Project folder on the PC: `D:\Blender\Projects\qiting` (moved from `C:\Users\blender\Documents\qiting` on 2026-11-11; the old path is a junction to it, so the scripts' paths still work).
 - Work folder in the session: `~/.cache/qiting`. It holds:
   - `ref/`: full-resolution references;
   - `renders/`;

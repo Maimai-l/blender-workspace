@@ -5,9 +5,9 @@
 - 工作文件存到 `D:\Blender\Projects\<项目>\`，保存时写绝对路径。C 盘是系统盘，大文件不要放 C 盘。
 - 2026-11-11 把之前的项目都迁到了 D 盘：
   - Blender 项目（`xingyuan`、`qiting`、`awakening`、`awakening2`、`DungeonEscape`、`WordDefense`、`donut`）在 `D:\Blender\Projects\`；
-  - Unity 工程在 `D:\Unity\Projects\`，包括误建的空工程 `My project`；
+  - Unity 工程（`Dungeon Escape`、`Word Defence`）在 `D:\Unity\Projects\`；
   - 小工具 `LDAdBlock`、`wawa` 在 `D:\Projects\`。
-  - `C:\Users\blender\Documents\` 下的同名文件夹和 `C:\Users\blender\My project` 是指向 D 盘的目录联接，脚本里写死的旧路径照样能用。比较路径时先用 `os.path.realpath` 解析联接。
+  - `C:\Users\blender\Documents\` 下的同名文件夹是指向 D 盘的目录联接，脚本里写死的旧路径照样能用。比较路径时先用 `os.path.realpath` 解析联接。
   - `Documents` 里只剩 `vocabulary.db`：Word Defense 按这个路径读词库。
 - 渲染帧序列、视频、音频、QA 截图这类大文件或生成物只放在电脑的项目文件夹里，不提交到仓库（`.gitignore` 已排除视频和音频）；仓库里的图片只放缩小的预览，每张不超过约 1 MB。旧版本的渲染输出确认不用后就删掉。2026-11-11 清理过一次：仓库里的 Awakening 视频、音频和测试图都已移出。
 

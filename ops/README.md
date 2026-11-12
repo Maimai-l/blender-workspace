@@ -99,6 +99,7 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 | Unity 报 “upstream request failed” | 域重载后桥接端口在 6400 和 6401 之间切换了 | `set_active_instance` 指定当前端口 |
 | exec 的 Write 拒绝写入 | 目标文件已存在，且这次没有先读过 | 先 Read，或者写到新文件再 `mv`（`pcx.put_text`） |
 | Blender 打开的是空场景 | Blender 重启过 | 先打开对应项目的 `.blend`，再执行任何改动 |
+| Blender 崩溃或被关掉，9876 端口没有监听 | Blender 没在运行 | 经 exec 调用 agent 的 `/app/blender/start`，或直接运行 `blender.exe`（都在会话 2 里启动）。插件（模块名 `addon`）随 Blender 启动自动开始监听，打开文件后由 `load_post` 回调重新开启，不需要有人点 Connect |
 
 ## 5. 已知问题（2026-11-12）
 

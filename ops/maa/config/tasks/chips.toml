@@ -1,0 +1,17 @@
+# Chip farming for the training queue (2026-11-15): 1 特种芯片 for 孑 E1, then 辅助芯片组 for 但书 E2.
+# No sanity potions, no originium, series 1 (one run at a time): with series 0 MAA picks the largest multiplier
+# and overshoots the drop target (2026-11-15: 9 runs of PR-D-1 for 1 chip). Stops at the target or when sanity runs out.
+[[tasks]]
+name = "开始唤醒"
+type = "StartUp"
+params = { client_type = "Official", start_game_enabled = true }
+
+[[tasks]]
+name = "PR-D-1 特种芯片"
+type = "Fight"
+params = { stage = "PR-D-1", medicine = 0, stone = 0, series = 1, drops = { "3281" = 1 }, client_type = "Official" }
+
+[[tasks]]
+name = "PR-C-2 辅助芯片组"
+type = "Fight"
+params = { stage = "PR-C-2", medicine = 0, stone = 0, series = 1, drops = { "3272" = 5 }, client_type = "Official" }

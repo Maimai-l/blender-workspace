@@ -76,6 +76,9 @@ try {
         Push-Location "D:\Projects\skland"
         & "D:\Program Files\node.exe" sync.mjs 2>&1 | ForEach-Object { Say "skland: $_" }
         Pop-Location
+        if (Test-Path "$Root\after_rebuild.py") {
+            & "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe" "$Root\after_rebuild.py" 2>&1 | ForEach-Object { Say "rebuild: $_" }
+        }
     }
     Say ("maa exit {0} after {1:n0} s; log {2}" -f $code, ((Get-Date) - $t0).TotalSeconds, $maaLog)
     exit $code

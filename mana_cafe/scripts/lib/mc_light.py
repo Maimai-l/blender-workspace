@@ -3,11 +3,11 @@ import bpy, os, math
 import mc_core as C
 from mc_core import NT
 
-SUN_AZ = -32.0      # math azimuth of the sun in the scene (deg): ESE, early October about 9:10 solar time
-SUN_EL = 37.7
+SUN_AZ = -26.0      # math azimuth of the sun in the scene (deg): ESE (compass 116), mid October about 8:30 solar time
+SUN_EL = 28.6
 
 
-def world(hdr='waterkloof_farm_16k.hdr', strength=0.9, sun_clamp=40.0, sky_az=None, gamma=1.16, sat=1.12,
+def world(hdr='waterkloof_farm_16k.hdr', strength=0.78, sun_clamp=40.0, sky_az=None, gamma=1.16, sat=1.12,
           tint=(0.90, 0.96, 1.0), sun_az=SUN_AZ):
     """Photographed sky (Poly Haven 'waterkloof_farm', CC0). Its sun (pixel azimuth 216.08 deg, 37.7 deg high) is
     turned to sun_az and clamped out; MC_sun replaces it, so sun and sky can be balanced for 4400 m: a stronger
@@ -40,10 +40,13 @@ def world(hdr='waterkloof_farm_16k.hdr', strength=0.9, sun_clamp=40.0, sky_az=No
     col = n.mix(1.0, col, tuple(tint) + (1,), 'MULTIPLY')
     bg = n.node('ShaderNodeBackground', inputs={'Color': col, 'Strength': strength})
     n.link(bg.outputs[0], out.inputs['Surface'])
+    # the sun is a lamp: a small importance map is enough for the clamped sky (a 16k map costs 2.5 GB)
+    w.cycles.sampling_method = 'MANUAL'
+    w.cycles.sample_map_resolution = 2048
     return w
 
 
-def sun(strength=8.4, az=SUN_AZ, el=SUN_EL, color=(1.0, 0.985, 0.93), angle=0.53):
+def sun(strength=10.5, az=SUN_AZ, el=SUN_EL, color=(1.0, 0.975, 0.91), angle=0.53):
     o = bpy.data.objects.get('MC_sun')
     if o is None:
         o = bpy.data.objects.new('MC_sun', bpy.data.lights.new('MC_sun', 'SUN'))
@@ -58,7 +61,7 @@ def sun(strength=8.4, az=SUN_AZ, el=SUN_EL, color=(1.0, 0.985, 0.93), angle=0.53
     return o
 
 
-def render_settings(scale=50, samples=128, res=(3840, 2160), exposure=-1.3):
+def render_settings(scale=50, samples=128, res=(3840, 2160), exposure=-1.3, look='AgX - Medium High Contrast'):
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
     cy = sc.cycles
@@ -70,7 +73,42 @@ def render_settings(scale=50, samples=128, res=(3840, 2160), exposure=-1.3):
     sc.render.resolution_x, sc.render.resolution_y = res
     sc.render.resolution_percentage = scale
     sc.view_settings.view_transform = 'AgX'
-    sc.view_settings.look = 'None'
+    try:
+        sc.view_settings.look = look
+    except TypeError:
+        sc.view_settings.look = 'None'
     sc.view_settings.exposure = exposure
     sc.render.film_transparent = False
     return sc
+
+
+CAMERA = dict(loc=(15.0, 41.0, 13.5), az=-126.5, pitch=-6.3, lens=25.0)
+
+
+def camera(name='CAM_final', loc=None, az=None, pitch=None, lens=None, fstop=None, focus=None):
+    """The picture's camera: the sketch's direction, pulled back along it so that the whole terrace, the track and
+    the meadow in front are in the frame. az / pitch in degrees (math convention)."""
+    from mathutils import Vector
+    p = dict(CAMERA)
+    for k, v in (('loc', loc), ('az', az), ('pitch', pitch), ('lens', lens)):
+        if v is not None:
+            p[k] = v
+    sc = bpy.context.scene
+    o = bpy.data.objects.get(name)
+    if o is None:
+        o = bpy.data.objects.new(name, bpy.data.cameras.new(name))
+        C.coll('MC_light').objects.link(o)
+    o.location = p['loc']
+    a, e = math.radians(p['az']), math.radians(p['pitch'])
+    d = Vector((math.cos(e) * math.cos(a), math.cos(e) * math.sin(a), math.sin(e)))
+    o.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler()
+    o.data.lens = p['lens']
+    o.data.sensor_width = 36.0
+    o.data.clip_start = 0.5
+    o.data.clip_end = 200000.0
+    if fstop:
+        o.data.dof.use_dof = True
+        o.data.dof.aperture_fstop = fstop
+        o.data.dof.focus_distance = focus or 45.0
+    sc.camera = o
+    return o

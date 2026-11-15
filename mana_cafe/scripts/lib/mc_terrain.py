@@ -9,7 +9,7 @@ def load_far(name='TER_far', mat=None):
     d = np.load(os.path.join(C.DEM, 'mesh_far.npz'))
     nr, ncol = int(d['nr']), int(d['ncol'])
     attrs = {k[2:]: d[k] for k in d.files if k.startswith('a_')}
-    me = C.grid_mesh(name, d['co'], nr, ncol, attrs=attrs)
+    me = C.grid_mesh(name, d['co'], nr, ncol, keep=d['keep'] if 'keep' in d.files else None, attrs=attrs)
     o = C.obj(name, me, C.coll('MC_terrain'), mat or mc_mats.mountain_material())
     o.hide_viewport = True
     o['layer'] = json.dumps(json.load(open(os.path.join(C.DEM, 'mesh_far.json'))))

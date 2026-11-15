@@ -83,6 +83,14 @@ def main(log=print):
         att['wfar'][s:s + CH] = o['wfar']
         for k in KEYS:
             att[k][s:s + CH] = o[k]
+    # graded ground on a 0.1 m grid round the site, for the wall / paving / scatter builders inside Blender
+    gx = np.arange(-130.0, 130.01, 0.1)
+    GX, GY = np.meshgrid(gx, gx)
+    gz, gt, gp, gs = site.height(GX.ravel(), GY.ravel())
+    np.savez(os.path.join(OUT, 'site_h.npz'), z=gz.reshape(GX.shape).astype(np.float32),
+             track=gt.reshape(GX.shape).astype(np.float16), sdf=gs.reshape(GX.shape).astype(np.float16),
+             x0=-130.0, y0=-130.0, cell=0.1)
+    del GX, GY
     d2 = X * X + Y * Y
     co = np.stack([X, Y, Z - d2 / (2.0 * tl.R_EARTH) * 0.87], 1).astype(np.float32)
     np.savez(os.path.join(OUT, 'mesh_near.npz'), co=co, quads=quads, **{'a_' + k: v for k, v in att.items()})

@@ -71,7 +71,7 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
     rocky = np.clip(0.25 * high + 0.75 * steep * (0.35 + 0.65 * high), 0, 1)
 
     # --- 1. restore the sharpness the 30 m radar DEM lost on crests and summits
-    for sig, k in ((45.0, 0.55), (110.0, 0.40), (260.0, 0.22)):
+    for sig, k in ((45.0, 0.36), (110.0, 0.24), (260.0, 0.12)):
         d = z - gaussian_filter(z, sig / cell)
         z += d * k * (0.25 + 0.75 * high) * np.where(d > 0, 1.0, 0.45)
     # --- 2. ridged micro-relief (seeds the gullies), stronger on rock
@@ -103,6 +103,12 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
         creep = creep * (1.0 - tinw)
     z, A = tl.erode(z, cell, rounds=rounds, kdt=kdt, m=0.45, a_sat=3e5, max_cut=max_cut,
                     talus=1.55, th_rate=0.22, th_iters=2, creep=creep, creep_coef=0.10, log=log)
+    # --- 5. rock ribs and ledges on the bare high faces, after the erosion so they stay crisp
+    rib = tl.ridged(shape, cell, seed + 211, octaves=4, base_wl=70.0)
+    rib2 = tl.ridged(shape, cell, seed + 223, octaves=3, base_wl=24.0)
+    rib3 = tl.ridged(shape, cell, seed + 227, octaves=2, base_wl=11.0)
+    z += ((rib - 0.5) * 17.0 + (rib2 - 0.5) * 6.5 + (rib3 - 0.5) * 2.4) * rocky * rocky
+    del rib, rib2, rib3
     log('eroded', '%.1fs' % (time.time() - t0), 'dz', float((z - zreal).min()), float((z - zreal).max()))
 
     # --- masks

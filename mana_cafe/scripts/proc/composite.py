@@ -13,7 +13,8 @@ from far_build import OUT
 
 P_REAL = (-22470.0, -5360.0)          # Chanadorje (5958 m) in the real scene frame
 CAM = (9.6, 32.79, 11.76)             # sketch camera; centre of the polar grid and of the blend
-LAYOUT = dict(az_t=-150.0, D=11500.0, dz=0.0, blend=(3000.0, 6000.0), seam=2500.0)
+CAM_VIEW = (15.0, 41.0, 13.5)         # the picture's camera (lib/mc_light.CAMERA): used for visibility tests
+LAYOUT = dict(az_t=-146.5, D=10800.0, dz=0.0, blend=(3000.0, 6000.0), seam=2500.0)
 KEYS = ('slope', 'north', 'curv', 'flow', 'rocky')
 
 

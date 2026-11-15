@@ -167,6 +167,36 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 - 新增任务：`infrast`（只做基建换班）、`chips`（芯片本，倍率固定 1，按目标掉落数停下）。
 - 界面操作工具 `arknights/tools/ui.py`：截图缩到 960×540 传回，坐标按 5/3 换算后点击。适合一次性的界面操作；游戏是 Unity 绘制，没有可读的界面树。
 
+### 剿灭开关（2026-11-15 起）
+- `daily` 一天跑三次，每次都打剿灭的话，周上限（1800 合成玉）满了以后每天白耗约 75 理智。
+- `annihilation_gate.py`（源文件 `ops/maa/`）在每次 `daily` 前运行。它读最近一次森空岛导出：本周已满，就把 `daily.toml` 里 `# >>> annihilation` 到 `# <<< annihilation` 之间的任务注释掉；没满就恢复。
+- 每周一 4:00 重置。重置前的导出按“未满”处理，所以周一 8:00 那次会打。
+
+### 作业（prts.plus）与活动关自动导航（2026-11-15 起）
+- 作业站接口 `https://prts.maa.plus/copilot/query?level_keyword=<关卡 id，如 act55side_ex03>&order_by=hot`，电脑能直连，云端沙箱连不上。
+- `copilot.ps1`（源文件 `ops/maa/`）：`-Uri prts://<id>[,prts://<id>…] [-Raid normal|raid|both] [-KeepEmulator]`。
+  - 只给一个作业时，要先停在关卡页（能看到“开始行动”）。
+  - maa-cli 给多个作业时会自动导航，但**只认主线关卡**。活动关会在主界面无限滑动找关卡，实测要手动结束 `maa.exe`。
+- `ev_run.py`（源文件 `arknights/tools/`，用 agent-ocr 的 venv 运行）解决活动关导航：
+  - 先截图做 OCR，确认画面后再点认出来的文字：主界面横幅“时间啊”→ 区域名 → `TL-EX-n`。
+  - 在关卡页读出当前理智和消耗，够才运行 `maa copilot prts://<id> --formation --raid <模式>`，不够就停下。
+  - 认不出预期的画面就报错、回主界面，不盲点。早期版本盲点屏幕中央，误进过时装商店，没有购买。
+  - 主界面的判断用“仓库”加“理智/”：快捷菜单里也有“终端”“采购中心”。
+  - 队列 `QUEUE` 写在脚本里；完成记录在 `state\ev_done.json`，失败计数在 `state\ev_fail.json`，同一项失败 2 次就跳过。
+  - `run.ps1` 在 `daily` 里先运行 `maa run wake` 打开游戏，再运行 `ev_run.py`，最后关掉 OCR 服务，释放显存。
+- 突袭由 MaaCore 自己切换（`ChangeToRaidDifficulty`，重复执行也没问题），脚本不用点“突袭”。
+
+### agent-ocr（屏幕文字识别，2026-11-15 安装）
+- 位置：`D:\Projects\agent-ocr\`，包括 `ocr.py`、`ocr_server.py`、`README.md`（用户提供）、`install.ps1`、`start_ocr.ps1`（这两个的副本在 `ops/pc/agent_ocr_*.ps1`）。
+  - venv 是 `.venv`（约 1.6 GB），用 Blender 自带的 Python 3.13 创建。电脑上没有独立的 Python；Anaconda 在 `D:\ProgramData`，它的 8 个环境里都没有 paddle 或 onnxruntime。
+  - 用户主账号的 `.paddlex` 里有 4 月下载的 PP-OCRv5 模型，blender 账号没有读取权限。
+- 包：paddleocr 3.7.0、paddlex 3.7.2、onnxruntime-gpu 1.32.0，以及 pip 装的 CUDA 13.5 和 cuDNN 9.28 运行库，不装 PaddlePaddle。
+  - 下载走阿里云 PyPI 镜像，清华作备用，约 11 MB/s。
+  - 模型从 ModelScope 下载（`PADDLE_PDX_MODEL_SOURCE=modelscope`），缓存在 `C:\Users\blender\.paddlex`。
+- 服务端口是 **8767**：8765 是面板，8766 是 agent。调用时设置 `AGENT_OCR_PORT=8767`，或者传 `--url http://127.0.0.1:8767`。
+- 后端是 onnxruntime / gpu:0，PP-OCRv6 medium。预热一次约 29 毫秒；一张 1600×900 游戏截图约 250 毫秒。
+- 模拟器在断开的会话里，`mss` 截屏截不到。要用 `adb exec-out screencap -p` 存成文件，再 `ocr.py --image`。
+
 ### 2026-11-15 状态（界面版）
 
 - 复制版放在 `D:\Projects\MAA`（v6.22，由 `D:\Program Files\MAA-v6.18.0-win-x64` 复制而来，blender 账号可写）。

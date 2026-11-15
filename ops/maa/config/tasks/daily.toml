@@ -27,10 +27,12 @@ use_perception_information = false
 use_worldly_plight = false
 use_abyssal_hunter = false
 
+# >>> annihilation  (annihilation_gate.py comments this block out while the weekly reward is full)
 [[tasks]]
 name = "剿灭"
 type = "Fight"
 params = { stage = "Annihilation", medicine = 0, stone = 0, times = 1, series = 0, client_type = "Official" }
+# <<< annihilation
 
 [[tasks]]
 name = "理智作战"

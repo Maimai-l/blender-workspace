@@ -55,6 +55,21 @@ try {
     if ($boot -ne "1") { Say "FAILED: Android did not finish booting in $BootTimeout s"; exit 94 }
     Say ("emulator ready ({0})" -f $(if ($started) { "started" } else { "was running" }))
 
+    # skip Annihilation while this week's orundum reward is already full (25 sanity per run otherwise)
+    if ($Task -eq "daily" -and (Test-Path "$Root\annihilation_gate.py")) {
+        & "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe" "$Root\annihilation_gate.py" 2>&1 | ForEach-Object { Say "gate: $_" }
+    }
+    # side-story first clears (EX/S, normal then raid) with prts.plus copilots, before the daily task spends the
+    # sanity on farming. ev_run.py navigates by OCR (agent-ocr) and stops when sanity runs short.
+    $ocrPy = "D:\Projects\agent-ocr\.venv\Scripts\python.exe"
+    if ($Task -eq "daily" -and (Test-Path "$Root\ev_run.py") -and (Test-Path $ocrPy)) {
+        $env:PYTHONIOENCODING = "utf-8"
+        # the game has to be on its home screen first (wake.toml = StartUp only)
+        Start-Process -FilePath $Maa -ArgumentList @("run", "wake", "--batch") -NoNewWindow -Wait `
+            -RedirectStandardOutput "$Logs\$stamp-wake.out" -RedirectStandardError "$Logs\$stamp-wake.err" | Out-Null
+        & $ocrPy "$Root\ev_run.py" 2>&1 | Out-Null       # it writes its own [ev] lines to runs.log
+        & $ocrPy "D:\Projects\agent-ocr\ocr.py" --stop --url http://127.0.0.1:8767 2>&1 | Out-Null   # free the GPU memory
+    }
     $maaLog = "$Logs\$stamp-$Task.log"
     $asst = "$Root\state\debug\asst.log"
     $offset = 0; if (Test-Path $asst) { $offset = (Get-Item $asst).Length }

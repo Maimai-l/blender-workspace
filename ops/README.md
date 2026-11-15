@@ -243,3 +243,21 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 | `pdf_page.ps1 -Pdf a.pdf -Out p.png [-Page 0] [-Width 2400]` | 用 Windows 自带的 PDF 引擎把一页渲染成 PNG |
 | `resize.ps1 -Src in.jpg -Out out.jpg [-Max 1600]` | 按 EXIF 方向缩小图片 |
 | `sheet.ps1 -Src <目录> -Out sheet.jpg [-Filter *.jpg] [-Cols 4]` | 为一个目录里的图片做带文件名的拼图 |
+
+## 9. Clash Verge（2026-11-15）
+- 用户主账号运行 Clash Verge Rev。内核是 mihomo v1.19.21（`verge-mihomo.exe`，由 `clash_verge_service` 服务启动），混合端口 `127.0.0.1:7897`，规则模式，没有开 TUN。blender 账号的系统代理也指向 7897。
+- 控制接口没有开 HTTP 端口，用命名管道 `\\.\pipe\verge-mihomo`。blender 账号能直接访问，不需要密钥。
+- `clashctl.py`（源文件 `ops/pc/`，电脑上在 `D:\Projects\pc-tools\`，用 Blender 自带的 Python 运行）：
+  - `status`、`groups`：只查询；
+  - `test` / `best [组]`：测各节点延迟，`best` 再切到最快的节点；
+  - `use 组 节点`：切到指定节点；
+  - `mode rule|global|direct`：切模式，`direct` 相当于关掉代理；
+  - `check`：测直连和走 7897 时能否访问 GitHub。
+  - 改节点和模式会影响整台电脑，因为主账号的系统代理也走这个内核。
+- GitHub 直连不稳定：0.27 版插件下载到一半断过一次，改走 7897 后续传成功。下载大文件时用 `curl -x http://127.0.0.1:7897 -C -`。
+
+## 10. SketchUp 导入（2026-11-15）
+- Blender 插件 Sketchup Importer 0.27（RedHaloStudio，SHA256 与 GitHub 公布的一致），装在 blender 账号的 Blender 5.2 用户插件目录，安装包在 `D:\Blender\Addons\sketchup_importer\`。
+  - 插件带 Python 3.13 版本的扩展模块和 SketchUp SDK 的 DLL，能读到 SketchUp 2025.1。
+- 相机和变换的英寸换算由插件处理，结果正确。
+- 坐标离原点很远的模型（地理定位、导入的 DWG）导入后要平移回原点。地理定位的地形和卫星图块要单独放进一个集合并排除。

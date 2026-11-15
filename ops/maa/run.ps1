@@ -1,0 +1,71 @@
+# run.ps1 - run a maa-cli task on LDPlayer instance 0, in the blender account (PC).
+#
+#   powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 [-Task daily] [-KeepEmulator]
+#
+# Starts the emulator if needed, waits for Android, runs `maa run <Task> --batch`, closes the emulator
+# (unless -KeepEmulator), and appends one line per run to D:\Projects\maa-cli\logs\runs.log.
+# Refuses to run while any MAA GUI is open (either account) or while the emulator belongs to another session:
+# two drivers on one emulator would fight over the screen. Exit code: maa's, or 90+ for a refusal.
+# ASCII only: Windows PowerShell 5.1 reads BOM-less scripts in the ANSI code page.
+param(
+    [string]$Task = "daily",
+    [switch]$KeepEmulator,
+    [int]$BootTimeout = 180
+)
+$ErrorActionPreference = "Continue"   # native tools write to stderr; "Stop" would turn that into exceptions in PS 5.1
+$Root = "D:\Projects\maa-cli"
+$Maa = "D:\Projects\MAA\maa.exe"
+$LD = "D:\leidian\LDPlayer9"
+$Adb = "$LD\adb.exe"
+$Logs = "$Root\logs"
+New-Item -ItemType Directory -Force -Path $Logs | Out-Null
+$env:MAA_CONFIG_DIR = "$Root\config"
+$env:MAA_STATE_DIR = "$Root\state"
+$env:MAA_CACHE_DIR = "$Root\cache"
+$env:MAA_DATA_DIR = "$Root\data"
+$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$runLog = "$Logs\runs.log"
+$t0 = Get-Date
+
+function Say($msg) { $line = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Task, $msg; Write-Output $line; Add-Content -Path $runLog -Value $line -Encoding UTF8 }
+function LdRunning { (& "$LD\ldconsole.exe" isrunning --index 0 2>$null) -match "running" }
+
+# one run at a time (a scheduled run and a manual one must not overlap)
+$lock = $null
+try { $lock = [System.IO.File]::Open("$Root\run.lock", 'OpenOrCreate', 'ReadWrite', 'None') }
+catch { Say "REFUSED: another run.ps1 is running"; exit 91 }
+
+try {
+    $me = (Get-Process -Id $PID).SessionId
+    $gui = Get-Process -Name MAA -ErrorAction SilentlyContinue
+    if ($gui) { Say ("REFUSED: MAA GUI is open (session {0})" -f (($gui | ForEach-Object SessionId) -join ",")); exit 92 }
+    $foreign = Get-Process -Name dnplayer, Ld9BoxHeadless -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne $me }
+    if ($foreign) { Say "REFUSED: the emulator is running in another session"; exit 93 }
+
+    $started = $false
+    if (-not (LdRunning)) {
+        & "$LD\ldconsole.exe" launch --index 0 | Out-Null
+        $started = $true
+    }
+    $deadline = (Get-Date).AddSeconds($BootTimeout)
+    do {
+        Start-Sleep -Seconds 2
+        $boot = (& $Adb -s emulator-5554 shell getprop sys.boot_completed 2>$null | Out-String).Trim()
+    } while ($boot -ne "1" -and (Get-Date) -lt $deadline)
+    if ($boot -ne "1") { Say "FAILED: Android did not finish booting in $BootTimeout s"; exit 94 }
+    Say ("emulator ready ({0})" -f $(if ($started) { "started" } else { "was running" }))
+
+    $maaLog = "$Logs\$stamp-$Task.log"
+    # Start-Process keeps maa's stderr out of PowerShell's error stream (PS 5.1 wraps every stderr line of a
+    # native command as an error record); stdout holds the task summary, stderr the diagnostics.
+    $p = Start-Process -FilePath $Maa -ArgumentList @("run", $Task, "--batch", "--log-file=$maaLog") -NoNewWindow -Wait -PassThru `
+        -RedirectStandardOutput "$Logs\$stamp-$Task.out" -RedirectStandardError "$Logs\$stamp-$Task.err"
+    $code = $p.ExitCode
+
+    if (-not $KeepEmulator) { & "$LD\ldconsole.exe" quit --index 0 | Out-Null }
+    Say ("maa exit {0} after {1:n0} s; log {2}" -f $code, ((Get-Date) - $t0).TotalSeconds, $maaLog)
+    exit $code
+}
+finally {
+    if ($lock) { $lock.Close() }
+}

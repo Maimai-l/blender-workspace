@@ -112,13 +112,39 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 3. `Temp\93e22641-…tmp`（48 MB，2026-10-26）一直被某个进程占用，清理时会跳过。
 4. `C:\Program Files\BlenderMCP\` 里有两份 `panel.bak-*` 和三份 `panel\backup-before-*`，是历次升级留下的备份。blender 账号删不了，下次发安装包时一起清掉。
 
-## 6. MAA 与雷电模拟器（迁移到 blender 账号，进行中）
+## 6. MAA 与雷电模拟器（迁移到 blender 账号）
 
-### 2026-11-15 状态
+### maa-cli（托管用，2026-11-15 起）
+
+| 内容 | 位置 |
+| --- | --- |
+| `maa.exe`（maa-cli 0.7.8，已核对 SHA256） | `D:\Projects\MAA\maa.exe`，和复制版界面 MAA 放在一起，共用其中的 MaaCore v6.22 和 `resource\` |
+| 配置（仓库里的源文件在 `ops/maa/config/`） | `D:\Projects\maa-cli\config\`：`profiles\default.toml`（连接设置）、`tasks\daily.toml`（照搬界面版的日常队列）、`tasks\wake.toml`（只开游戏，测试用） |
+| 启动脚本（源文件 `ops/maa/run.ps1`） | `D:\Projects\maa-cli\run.ps1` |
+| 日志 | `D:\Projects\maa-cli\logs\runs.log`（每次运行一行）、`<时间>-<任务>.out`（任务汇总）、`.err`、`.log`；MaaCore 的详细日志在 `state\debug\asst.log` |
+
+- 运行：`powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 -Task daily`，`-KeepEmulator` 跑完不关模拟器。
+- 脚本会依次做这些事：开模拟器 → 等安卓开机完成 → 运行 `maa run <任务> --batch` → 关模拟器 → 在 `runs.log` 里记一行。
+- 以下情况脚本拒绝运行，退出码 91–94：
+  - 已有一次 `run.ps1` 在运行；
+  - 任一账号开着 MAA 界面版（`Get-Process` 能看到所有会话的进程）；
+  - 模拟器开在别的会话里；
+  - 安卓 180 秒内没开机。
+- 经 exec 启动时用 `Start-Process` 让它脱离 exec 后台运行，再轮询 `runs.log`。exec 内置工具 30 秒就断，不能等它跑完。
+- 临时命令要设置 `MAA_CONFIG_DIR`、`MAA_STATE_DIR`、`MAA_CACHE_DIR`、`MAA_DATA_DIR`，值和 `run.ps1` 里的一致。例如 `maa fight 1-7`、`maa run daily --dry-run`；`maa list` 列出已有任务。
+- 活动关数据由 maa-cli 自己从 `api.maa.plus` 热更新，电脑能直连。`maa update`、`maa install`、`maa self update` 要从 GitHub 下载，电脑直连不上 GitHub，不要用。
+- 更新 MaaCore 和基础资源的办法：偶尔用 `--skip-startup-auto-run` 启动一次复制版界面 MAA，等它自动更新完再关掉。它经 blender 账号的系统代理更新，会走 MAA 自己的更新源。更新后要确认 `maa.exe` 还在。
+- 截图走 adb，实测平均 155 ms；界面版用的雷电专用截图接口是 30 ms。慢一些，但不影响使用。
+- 实测：`wake` 两次，54–55 秒到主界面，退出码 0，模拟器已关。`daily` 只做过 `--dry-run`，7 个任务都解析成功，还没有真正跑过。
+- 计划任务（0:00、8:00、12:00 各跑一次 `run.ps1 -Task daily`）还没建：需要用户明确同意。
+
+### 2026-11-15 状态（界面版）
 
 - 复制版放在 `D:\Projects\MAA`（v6.22，由 `D:\Program Files\MAA-v6.18.0-win-x64` 复制而来，blender 账号可写）。
   - 目前**待命**：定时和定时唤醒都关了，blender 账号里也没有它的唤醒任务。
   - 主账号的原始配置（定时 0:00、8:00、12:00 已开启）存在 `config\gui.new.json.orig`。
+- 用户传给电脑的文件放在 `D:\Downloads`（不是用户目录下的 Downloads）。
+- 2026-11-15 16:13 用户关掉了主账号 MAA 的定时和定时唤醒，`MaaWakeup_E5C60EF7` 已删除（主账号 MAA 日志里有记录，配置也核对过）。下面这条是之前的情况。
 - 主账号的 MAA 已由用户关闭，但它的唤醒任务 `MaaWakeup_E5C60EF7` 还在主账号的计划任务里：每个定时前 5 分钟（23:55、7:55、11:55）会重新拉起主账号的 MAA，到点照常运行。
   - blender 账号看不到、也改不了这个任务。
   - 用户在主账号里关掉 MAA 的“定时唤醒”和定时（或者删掉这个任务）之前，blender 这边的定时不能开，否则 0:00 两个 MAA 会抢同一个模拟器。

@@ -1,0 +1,13 @@
+# maa-cli profile for the blender account (PC). Mirrors the GUI's connection settings.
+[connection]
+adb_path = 'D:\leidian\LDPlayer9\adb.exe'   # LDPlayer's own adb: same version as the shared adb server on 5037
+address = "emulator-5554"                    # LDPlayer instance 0
+config = "LDPlayer"                          # MaaCore connection preset from resource/config.json
+
+[instance_options]
+touch_mode = "MiniTouch"
+kill_adb_on_exit = false                     # the adb server is shared with the other account
+
+[static_options]
+cpu_ocr = false
+gpu_ocr = 0                                  # RTX 5070 Ti, as the GUI uses

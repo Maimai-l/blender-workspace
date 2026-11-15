@@ -112,7 +112,43 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 3. `Temp\93e22641-…tmp`（48 MB，2026-10-26）一直被某个进程占用，清理时会跳过。
 4. `C:\Program Files\BlenderMCP\` 里有两份 `panel.bak-*` 和三份 `panel\backup-before-*`，是历次升级留下的备份。blender 账号删不了，下次发安装包时一起清掉。
 
-## 6. 仓库里的 PC 脚本（`ops/pc/`）
+## 6. MAA 与雷电模拟器（迁移到 blender 账号，进行中）
+
+### 2026-11-15 状态
+
+- 复制版放在 `D:\Projects\MAA`（v6.22，由 `D:\Program Files\MAA-v6.18.0-win-x64` 复制而来，blender 账号可写）。
+  - 目前**待命**：定时和定时唤醒都关了，blender 账号里也没有它的唤醒任务。
+  - 主账号的原始配置（定时 0:00、8:00、12:00 已开启）存在 `config\gui.new.json.orig`。
+- 主账号的 MAA 已由用户关闭，但它的唤醒任务 `MaaWakeup_E5C60EF7` 还在主账号的计划任务里：每个定时前 5 分钟（23:55、7:55、11:55）会重新拉起主账号的 MAA，到点照常运行。
+  - blender 账号看不到、也改不了这个任务。
+  - 用户在主账号里关掉 MAA 的“定时唤醒”和定时（或者删掉这个任务）之前，blender 这边的定时不能开，否则 0:00 两个 MAA 会抢同一个模拟器。
+- 完成切换：
+  1. 确认主账号的唤醒任务已经去掉；
+  2. 把 `.orig` 复制回 `gui.new.json` 和 `gui.new.json.bak`；
+  3. 用 `--skip-startup-auto-run` 启动 MAA，它会自己重新注册唤醒任务；
+  4. 请用户在 blender 的 MAA 里重新填一次 GitHub Token（见下面“试运行的结果”第 5 条）。
+
+### 试运行的结果（2026-11-15）
+
+1. 用 `ldconsole.exe launch --index 0` 在会话 2 里启动雷电：虚拟机注册正常，安卓 2 秒内开机完成。会话已断开，但 adb 截图和 MAA 的雷电截图接口（30 ms）都正常，不是黑屏。
+2. 明日方舟仍是登录状态。只开“开始唤醒”的测试配置，55 秒就进了主界面。
+3. **MAA 普通启动会先倒计时 10 秒，然后自动跑一轮**，日志里显示为 `Timer wait time: 10`，和 `RunDirectly` 设置无关。只要不是想马上跑任务，就要带 `--skip-startup-auto-run` 启动。经 exec 启动用 `powershell Start-Process`，这样进程能脱离 exec 独立运行。
+4. 改 `gui.new.json` 时，值必须是 MAA 认识的。例如 `PostActions` 不能为空，要写 `"None"`、`"ExitEmulator"` 这类名字；任何一个字段解析失败，MAA 就整份改用 `gui.new.json.bak`。所以测试配置要同时写进 `.json` 和 `.json.bak`；只在 MAA 关闭时改，因为它退出时会把内存里的配置写回文件。
+5. MAA 用 Windows 的按账号加密保存密钥，复制到 blender 账号后解不开，日志会报“加解密失败”“Token 无效”。目前受影响的只有 GitHub Token：检查更新会改用 MAA 自己的源，功能不受影响。
+6. adb 服务（5037）仍由主账号会话里的 adb 持有；两边用的都是 `D:\leidian\LDPlayer9\adb.exe`，版本相同，可以共用。不要换别的 adb，不同版本的客户端会把服务端重启掉。
+7. 模拟器控制命令：
+   - `ldconsole.exe list2` 列出实例；
+   - `isrunning --index 0` 查看是否在运行；
+   - `quit --index 0` 关闭实例；
+   - `adb -s emulator-5554 shell getprop sys.boot_completed` 查看安卓是否开机完成。
+
+## 7. exec 调用时长
+
+- 本会话内置的 exec 工具（`mcp__exec__*`）单次调用超过约 30 秒就报 “upstream request failed”。2026-11-15 实测：25 秒能返回，33 秒失败。
+- 用仓库里的直接 HTTP 客户端（`execc.py`、`pcx.py`）调用时，50 秒仍能正常返回；上限是 mcp-proxy 的 90 秒。
+- 所以长等待要么用 `pcx.wait_file` 这类直接客户端，要么拆成多次短调用。
+
+## 8. 仓库里的 PC 脚本（`ops/pc/`）
 
 这些脚本取自 exec 工作目录，适合在 PC 上直接调用，用 `powershell.exe -NoProfile -File` 运行：
 

@@ -138,7 +138,7 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 - 活动关数据由 maa-cli 自己从 `api.maa.plus` 热更新，电脑能直连。`maa update`、`maa install`、`maa self update` 要从 GitHub 下载，电脑直连不上 GitHub，不要用。
 - 更新 MaaCore 和基础资源的办法：偶尔用 `--skip-startup-auto-run` 启动一次复制版界面 MAA，等它自动更新完再关掉。它经 blender 账号的系统代理更新，会走 MAA 自己的更新源。更新后要确认 `maa.exe` 还在。
 - 截图走 adb，实测平均 155 ms；界面版用的雷电专用截图接口是 30 ms。慢一些，但不影响使用。
-- 实测：`wake` 两次，54–55 秒到主界面，退出码 0，模拟器已关。`daily` 只做过 `--dry-run`，7 个任务都解析成功，还没有真正跑过。
+- 实测：`wake` 两次，54–55 秒到主界面，退出码 0，模拟器已关。`daily` 在 2026-11-15 19:35 完整跑过一次：剿灭开关、开游戏、EX/S 队列、基建、理智、公招、信用、奖励、识别、森空岛同步都正常，用时 821 秒，退出码 0。
 - 计划任务（blender 账号，“只在用户登录时运行”，2026-11-15 经用户同意创建）：`MAA-cli daily 0000`、`MAA-cli daily 0800`、`MAA-cli daily 1200`，每个都运行 `powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File D:\Projects\maa-cli\run.ps1 -Task daily`。
   - 用一个临时计划任务跑过 `wake`：从计划任务程序启动、会话断开时都正常（53 秒，退出码 0），测完已删除这个临时任务。
   - 第一次真正的 `daily` 是 2026-11-16 0:00，之后要看 `runs.log` 和 `.out` 的汇总确认。

@@ -70,6 +70,7 @@ only_buy_discount = false
 reserve_max_credit = false
 credit_fight = false
 
+# recruit = 限定池活动期间的每日免费单抽：用户自己抽，保持 false（2026-11-15）
 [[tasks]]
 name = "领取奖励"
 type = "Award"

@@ -260,4 +260,8 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 - Blender 插件 Sketchup Importer 0.27（RedHaloStudio，SHA256 与 GitHub 公布的一致），装在 blender 账号的 Blender 5.2 用户插件目录，安装包在 `D:\Blender\Addons\sketchup_importer\`。
   - 插件带 Python 3.13 版本的扩展模块和 SketchUp SDK 的 DLL，能读到 SketchUp 2025.1。
 - 相机和变换的英寸换算由插件处理，结果正确。
-- 坐标离原点很远的模型（地理定位、导入的 DWG）导入后要平移回原点。地理定位的地形和卫星图块要单独放进一个集合并排除。
+- 坐标离原点很远的模型（地理定位、导入的 DWG）导入后要平移回原点。
+- 地理定位有两种物体：
+  - `Location Terrain` 是带高程的 Google 地形，是效果图里的山，要保留并显示；
+  - `Location Snapshot` 是平面卫星图，浮在原坐标 z=0 处，要排除。
+- 检查远景时，相机或视图的远裁剪距离要设到几十千米。2026-11-15 用默认裁剪距离预览，远山被切掉，误判成地形不全。

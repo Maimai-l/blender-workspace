@@ -123,6 +123,9 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 | 启动脚本（源文件 `ops/maa/run.ps1`） | `D:\Projects\maa-cli\run.ps1` |
 | 日志 | `D:\Projects\maa-cli\logs\runs.log`（每次运行一行）、`<时间>-<任务>.out`（任务汇总）、`.err`、`.log`；MaaCore 的详细日志在 `state\debug\asst.log` |
 
+- 数据导出（2026-11-15 起）：`daily` 每次都在最后加跑仓库识别和干员识别，`inventory` 任务只做识别（不消耗任何东西，约 130 秒）。
+  - maa-cli 只把识别结果写进 MaaCore 的 `state\debug\asst.log`。`run.ps1` 跑完后调用 `export_data.py` 取出结果，写到 `D:\Projects\maa-cli\export\depot_<时间>.json`、`operbox_<时间>.json`，并更新 `*_latest.json`。
+  - 格式和界面版的 `data\DepotData.json`、`OperBoxData.json` 相同。首次运行的结果和界面版 12:14 那份逐项一致。
 - 运行：`powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 -Task daily`，`-KeepEmulator` 跑完不关模拟器。
 - 脚本会依次做这些事：开模拟器 → 等安卓开机完成 → 运行 `maa run <任务> --batch` → 关模拟器 → 在 `runs.log` 里记一行。
 - 以下情况脚本拒绝运行，退出码 91–94：

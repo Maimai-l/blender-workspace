@@ -72,3 +72,12 @@ credit_fight = false
 name = "领取奖励"
 type = "Award"
 params = { award = true, mail = false, recruit = false, orundum = false, mining = false, specialaccess = false, signinevent = false }
+
+# Replaces the GUI's "更新数据" (UserDataUpdate, every run): run.ps1 exports the results to D:\Projects\maa-cli\export
+[[tasks]]
+name = "仓库识别"
+type = "Depot"
+
+[[tasks]]
+name = "干员识别"
+type = "OperBox"

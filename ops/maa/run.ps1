@@ -56,6 +56,8 @@ try {
     Say ("emulator ready ({0})" -f $(if ($started) { "started" } else { "was running" }))
 
     $maaLog = "$Logs\$stamp-$Task.log"
+    $asst = "$Root\state\debug\asst.log"
+    $offset = 0; if (Test-Path $asst) { $offset = (Get-Item $asst).Length }
     # Start-Process keeps maa's stderr out of PowerShell's error stream (PS 5.1 wraps every stderr line of a
     # native command as an error record); stdout holds the task summary, stderr the diagnostics.
     $p = Start-Process -FilePath $Maa -ArgumentList @("run", $Task, "--batch", "--log-file=$maaLog") -NoNewWindow -Wait -PassThru `
@@ -63,6 +65,11 @@ try {
     $code = $p.ExitCode
 
     if (-not $KeepEmulator) { & "$LD\ldconsole.exe" quit --index 0 | Out-Null }
+    # Depot / OperBox results only exist in MaaCore's log: export them as JSON (same format as the GUI's data\)
+    if (Test-Path $asst) {
+        $py = "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe"
+        & $py "$Root\export_data.py" $asst $offset "$Root\export" 2>&1 | ForEach-Object { Say "export: $_" }
+    }
     Say ("maa exit {0} after {1:n0} s; log {2}" -f $code, ((Get-Date) - $t0).TotalSeconds, $maaLog)
     exit $code
 }

@@ -1,0 +1,13 @@
+# Refresh the operator box and depot only (spends nothing). run.ps1 exports both to D:\Projects\maa-cli\export.
+[[tasks]]
+name = "开始唤醒"
+type = "StartUp"
+params = { client_type = "Official", start_game_enabled = true }
+
+[[tasks]]
+name = "仓库识别"
+type = "Depot"
+
+[[tasks]]
+name = "干员识别"
+type = "OperBox"

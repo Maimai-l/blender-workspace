@@ -7,6 +7,7 @@
 import { createClient } from 'skland-kit'
 import fsDriver from 'unstorage/drivers/fs'
 import { writeFileSync, mkdirSync, copyFileSync } from 'node:fs'
+import { createHmac, createHash } from 'node:crypto'
 
 const STORE = process.env.SKLAND_STORE || 'C:/Users/blender/.skland/store'
 const EXPORT = 'D:/Projects/maa-cli/export'
@@ -29,6 +30,25 @@ async function withAuth(fn) {
   }
 }
 
+// /api/v1/game/cultivate/player rejects skland-kit's default signature (401). Sign it the way RIIC-Web does
+// (packages/platform-server/src/skland/credential.ts, mowerSklandSignedHeaders): empty dId/platform/vName.
+async function cultivate(uid) {
+  const cred = await client.storage.getItem('skland:cred')
+  const token = await client.storage.getItem('skland:token')
+  const path = '/api/v1/game/cultivate/player', query = new URLSearchParams({ uid }).toString()
+  const timestamp = String(Math.floor((Date.now() - 2000) / 1000))
+  const sig = { platform: '', timestamp, dId: '', vName: '' }
+  const hmac = createHmac('sha256', String(token)).update(`${path}${query}${timestamp}${JSON.stringify(sig)}`, 'utf8').digest('hex')
+  const res = await fetch(`https://zonai.skland.com${path}?${query}`, {
+    headers: { cred: String(cred), 'user-agent': 'Skland/1.53.0 (com.hypergryph.skland; build:105300018; Android 31; ) Okhttp/4.11.0',
+      'accept-encoding': 'gzip', ...sig, sign: createHash('md5').update(hmac, 'utf8').digest('hex') },
+    signal: AbortSignal.timeout(30000),
+  })
+  const body = await res.json()
+  if (!res.ok || Number(body?.code) !== 0) throw new Error(`cultivate ${res.status} code ${body?.code} ${body?.message ?? ''}`)
+  return body
+}
+
 function save(kind, data) {
   const p = `${EXPORT}/skland_${kind}_${stamp}.json`
   writeFileSync(p, JSON.stringify({ syncTime: new Date().toISOString(), data }, null, 1))
@@ -49,7 +69,7 @@ try {
   const rooms = info?.building ? Object.keys(info.building).length : 0
   console.log(`info: ${chars} operators, building sections ${rooms} -> ${p1}`)
   try {
-    const cult = await withAuth(() => client.$fetch('/api/v1/game/cultivate/player', { query: { uid: role.uid } }))
+    const cult = await withAuth(() => cultivate(role.uid))
     const p2 = save('cultivate', cult?.data ?? cult)
     console.log(`cultivate -> ${p2}`)
   } catch (e) { console.log('cultivate failed:', String(e?.message || e).slice(0, 150)) }

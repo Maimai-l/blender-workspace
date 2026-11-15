@@ -70,6 +70,13 @@ try {
         $py = "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe"
         & $py "$Root\export_data.py" $asst $offset "$Root\export" 2>&1 | ForEach-Object { Say "export: $_" }
     }
+    # Skland: skills, mastery, modules, base layout and the full inventory (arknights/skland/sync.mjs).
+    # Exit 3 means the saved login is gone and a new QR login (login.mjs) is needed.
+    if (Test-Path "D:\Projects\skland\sync.mjs") {
+        Push-Location "D:\Projects\skland"
+        & "D:\Program Files\node.exe" sync.mjs 2>&1 | ForEach-Object { Say "skland: $_" }
+        Pop-Location
+    }
     Say ("maa exit {0} after {1:n0} s; log {2}" -f $code, ((Get-Date) - $t0).TotalSeconds, $maaLog)
     exit $code
 }

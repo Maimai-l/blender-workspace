@@ -144,6 +144,22 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
   - 第一次真正的 `daily` 是 2026-11-16 0:00，之后要看 `runs.log` 和 `.out` 的汇总确认。
   - 电脑重启后要有人登录一次 blender 账号，否则这些任务和 MCP 服务一样都不会运行。
 
+### 森空岛同步（2026-11-15 起，用户明确同意 exec 为此联网）
+
+- 位置：`D:\Projects\skland\`（`npm install skland-kit@0.3.5 qrcode@1.5.4`，脚本源文件在 `arknights/skland/`）。
+  - 凭证在 blender 账号自己的 `C:\Users\blender\.skland\store`：森空岛的 cred/token，以及鹰角登录凭证 `hg:oauth`。凭证只留在电脑上，不进仓库、不传到云端会话。
+- `node login.mjs`：生成 `D:\Projects\skland\qr.png`，用户用森空岛 App 扫码确认，3 分钟内有效；进度写在 `login.status`。
+  - 二维码只在电脑上打开，不发到对话里。
+  - 2026-11-15 已登录，角色“吉尔伽美什”。
+- `node sync.mjs`：导出到 `D:\Projects\maa-cli\export\`。
+  - `skland_info_*.json`：干员的技能等级、专精、模组，基建各设施（等级、驻扎干员、心情、无人机），以及肉鸽、剿灭、日常等；
+  - `skland_cultivate_*.json`：库存，109 种物品，比 MAA 仓库识别的 82 种更全。
+  - 森空岛凭证失效时，会用 `hg:oauth` 重新换取；这一步也失败就退出码 3，需要重新扫码。
+  - 库存接口不接受 skland-kit 的默认签名，会返回 401，所以 `sync.mjs` 按 RIIC-Web 的 `mowerSklandSignedHeaders` 单独签名。
+- `run.ps1` 每次跑完 MAA 后都会运行一次 `sync.mjs`，结果记进 `runs.log`。
+- 交叉核对（2026-11-15）：MAA 的干员识别比森空岛少 2 名，是阿米娅的术师和医疗形态，MAA 不统计；其余 416 名的精英化和等级两边完全一致。
+- 基建现状（森空岛）：控制中枢 5 级、发电站 3 个、贸易站 2 个、制造站 4 个（都是 3 级），即 243 布局；宿舍 4 个。
+
 ### 2026-11-15 状态（界面版）
 
 - 复制版放在 `D:\Projects\MAA`（v6.22，由 `D:\Program Files\MAA-v6.18.0-win-x64` 复制而来，blender 账号可写）。

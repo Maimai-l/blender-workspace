@@ -10,7 +10,7 @@ type = "Infrast"
 [tasks.params]
 mode = 0
 facility = ["Mfg", "Trade", "Power", "Control", "Reception", "Office", "Dorm", "Processing", "Training", "AssistantChange"]
-drones = "_NotUse"   # 2026-11-15: saving drones for the 243 -> 333 rebuild (190 needed); back to "Money" afterwards
+drones = "Money"
 threshold = 0.3
 replenish = true
 dorm_notstationed_enabled = true

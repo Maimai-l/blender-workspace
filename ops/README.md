@@ -114,6 +114,8 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 
 ## 6. MAA 与雷电模拟器（迁移到 blender 账号）
 
+> 托管流程的总览和当前状态见 `ops/maa/README.md`，改流程时先更新那份。本节保留迁移过程和排查细节。
+
 ### maa-cli（托管用，2026-11-15 起）
 
 | 内容 | 位置 |

@@ -1,0 +1,260 @@
+{
+  "title": "333 · 2 赤金 1 经验（两班）",
+  "description": "由 arknights/analysis 生成：RIIC 评估器打分的本地搜索结果",
+  "plans": [
+    {
+      "name": "班次A",
+      "description": "333 · 2 赤金 1 经验；评估器日产（本班 24h 口径）龙门币 79,862",
+      "period": [
+        [
+          "00:00",
+          "11:59"
+        ]
+      ],
+      "drones": {
+        "enable": true,
+        "room": "trading",
+        "index": 1,
+        "order": "pre"
+      },
+      "rooms": {
+        "control": [
+          {
+            "operators": [
+              "麒麟R夜刀",
+              "火龙S黑角",
+              "焰狐龙梓兰",
+              "重岳",
+              "艾拉"
+            ]
+          }
+        ],
+        "meeting": [
+          {
+            "operators": [
+              "赤刃明霄陈",
+              "见行者"
+            ]
+          }
+        ],
+        "hire": [
+          {
+            "operators": [
+              "地灵"
+            ]
+          }
+        ],
+        "trading": [
+          {
+            "operators": [
+              "巫恋",
+              "龙舌兰",
+              "柏喙"
+            ],
+            "sort": false
+          },
+          {
+            "operators": [
+              "能天使",
+              "蕾缪安",
+              "伺夜"
+            ],
+            "sort": false
+          },
+          {
+            "operators": [
+              "孑",
+              "银灰",
+              "可露希尔"
+            ],
+            "sort": false
+          }
+        ],
+        "manufacture": [
+          {
+            "operators": [
+              "夜烟",
+              "淬羽赫默",
+              "砾"
+            ],
+            "product": "Pure Gold"
+          },
+          {
+            "operators": [
+              "斑点",
+              "玛露西尔",
+              "苍苔"
+            ],
+            "product": "Pure Gold"
+          },
+          {
+            "operators": [
+              "温蒂",
+              "森蚺",
+              "承曦格雷伊"
+            ],
+            "product": "Battle Record"
+          }
+        ],
+        "power": [
+          {
+            "operators": [
+              "烛煌"
+            ]
+          },
+          {
+            "operators": [
+              "澄闪"
+            ]
+          },
+          {
+            "operators": [
+              "格雷伊"
+            ]
+          }
+        ],
+        "dormitory": [
+          {
+            "autofill": true
+          },
+          {
+            "autofill": true
+          },
+          {
+            "autofill": true
+          },
+          {
+            "autofill": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "班次B",
+      "description": "333 · 2 赤金 1 经验；评估器日产（本班 24h 口径）龙门币 70,726",
+      "period": [
+        [
+          "12:00",
+          "23:59"
+        ]
+      ],
+      "drones": {
+        "enable": true,
+        "room": "trading",
+        "index": 1,
+        "order": "pre"
+      },
+      "rooms": {
+        "control": [
+          {
+            "operators": [
+              "麒麟R夜刀",
+              "火龙S黑角",
+              "焰狐龙梓兰",
+              "重岳",
+              "艾拉"
+            ]
+          }
+        ],
+        "meeting": [
+          {
+            "operators": [
+              "赤刃明霄陈",
+              "见行者"
+            ]
+          }
+        ],
+        "hire": [
+          {
+            "operators": [
+              "地灵"
+            ]
+          }
+        ],
+        "trading": [
+          {
+            "operators": [
+              "冻河",
+              "空弦",
+              "芬"
+            ],
+            "sort": false
+          },
+          {
+            "operators": [
+              "空爆",
+              "月见夜",
+              "慕斯"
+            ],
+            "sort": false
+          },
+          {
+            "operators": [
+              "安比尔",
+              "夜刀",
+              "古米"
+            ],
+            "sort": false
+          }
+        ],
+        "manufacture": [
+          {
+            "operators": [
+              "水月",
+              "杰西卡",
+              "香草"
+            ],
+            "product": "Pure Gold"
+          },
+          {
+            "operators": [
+              "多萝西",
+              "白面鸮",
+              "阿罗玛"
+            ],
+            "product": "Pure Gold"
+          },
+          {
+            "operators": [
+              "酒神",
+              "食铁兽",
+              "霜叶"
+            ],
+            "product": "Battle Record"
+          }
+        ],
+        "power": [
+          {
+            "operators": [
+              "天空盒"
+            ]
+          },
+          {
+            "operators": [
+              "雷蛇"
+            ]
+          },
+          {
+            "operators": [
+              "阿消"
+            ]
+          }
+        ],
+        "dormitory": [
+          {
+            "autofill": true
+          },
+          {
+            "autofill": true
+          },
+          {
+            "autofill": true
+          },
+          {
+            "autofill": true
+          }
+        ]
+      }
+    }
+  ]
+}

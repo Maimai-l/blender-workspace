@@ -10,7 +10,13 @@ params = { client_type = "Official", start_game_enabled = true }
 name = "基建换班"
 type = "Infrast"
 [tasks.params]
-mode = 0
+# 2026-11-16: custom two-shift plan for the 333 layout (arknights/analysis optimize.py + make_maa_json.py,
+# RIIC evaluator: about 75.3k LMD/day on average). Shift A 00:00-11:59, shift B 12:00-23:59; the runs at 0:00 and
+# 8:00 apply A, 12:00 applies B (maa-cli ignores the plan's "period", so the variants below pick plan_index).
+# Back to MAA's own algorithm: mode = 0 and drop filename / plan_index / the variants.
+mode = 10000
+filename = 'D:\Projects\maa-cli\config\infrast\333_两班.json'
+plan_index = 0
 facility = ["Mfg", "Trade", "Power", "Control", "Reception", "Office", "Dorm", "Processing", "Training", "AssistantChange"]
 drones = "Money"
 threshold = 0.3
@@ -26,6 +32,14 @@ use_pinus_sylvestris = false
 use_perception_information = false
 use_worldly_plight = false
 use_abyssal_hunter = false
+
+[[tasks.variants]]
+condition = { type = "Time", start = "00:00:00", end = "11:59:59" }
+params = { plan_index = 0 }
+
+[[tasks.variants]]
+condition = { type = "Time", start = "12:00:00", end = "23:59:59" }
+params = { plan_index = 1 }
 
 # >>> annihilation  (annihilation_gate.py comments this block out while the weekly reward is full)
 [[tasks]]

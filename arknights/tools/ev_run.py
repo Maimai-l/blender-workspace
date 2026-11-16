@@ -24,6 +24,10 @@ SHOT = ROOT + r'\state\ev_screen.png'
 DONE = ROOT + r'\state\ev_done.json'
 FAIL = ROOT + r'\state\ev_fail.json'           # failures per entry; an entry is skipped after 2
 os.environ.setdefault('AGENT_OCR_PORT', '8767')        # 8765/8766 are the panel and the agent
+os.environ.setdefault('AGENT_OCR_DEVICE', 'cpu')        # GPU onnxruntime commits ~3.6 GB; CPU is enough for game screens
+MIN_FREE_COMMIT_GB = 6     # skip copilots while Windows is short of memory (MAA aborts mid-battle on a failed screenshot)
+ENEMY_BOX = (640, 10, 800, 64)   # device pixels: battle top bar, enemy counter "k/n" (seen at x 678-769)
+LIVES_BOX = (905, 10, 1000, 64)  # life counter right of the tower icon (seen at x 938-959)
 for k in ('CONFIG', 'STATE', 'CACHE', 'DATA'):
     os.environ['MAA_%s_DIR' % k] = ROOT + '\\' + k.lower()
 
@@ -82,6 +86,107 @@ def ocr(min_score=0.6):
     return [(it['text'], tuple(it['center'])) for it in j['items']]
 
 
+def free_commit_gb():
+    """Commit charge still available (GB): what Windows can still hand out before allocations fail."""
+    import ctypes
+
+    class MS(ctypes.Structure):
+        _fields_ = [('dwLength', ctypes.c_ulong), ('dwMemoryLoad', ctypes.c_ulong), ('ullTotalPhys', ctypes.c_ulonglong),
+                    ('ullAvailPhys', ctypes.c_ulonglong), ('ullTotalPageFile', ctypes.c_ulonglong),
+                    ('ullAvailPageFile', ctypes.c_ulonglong), ('ullTotalVirtual', ctypes.c_ulonglong),
+                    ('ullAvailVirtual', ctypes.c_ulonglong), ('ullAvailExtendedVirtual', ctypes.c_ulonglong)]
+    m = MS(); m.dwLength = ctypes.sizeof(MS)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+    return m.ullAvailPageFile / 2**30
+
+
+def _ocr_crop(img, box, name):
+    path = SHOT.replace('.png', '_%s.png' % name)
+    w, h = box[2] - box[0], box[3] - box[1]
+    img.crop(box).resize((w * 2, h * 2)).save(path)
+    r = subprocess.run(OCR + ['--image', path, '--min-score', '0.5'], capture_output=True, timeout=120)
+    try:
+        return [it['text'].replace(' ', '') for it in json.loads(r.stdout.decode('utf-8'))['items']]
+    except Exception:
+        return []
+
+
+def lives():
+    """The life counter in the battle top bar, or None. Only trusted when the enemy counter "k/n" is also on
+    screen (so formation and loading screens never give a false starting value)."""
+    from PIL import Image
+    with open(SHOT, 'wb') as f:
+        f.write(adb('exec-out', 'screencap', '-p').stdout)
+    img = Image.open(SHOT)
+    if not any(re.fullmatch(r'\d{1,3}/\d{1,3}', t) for t in _ocr_crop(img, ENEMY_BOX, 'enemy')):
+        return None
+    nums = [t for t in _ocr_crop(img, LIVES_BOX, 'lives') if re.fullmatch(r'\d{1,2}', t)]
+    return int(nums[0]) if nums else None
+
+
+def in_battle(items):
+    return any(k in norm(t) for t, _ in items for k in ('PAUSE', '暂停中', '剩余可放置角色'))
+
+
+# Leaving a battle, as observed on this account (2026-11-16): the gear [MAA: LeaveOperation, ROI 41,22,78,71 at
+# 1280x720 -> about (100, 72) here] opens the dialog "放弃行动将会恢复N理智（全部返还） / 是否放弃行动？" with
+# buttons 返回 / 放弃行动 (lower right); then "任务失败 ... 点击画面以继续"; then the result screen "理智返还 N".
+# (MAA's JieGarden give-up chain uses other ROIs: that dialog belongs to the roguelike UI.)
+GEAR = (100, 72)
+
+
+def _lowest(items, key):
+    hits = [(c[1], c) for t, c in items if norm(key) in norm(t)]
+    return max(hits)[1] if hits else None
+
+
+def abandon_battle():
+    """Leave a running battle. Abandoning refunds all the sanity (a 2-star clear refunds nothing)."""
+    left = False
+    for _ in range(6):
+        items = ocr(0.5)
+        if find(items, '是否放弃行动'):
+            tap(*_lowest(items, '放弃行动'), wait=5)
+            left = True
+        elif find(items, '任务失败') or find(items, '点击画面以继续') or find(items, '理智返还'):
+            tap(800, 450, wait=4)
+            left = True
+        elif in_battle(items):
+            tap(*GEAR, wait=2)
+        else:
+            return left or True
+    say('could not leave the battle')
+    return False
+
+
+def run_copilot(cid, mode, log):
+    """Run maa copilot while watching the life counter. A leak means no 3 stars (and a 2-star clear refunds
+    nothing), so on two consecutive readings below the starting value maa is stopped and the battle abandoned."""
+    p = subprocess.Popen([MAA, 'copilot', 'prts://%d' % cid, '--formation', '--raid', mode, '--log-file=' + log],
+                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    start, low, t0 = None, 0, time.time()
+    while p.poll() is None and time.time() - t0 < 1800:
+        time.sleep(3)
+        try:
+            n = lives()
+        except Exception:
+            n = None
+        if n is None:
+            continue
+        if start is None or n > start:
+            start = n
+        low = low + 1 if n < start else 0
+        if low >= 2:
+            p.kill(); p.wait()
+            say('leak detected (lives %d -> %d): abandoning so the sanity is refunded' % (start, n))
+            abandon_battle()
+            return 'leak'
+    if p.poll() is None:
+        p.kill(); p.wait()
+    out = p.stdout.read().decode('utf-8', 'replace')
+    return 'ok' if p.returncode == 0 and 'Completed' in out else 'error'
+
+
 def norm(s):
     return re.sub(r'\s', '', s).upper().replace('一', '-').replace('—', '-').replace('_', '-')
 
@@ -97,6 +202,9 @@ def find(items, key, exact=False):
 def go_home():
     for _ in range(6):
         items = ocr()
+        if in_battle(items):
+            abandon_battle()
+            continue
         if find(items, '仓库') and find(items, '理智/'):      # the quick menu also shows 终端/采购中心
             return
         if find(items, '首页'):
@@ -170,17 +278,26 @@ def main():
         if dry:
             say('dry run: not fighting')
             break
-        p = subprocess.run([MAA, 'copilot', 'prts://%d' % cid, '--formation', '--raid', mode,
-                            '--log-file=%s\\logs\\%s-ev.log' % (ROOT, time.strftime('%Y%m%d-%H%M%S'))],
-                           capture_output=True, timeout=1800)
-        out = p.stdout.decode('utf-8', 'replace')
-        ok = p.returncode == 0 and 'Completed' in out
-        say('%s copilot %d: exit %d %s' % (key, cid, p.returncode, 'ok' if ok else 'FAILED'))
-        if not ok:
+        if free_commit_gb() < MIN_FREE_COMMIT_GB:
+            say('only %.1f GB of memory left (Blender or another program holds it); copilots wait for the next run' % free_commit_gb())
+            break
+        res = 'error'
+        for attempt in (1, 2):                       # a failed screenshot or a leak is usually a one-off: retry once
+            log = '%s\\logs\\%s-ev.log' % (ROOT, time.strftime('%Y%m%d-%H%M%S'))
+            res = run_copilot(cid, mode, log)
+            say('%s copilot %d try %d: %s' % (key, cid, attempt, res))
+            if res == 'ok':
+                break
+            items = ocr()
+            if in_battle(items):
+                abandon_battle()
+            if attempt == 1:
+                open_stage(code, zone)
+        if res != 'ok':
             fail[key] = fail.get(key, 0) + 1
             json.dump(fail, open(FAIL, 'w', encoding='utf-8'), ensure_ascii=False)
             if fail[key] >= 2:
-                say('%s failed twice with copilot %d; skipped from now on (pick another copilot)' % (key, cid))
+                say('%s failed in two runs with copilot %d; skipped from now on (pick another copilot)' % (key, cid))
             break
         done.append(key)
         json.dump(done, open(DONE, 'w', encoding='utf-8'), ensure_ascii=False)
@@ -189,13 +306,21 @@ def main():
     go_home()
 
 
+def stop_ocr():
+    subprocess.run(OCR + ['--stop'], capture_output=True, timeout=30)
+
+
 if __name__ == '__main__':
+    code = 0
     try:
         main()
     except Exception as e:
         say('error: %r' % e)
+        code = 1
         try:
             go_home()
         except Exception:
             adb('shell', 'input', 'keyevent', '4')
-        sys.exit(1)
+    finally:
+        stop_ocr()                                   # the OCR server holds memory; never leave it running
+    sys.exit(code)

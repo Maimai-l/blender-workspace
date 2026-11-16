@@ -185,6 +185,24 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
   - 队列 `QUEUE` 写在脚本里；完成记录在 `state\ev_done.json`，失败计数在 `state\ev_fail.json`，同一项失败 2 次就跳过。
   - `run.ps1` 在 `daily` 里先运行 `maa run wake` 打开游戏，再运行 `ev_run.py`，最后关掉 OCR 服务，释放显存。
 - 突袭由 MaaCore 自己切换（`ChangeToRaidDifficulty`，重复执行也没问题），脚本不用点“突袭”。
+- 2026-11-16 加固（起因见下面的内存问题）：
+  - **漏怪即退**：作业运行时每 3 秒截图，只识别顶栏两小块：敌人计数 `k/n` 和它右边的生命值。认出敌人计数才相信读到的生命值。连续两次低于开局值，就结束 MAA 并放弃这局。规则：放弃会全额退还理智；二星通关不退理智，也拿不到三星首通奖励。
+  - **放弃流程**（实测）：齿轮约在 (100, 72) → 确认框“放弃行动将会恢复N理智（全部返还）/ 是否放弃行动？”，点靠下的“放弃行动” → “任务失败 / 点击画面以继续” → 结算画面“理智返还 N”。MAA 界园的放弃流程用的是集成战略的确认框，位置不同。
+  - 失败后同一关当场重打一次，两次运行都失败才计 1 次失败。
+  - 每次打作业前检查剩余可分配内存（commit），不足 6 GB 这次就先不打。
+  - OCR 服务改用 CPU（`AGENT_OCR_DEVICE=cpu`），每次检查约 1.2 秒。GPU 版仅加载 CUDA 就要占 3.6 GB。`ev_run.py` 退出时一定关掉 OCR 服务。
+
+### 内存不足导致的作业中断（2026-11-15 夜到 11-16）
+- 系统日志 2004（Resource-Exhaustion-Detector）记了多次虚拟内存不足：
+  - Blender 做效果图时占到 56 GB，渲染完仍占着 38 GB；
+  - 模拟器进程占 10–16 GB（设置是 6 GB 内存，进程开得越久占得越多）；
+  - 总上限约 49.7 GB（32 GB 内存加约 18 GB 虚拟内存）。
+- 后果：
+  - MaaCore 截图拿到空图，报 “image is empty / Unhandled out of memory”，作业中断，战斗停在暂停画面；
+  - 显卡驱动超时（LiveKernelEvent 141）；
+  - adb 崩溃，模拟器离线；
+  - 日常的 MAA 卡在暂停画面里等了 3 个多小时。
+- 用户在电脑上做大型渲染后，重启 Blender 能释放内存。日常会检查内存，不够就跳过作业。
 
 ### agent-ocr（屏幕文字识别，2026-11-15 安装）
 - 位置：`D:\Projects\agent-ocr\`，包括 `ocr.py`、`ocr_server.py`、`README.md`（用户提供）、`install.ps1`、`start_ocr.ps1`（这两个的副本在 `ops/pc/agent_ocr_*.ps1`）。

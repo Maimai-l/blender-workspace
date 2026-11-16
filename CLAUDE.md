@@ -3,6 +3,10 @@
 ## 约定
 - 仓库改动默认直接提交并推送到 `main` 分支（用户已明确授权），不另开分支，也不建 PR。
 - 工作文件存到 `D:\Blender\Projects\<项目>\`，保存时写绝对路径。C 盘是系统盘，大文件不要放 C 盘。
+- 随时保存，不要只留在内存里（用户 2026-11-17 的要求）。电脑可能被重启，会话也可能被暂停或打断：
+  - Blender 每完成一个阶段、开始长任务（渲染、烘焙、大批量生成）之前、被暂停或打断时，都用 `bpy.ops.wm.save_mainfile()` 存到项目文件夹；
+  - Unity 存场景和资源；仓库改动提交并推送。
+  - 2026-11-16 电脑重启，`mana_cafe_work.blend` 一晚上的改动没保存。Blender 虽开着每 2 分钟的自动保存，重启后临时目录里没有留下任何文件，不能指望它。好在改动都能用脚本重新生成。
 - 2026-11-11 把之前的项目都迁到了 D 盘：
   - Blender 项目（`xingyuan`、`qiting`、`awakening`、`awakening2`、`DungeonEscape`、`WordDefense`、`donut`）在 `D:\Blender\Projects\`；
   - Unity 工程（`Dungeon Escape`、`Word Defence`）在 `D:\Unity\Projects\`；

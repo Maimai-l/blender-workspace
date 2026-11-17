@@ -220,16 +220,34 @@ PALETTE = {
     'taupe': (0.150, 0.125, 0.100), 'slate': (0.060, 0.075, 0.090), 'umber': (0.115, 0.058, 0.036),
 }
 
-# (name, kind, colour, fabric scan, u, v, yaw offset deg, sitter offset, sitter size)  -- local terrace coordinates;
-# all look towards the peaks (-u). Round bags are 1.35 m across, loungers 1.45 x 1.9 m: the real things.
+# (name, kind, colour, fabric scan, u, v, yaw offset deg, sitter offset, sitter size)  -- building-local coordinates.
+# They lie on the balcony: the open loggia along the west side of the cafe (deck at z = 0.60, u -6.9..-3.5), in two
+# loose groups, all looking out at the peaks (-u). Round bags are 1.35 m across, loungers 1.45 x 1.9 m.
+DECK_Z = 0.60
 LAYOUT = [
-    ('BAG_1', 'round', 'stone', 'wool', -3.5, 14.0, 10.0, (0.0, -0.12, 0.33), (0.31, 0.29, 0.20)),
-    ('BAG_2', 'round', 'umber', 'wool', -1.3, 15.1, -16.0, (0.03, -0.10, 0.36), (0.30, 0.28, 0.20)),
-    ('BAG_3', 'long', 'slate', 'furniture_fabric', 2.1, 14.4, 14.0, (-0.02, -0.26, 0.28), (0.32, 0.32, 0.19)),
-    ('BAG_4', 'round', 'olive', 'wool', 4.9, 13.3, -8.0, (0.0, -0.11, 0.34), (0.31, 0.28, 0.21)),
-    ('BAG_5', 'round', 'charcoal', 'wool', 6.4, 10.6, 30.0, (-0.04, -0.12, 0.31), (0.31, 0.29, 0.20)),
-    ('BAG_6', 'long', 'taupe', 'wool', -5.6, 12.3, -22.0, (0.04, -0.28, 0.29), (0.32, 0.31, 0.18)),
+    ('BAG_1', 'round', 'stone', 'wool', -5.3, 7.2, 10.0, (0.0, -0.12, 0.33), (0.31, 0.29, 0.20)),
+    ('BAG_2', 'round', 'umber', 'wool', -4.6, 5.3, -16.0, (0.03, -0.10, 0.36), (0.30, 0.28, 0.20)),
+    ('BAG_3', 'long', 'slate', 'furniture_fabric', -5.5, 2.4, 14.0, (-0.02, -0.26, 0.28), (0.32, 0.32, 0.19)),
+    ('BAG_4', 'round', 'olive', 'wool', -4.9, -2.6, -8.0, (0.0, -0.11, 0.34), (0.31, 0.28, 0.21)),
+    ('BAG_5', 'round', 'charcoal', 'wool', -5.6, -4.5, 22.0, (-0.04, -0.12, 0.31), (0.31, 0.29, 0.20)),
+    ('BAG_6', 'long', 'taupe', 'wool', -4.8, -7.3, -18.0, (0.04, -0.28, 0.29), (0.32, 0.31, 0.18)),
 ]
+
+
+def arrange():
+    """Move the simulated bags to their LAYOUT places (no new simulation)."""
+    out = []
+    for name, kind, cname, fkey, u, v, yaw, sit, ssize in LAYOUT:
+        o = bpy.data.objects.get(name)
+        if o is None:
+            continue
+        x, y = mc_site.to_world(u, v)
+        face = math.degrees(mc_site.ROT) + 180.0
+        o.rotation_euler = (0, 0, math.radians(face + 90.0 + yaw))
+        zmin = min(c[2] for c in o.bound_box)
+        o.location = (x, y, DECK_Z + 0.004 - zmin)
+        out.append((name, round(u, 1), round(v, 1)))
+    return out
 
 
 def build(only=None):
@@ -246,7 +264,7 @@ def build(only=None):
         # the bag's own +y is where the sitter's back was; it should look towards -u (the view)
         face = math.degrees(mc_site.ROT) + 180.0           # world azimuth of local -u
         o.rotation_euler = (0, 0, math.radians(face + 90.0 + yaw))
-        o.location = (x, y, mc_site.Z_T + 0.018 - dims[0])
+        o.location = (x, y, DECK_Z + 0.004 - dims[0])
         sub = o.modifiers.new('sub', 'SUBSURF')
         sub.levels = 1
         sub.render_levels = 2

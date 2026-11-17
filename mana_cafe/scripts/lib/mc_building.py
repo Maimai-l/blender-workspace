@@ -200,7 +200,7 @@ def solar(name='Asphalt_02_1K', obj='G-Object.165', nx=15, ny=2):
     edge = 0.06                                   # bare roof margin round the array
     pa = (a1 - a0 - 2 * edge) / nx               # module pitch
     pb = (slope_len - 2 * edge) / ny
-    gap = 0.018
+    gap = 0.022
     fa = n.math('DIVIDE', n.math('SUBTRACT', n.math('SUBTRACT', a, a0), edge), pa)
     bs = n.math('MULTIPLY', n.math('SUBTRACT', b, b0), slope_len / (b1 - b0))
     fb = n.math('DIVIDE', n.math('SUBTRACT', bs, edge), pb)
@@ -214,7 +214,7 @@ def solar(name='Asphalt_02_1K', obj='G-Object.165', nx=15, ny=2):
     eb = n.math('MINIMUM', n.math('SUBTRACT', mb, gap / 2), n.math('SUBTRACT', pb - gap / 2, mb))
     em = n.math('MINIMUM', ea, eb)
     is_gap = n.math('LESS_THAN', em, 0.0)
-    frame_w = 0.012
+    frame_w = 0.030                               # anodised frame (drawn a little wide: it must survive 2 cm pixels)
     is_frame = n.math('MULTIPLY', n.math('GREATER_THAN', em, 0.0), n.math('LESS_THAN', em, frame_w))
     # cells: 6 across, 24 half-cells down, 2.2 mm gaps, a wider gap at mid height
     lam_a, lam_b = wa - 2 * frame_w - 0.016, wb - 2 * frame_w - 0.020
@@ -222,8 +222,8 @@ def solar(name='Asphalt_02_1K', obj='G-Object.165', nx=15, ny=2):
     cb = n.math('DIVIDE', n.math('SUBTRACT', mb, gap / 2 + frame_w + 0.010), lam_b / 24)
     ca_f = n.math('MULTIPLY', n.math('ABSOLUTE', n.math('SUBTRACT', n.math('FRACT', ca), 0.5)), lam_a / 6)
     cb_f = n.math('MULTIPLY', n.math('ABSOLUTE', n.math('SUBTRACT', n.math('FRACT', cb), 0.5)), lam_b / 24)
-    cell_gap = n.math('MAXIMUM', n.math('GREATER_THAN', ca_f, lam_a / 12 - 0.0012),
-                      n.math('GREATER_THAN', cb_f, lam_b / 48 - 0.0011))
+    cell_gap = n.math('MAXIMUM', n.math('GREATER_THAN', ca_f, lam_a / 12 - 0.0045),
+                      n.math('GREATER_THAN', cb_f, lam_b / 48 - 0.0035))        # the white grid between the cells
     mid = n.math('LESS_THAN', n.math('ABSOLUTE', n.math('SUBTRACT', cb, 12.0)), 0.07)
     lam_out = n.math('MAXIMUM', n.math('MAXIMUM', n.math('LESS_THAN', ca, 0.0), n.math('GREATER_THAN', ca, 6.0)),
                      n.math('MAXIMUM', n.math('LESS_THAN', cb, 0.0), n.math('GREATER_THAN', cb, 24.0)))
@@ -235,9 +235,9 @@ def solar(name='Asphalt_02_1K', obj='G-Object.165', nx=15, ny=2):
     crnd = n.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D', inputs={'W': cell_id}).outputs['Value']
     mrnd = n.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D',
                   inputs={'W': n.math('ADD', n.math('MULTIPLY', ia, 13.0), n.math('MULTIPLY', ib, 71.0))}).outputs['Value']
-    cell = n.mix(crnd, (0.006, 0.009, 0.022, 1), (0.011, 0.016, 0.040, 1))          # blue-black silicon
+    cell = n.mix(crnd, (0.004, 0.006, 0.013, 1), (0.008, 0.011, 0.026, 1))          # blue-black monocrystalline silicon
     cell = n.mix(n.math('MULTIPLY', bus, 0.45), cell, (0.30, 0.31, 0.33, 1))
-    lam = n.mix(backsheet, cell, (0.50, 0.51, 0.53, 1))
+    lam = n.mix(backsheet, cell, (0.62, 0.63, 0.65, 1))
     # dust and water marks: a film over everything, thicker towards the lower frame of each module
     npos = n.node('ShaderNodeVectorMath', operation='SCALE', inputs={0: tc.outputs['Object'], 'Scale': 1.0}).outputs[0]
     d1 = n.noise(npos, 2.2, 5, 0.6).outputs['Fac']
@@ -246,11 +246,11 @@ def solar(name='Asphalt_02_1K', obj='G-Object.165', nx=15, ny=2):
     dust = n.math('ADD', n.math('MULTIPLY', n.smooth(d1, 0.35, 0.8), 0.10), n.math('MULTIPLY', low, n.math('ADD', 0.10, n.math('MULTIPLY', d2, 0.22))))
     dust = n.math('ADD', dust, n.math('MULTIPLY', mrnd, 0.03))
     lam = n.mix(dust, lam, (0.33, 0.29, 0.24, 1))
-    glass_r = n.math('ADD', 0.035, n.math('MULTIPLY', dust, 0.55))
+    glass_r = n.math('ADD', 0.20, n.math('MULTIPLY', dust, 0.45))      # textured, anti-reflection solar glass: no mirror
     glass = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': lam, 'Roughness': 0.45, 'Specular IOR Level': 0.0,
-                                                       'Coat Weight': 1.0, 'Coat Roughness': glass_r, 'Coat IOR': 1.47,
+                                                       'Coat Weight': 0.5, 'Coat Roughness': glass_r, 'Coat IOR': 1.25,
                                                        'Coat Tint': (0.80, 0.88, 1.0, 1)})
-    frame = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': (0.72, 0.73, 0.75, 1), 'Metallic': 1.0,
+    frame = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': (0.80, 0.81, 0.83, 1), 'Metallic': 0.85,
                                                        'Roughness': n.math('ADD', 0.30, n.math('MULTIPLY', d2, 0.2))})
     gapb = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': (0.02, 0.02, 0.02, 1), 'Roughness': 0.8})
     roofb = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': (0.05, 0.05, 0.055, 1), 'Roughness': 0.7})
@@ -401,9 +401,33 @@ def door_frame(name='Door frame (added)'):
     return o
 
 
+def plinth(name='[Color C04]'):
+    """The stone base of the model keeps its own stone texture; its tone is brought down to the local rock and the
+    dry-stone wall beside it (the image is a pale stock texture), and it loses its plastic sheen."""
+    m = bpy.data.materials.get(name)
+    if m is None or not m.use_nodes:
+        return
+    t = m.node_tree
+    bs = next((x for x in t.nodes if x.type == 'BSDF_PRINCIPLED'), None)
+    if bs is None or not bs.inputs['Base Color'].is_linked:
+        return
+    src = bs.inputs['Base Color'].links[0].from_socket
+    if src.node.name == 'MC_plinth_hsv':
+        return
+    hs = t.nodes.new('ShaderNodeHueSaturation')
+    hs.name = 'MC_plinth_hsv'
+    hs.inputs['Saturation'].default_value = 0.7
+    hs.inputs['Value'].default_value = 0.42
+    t.links.new(src, hs.inputs['Color'])
+    t.links.new(hs.outputs[0], bs.inputs['Base Color'])
+    bs.inputs['Roughness'].default_value = 0.9
+    bs.inputs['Specular IOR Level'].default_value = 0.25
+
+
 def apply():
     corten()
     door_frame()
+    plinth()
     planks()
     solar()
     glass()

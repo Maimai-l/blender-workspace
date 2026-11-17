@@ -5,4 +5,7 @@ import mc_core, mc_site, mc_fab, mc_beanbag
 for m in (mc_core, mc_site, mc_fab, mc_beanbag): importlib.reload(m)
 print(bpy.data.filepath, len(bpy.data.objects))
 t0 = time.time()
-print(mc_beanbag.build(only=globals().get('ONLY')), '%.1fs' % (time.time() - t0))
+if globals().get('ARRANGE'):
+    print(mc_beanbag.arrange())
+else:
+    print(mc_beanbag.build(only=globals().get('ONLY')), '%.1fs' % (time.time() - t0))

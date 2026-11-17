@@ -120,9 +120,11 @@ def camera(name='CAM_final', loc=None, az=None, pitch=None, lens=None, fstop=Non
     return o
 
 
-def grade(sat=0.82, wb=(0.975, 1.0, 1.035), curve=((0.0, 0.0), (0.08, 0.045), (0.2, 0.14), (0.5, 0.5), (1.0, 1.0))):
+def grade(sat=0.82, wb=(0.975, 1.0, 1.035),
+          curve=((0.0, 0.0), (0.008, 0.013), (0.03, 0.030), (0.08, 0.060), (0.2, 0.155), (0.5, 0.5), (1.0, 1.0))):
     """Picture grade, kept inside the file: a compositor chain in scene-linear light (white balance a touch cool,
-    restrained saturation) and a display curve after the view transform. Returns a description of what was set."""
+    restrained saturation) and a tone curve (Blender applies it to scene-linear values, before the view transform):
+    it deepens the lower mid-tones for a dark foreground and keeps the deepest shadows open. Returns what was set."""
     sc = bpy.context.scene
     done = []
     try:

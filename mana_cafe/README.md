@@ -21,6 +21,13 @@ SketchUp model `玛娜茶金总图咖啡厅.skp`. Everything around the building
 
 - **Building**: as modelled. Its materials are rebuilt (`lib/mc_building.py`) and warm lamps are added inside. One
   piece of geometry is added on request: `Door frame (added)`, a steel surround with real depth round the entrance.
+  The roof array is shaded as photovoltaic modules (cells, white grid, frames, matt solar glass), and the stone
+  base keeps its texture at a darker tone.
+- **Site**: no terrace. As in the model, the corten box stands on its recessed stone base and floats 0.42 m above
+  natural ground, which runs up to it on every side (`lib/mc_site.py`). One dry-stone wall holds the shoulder of
+  the gravel track on the entrance side and ends in the slope at both ends; the boardwalk crosses it.
+  The bean bags lie on the balcony (the open loggia along the west side), so the final camera, which looks at the
+  east and north faces, does not see them.
 - **Terrain**: Copernicus 30 m elevation, registered to the SketchUp geo-location (`proc/terrain_lib.py`), with
   synthesised relief and stream-power erosion (`proc/far_build.py`). The ground within 3 km of the cafe is the real
   ridge; beyond 6 km it is the real Yading massif, moved from 30 km to 10.8 km (`proc/composite.py`) so that the
@@ -31,14 +38,14 @@ SketchUp model `玛娜茶金总图咖啡厅.skp`. Everything around the building
   | Asset | Use |
   | --- | --- |
   | Tundra Rocky Ground × 2, Grassy Soil | ground of the first 500 m: box-projected, blended by their height maps; the two 3D ground scans are baked top-down into tiles first (`bake_ground.py`, `proc/fab_seamless.py`) |
-  | Gravel Ground | terrace surface and the rutted track |
+  | Gravel Ground | the rutted track |
   | Wild Grass, Tundra Grass, Tufted Grass, Dry Grass, Yellow Flower | turf between the shrubs, in drifts (`lib/mc_ground.py`) |
   | Dwarf Birch, Dwarf Willow, Lingonberry | the dark low shrub cover |
   | Tundra Boulder × 2, Tundra Stone, Massive Tundra Rock Formation | rock: hand-placed groups in the foreground, rule-based scatter in the middle distance (`lib/mc_rocks.py`) |
-  | Mossy Stone Wall | retaining walls, bent along the terrace outline (`lib/mc_stone.py`) |
+  | Mossy Stone Wall | the retaining wall along the track, bent to its line (`lib/mc_stone.py`) |
   | Worn Wooden Planks | boardwalk |
   | Rusty Metal, Wall Rust Leakage × 2 | corten skin and the streaks below its seams |
-  | Plain Wool Fabric, Furniture Fabric | bean bags (cloth-simulated, `lib/mc_beanbag.py`) |
+  | Plain Wool Fabric, Furniture Fabric | bean bags on the balcony (cloth-simulated, `lib/mc_beanbag.py`) |
   | Granite Cliff | crags on the valley flank, 1.4 km away |
 
   Not used in the final frame: Fresh Snow, Snowy Ground (no snow lies within the first kilometre of this view) and
@@ -46,8 +53,9 @@ SketchUp model `玛娜茶金总图咖啡厅.skp`. Everything around the building
 - **Light and sky**: a sun lamp (azimuth 116°, 28.6° high: a mid-October morning) and a photographed sky. The sky the
   camera sees is graded apart from the sky that lights the scene. Air between camera and mountains is a shader
   (`aerial_group`). Cloud in the valley and on the peak is volumetric (`lib/mc_clouds.py`).
-- **Grade**: in the file: AgX, High Contrast look, a tone curve, and a compositor step (saturation 0.82, slightly
-  cool white balance), set by `lib/mc_light.py` (`render_settings`, `grade`).
+- **Grade**: in the file: AgX, High Contrast look, exposure +0.35, a tone curve, and a compositor step (saturation
+  0.82, slightly cool white balance), set by `lib/mc_light.py` (`render_settings`, `grade`). It was tuned against
+  the daylight reference photograph with `tools/regrade.py` (sky, sunlit and shaded snow, foreground values).
 
 ## Rebuilding
 

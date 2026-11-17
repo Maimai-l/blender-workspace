@@ -491,9 +491,12 @@ def base_near(name='SCAT_near', R=175.0, half_angle=52.0, cell=0.4):
     # the track: nothing in the ruts, turf on the crown and creeping in from the verges
     on_track = smooth(trd, 2.2, 1.7)
     tr_turf = np.maximum(smooth(trd, 0.42, 0.15) * 0.45, smooth(trd, 1.35, 1.9) * 0.7)
-    open_ = (sdf > 0.36) * ((1 - on_track) + on_track * tr_turf * smooth(vnoise(X, Y, 2.0, 81), 0.35, 0.6))
-    shrub_ok = (sdf > 0.36) * (1 - on_track)
-    wallfoot = smooth(sdf, 1.3, 0.45) * (sdf > 0.36)
+    U, V = mc_site.to_local(X, Y)
+    in_v = (V > mc_site.WALL_V[0] - 0.3) & (V < mc_site.WALL_V[1] + 0.3)
+    clear = (sdf > 0.25) & ~(in_v & (np.abs(U - mc_site.WALL_U) < 0.5))        # not under the box, not in the wall
+    open_ = clear * ((1 - on_track) + on_track * tr_turf * smooth(vnoise(X, Y, 2.0, 81), 0.35, 0.6))
+    shrub_ok = clear * (1 - on_track) * (sdf > 0.9)
+    wallfoot = in_v * smooth(mc_site.WALL_U - U, 1.6, 0.5) * (U < mc_site.WALL_U - 0.5)      # rank grass at the wall's foot
     veg = open_ * (1 - B)
     A = {
         'd_wild': veg * (15.0 * (1 - T) + 4.0 * T + 5.0 * wallfoot),

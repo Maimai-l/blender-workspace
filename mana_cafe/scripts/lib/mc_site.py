@@ -11,9 +11,8 @@ ROT = math.radians(24.952690821219857)
 _C, _S = math.cos(ROT), math.sin(ROT)
 
 Z_T = 0.0            # terrace paving level = top of the building's own base slab
-PARAPET = 0.42       # dry-stone parapet above the terrace
+PARAPET = 0.30       # the wall's top above the track's shoulder
 WALL_T = 0.62        # wall thickness (the Mossy Stone Wall scan is 0.64 m thick and 0.99 m high)
-WALL_DROP = 0.50     # outer ground below the terrace at the wall foot
 RUT_OFFSET, RUT_WIDTH, RUT_DEPTH = 0.78, 0.24, 0.05      # wheel ruts of the track (m)
 
 # building (as modelled, never changed): shell u -6.90..3.30, v -9.54..9.66; base slab u -5.0..8.1, v -8.39..8.66
@@ -42,13 +41,17 @@ def chaikin(pts, n=2, closed=True):
     return p
 
 
-# hard ground: the slab apron on the east, the seating terrace north of the gable, a narrow strip round the south gable
-_TERRACE_CTRL = [
-    (8.1, -9.6), (8.1, 8.9), (8.35, 11.8), (7.9, 14.3), (6.1, 16.2), (2.4, 16.9), (-1.8, 16.7), (-5.0, 15.7),
-    (-7.0, 13.9), (-7.55, 11.8), (-7.25, 10.5), (-6.95, 9.9), (-6.95, 9.0), (-5.6, 8.9), (-5.6, -8.9), (-5.2, -10.6),
-    (-2.5, -11.2), (3.6, -11.2), (7.2, -10.7),
-]
-TERRACE = chaikin(_TERRACE_CTRL, 2)
+# The building is not set on a terrace: as in the model, the corten box stands on its recessed stone base and floats
+# COURT metres above natural ground, which runs up to it and under its overhangs on every side.
+# TERRACE is now just the footprint of the box (kept under this name: the terrain, scatter and rock code use its
+# signed distance to keep clear of the building).
+TERRACE = np.array([(SHELL[2], SHELL[1]), (SHELL[2], SHELL[3]), (SHELL[0], SHELL[3]), (SHELL[0], SHELL[1])], float)
+COURT = 0.42                   # the box's underside (z = 0) above the ground beside it
+# One dry-stone retaining wall holds the shoulder of the track above the lower ground at the building. It does
+# not enclose anything: it runs along the track and ends in the slope at both ends.
+WALL_U = 8.32                  # the wall line (the boardwalk ends on it at u = 8.29)
+WALL_V = (-12.0, 12.6)
+WALL_GAP = (1.68, 4.42)        # where the boardwalk crosses
 
 # gravel track (centre line, local), following the road of the master plan past the east side of the cafe
 TRACK = np.array([(16.4, -110.0), (15.0, -74.0), (12.6, -58.0), (11.4, -45.0), (11.6, -30.0), (11.6, -18.0), (11.5, -8.0),
@@ -166,8 +169,8 @@ class Site:
         return best, zt
 
     def height(self, x, y):
-        """Ground height and masks at world points: returns (z, m_track, m_terrace, sdf_terrace, track_d) where
-        track_d is the distance to the track's centre line in metres (9 = far)."""
+        """Ground height and masks at world points: returns (z, m_track, m_terrace, sdf_building, track_d) where
+        track_d is the distance to the track's centre line in metres (9 = far). m_terrace is always 0 now."""
         x = np.asarray(x, float)
         y = np.asarray(y, float)
         z = np.asarray(self.nat(x, y), float).copy()
@@ -182,27 +185,27 @@ class Site:
         un, vn, zn = u[near], v[near], z[near]
         d = terrace_sdf(un, vn)
         sdf[near] = np.clip(d, -99, 99)
-        # 1. the knoll: ground meets the wall foot WALL_DROP below the terrace and eases into the natural slope
+        # 1. natural ground passes COURT below the box and eases into the real slope over 26 m
         L = 26.0
         w = np.clip(d / L, 0, 1)
         w = w * w * (3 - 2 * w)
-        z_edge = Z_T - WALL_DROP + 0.22 * np.sin(un * 0.31) * np.cos(vn * 0.27)
-        z1 = z_edge * (1 - w) + zn * w
+        z_low = Z_T - COURT + 0.07 * np.sin(un * 0.31) * np.cos(vn * 0.27) + 0.03 * np.sin(un * 0.9 + vn * 1.3)
+        z1 = z_low * (1 - w) + zn * w
         # 2. the track: a worn two-rut gravel track
         dc, zt = self.track_field(un, vn)
         half = TRACK_W / 2
         wt = 1.0 - np.clip((dc - half) / 3.2, 0, 1)
         wt = wt * wt * (3 - 2 * wt)
+        # along the retaining wall the track's shoulder is level up to the wall, and the ground west of the wall
+        # keeps its own (lower) level
+        fv = np.clip(1.0 - np.maximum(WALL_V[0] - vn, vn - WALL_V[1]) / 2.5, 0, 1)
+        fv = fv * fv * (3 - 2 * fv)
+        wt = wt * (1 - fv) + fv * np.where(un >= WALL_U, np.maximum(wt, 1.0 - np.clip((dc - half - 3.0) / 1.0, 0, 1)), 0.0)
         crown = 0.03 * np.clip(1 - (dc / half) ** 2, 0, 1)
         wob = 0.10 * np.sin(un * 0.23 + vn * 0.19) + 0.06 * np.sin(vn * 0.61)        # the ruts wander a little
         ruts = RUT_DEPTH * np.exp(-((dc - RUT_OFFSET - wob) / RUT_WIDTH) ** 2) * (0.75 + 0.25 * np.sin(vn * 0.43 + un * 0.37))
         z2 = z1 * (1 - wt) + (zt + crown - ruts) * wt
-        # 3. the terrace: compacted gravel, level with the top of the building's slab, barely uneven
-        # (25 mm of gravel over the building's base slab, so the slab's top never shows through)
-        z_ter = Z_T + 0.025 + 0.010 * np.sin(un * 1.3 + 0.7) * np.cos(vn * 0.9) + 0.005 * np.sin(un * 3.1 + vn * 2.3)
-        z2 = np.where(d < 0, z_ter, z2)
         z[near] = z2
-        m_track[near] = np.clip(1.0 - (dc - half + 0.25) / 0.5, 0, 1) * (d > 0.2)
-        m_terr[near] = (d < 0)
+        m_track[near] = np.clip(1.0 - (dc - half + 0.25) / 0.5, 0, 1)
         trd[near] = np.clip(dc, 0, 9)
         return z, m_track, m_terr, sdf, trd

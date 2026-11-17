@@ -156,45 +156,30 @@ def _runs(mask):
 
 
 def wall_paths(g):
-    """Wall centre lines round the terrace: list of dicts with world xy [n,2], outward normal [n,2], top [n],
-    foot_out [n], foot_in [n]."""
+    """The retaining wall along the track (mc_site.WALL_U, WALL_V), in two runs either side of the boardwalk.
+    Returns dicts with world xy [n,2], the normal towards the lower side [n,2], top, foot_out (lower side), foot_in."""
     step = 0.05
-    P = np.vstack([mc_site.TERRACE, mc_site.TERRACE[:1]])
-    pl, _ = mc_site.polyline_resample(P, step)
-    u, v = pl[:, 0], pl[:, 1]
-    on = ~((u < -5.0) & (v > -11.3) & (v < 9.62)) & ~((u > 7.4) & (v > 1.62) & (v < 4.40))
     out = []
-    n = len(pl)
-    for a, b in _runs(on):
-        ii = np.arange(a, b) % n
-        if len(ii) < 12:
-            continue
-        uu, vv = u[ii], v[ii]
-        # smooth the line a little so the wall flows
-        k = 9
-        w = np.hanning(2 * k + 1)
-        w /= w.sum()
-        up = np.r_[np.repeat(uu[:1], k), uu, np.repeat(uu[-1:], k)]
-        vp = np.r_[np.repeat(vv[:1], k), vv, np.repeat(vv[-1:], k)]
-        uu, vv = np.convolve(up, w, 'valid'), np.convolve(vp, w, 'valid')
-        tu, tv = np.gradient(uu), np.gradient(vv)
-        L = np.hypot(tu, tv)
-        tu, tv = tu / L, tv / L
-        nu, nv = tv, -tu                                                    # one of the two normals
+    T = mc_site.WALL_T
+    for k, (v0, v1) in enumerate(((mc_site.WALL_V[0], mc_site.WALL_GAP[0]), (mc_site.WALL_GAP[1], mc_site.WALL_V[1]))):
+        vv = np.arange(v0, v1 + 1e-6, step)
+        uu = np.full(vv.shape, mc_site.WALL_U) + 0.05 * np.sin(vv * 0.5 + k)          # laid by eye, not by string
         x, y = mc_site.to_world(uu, vv)
-        nx_, ny_ = mc_site.to_world(nu, nv)
-        if np.mean(g.sdf(x + nx_ * 0.6, y + ny_ * 0.6)) < np.mean(g.sdf(x - nx_ * 0.6, y - ny_ * 0.6)):
-            nx_, ny_ = -nx_, -ny_
-        z_out = g.z(x + nx_ * (mc_site.WALL_T / 2 + 0.12), y + ny_ * (mc_site.WALL_T / 2 + 0.12))
+        nx_, ny_ = mc_site.to_world(-1.0, 0.0)
+        nrm = np.tile([nx_, ny_], (len(vv), 1))
+        z_low = g.z(x + nx_ * (T / 2 + 0.15), y + ny_ * (T / 2 + 0.15))
+        z_high = g.z(x - nx_ * (T / 2 + 0.3), y - ny_ * (T / 2 + 0.3))
         kk = 30
         ww = np.hanning(2 * kk + 1)
         ww /= ww.sum()
-        zs = np.convolve(np.r_[np.repeat(z_out[:1], kk), z_out, np.repeat(z_out[-1:], kk)], ww, 'valid')
-        top = np.maximum(mc_site.Z_T + mc_site.PARAPET, zs + 0.80)
-        s = np.arange(len(x)) * step
-        top = top + 0.02 * np.sin(s * 0.9 + a) + 0.012 * np.sin(s * 2.7 + 1.3 * a)
-        out.append(dict(xy=np.c_[x, y], n=np.c_[nx_, ny_], top=top, foot_out=z_out - 0.14,
-                        foot_in=np.full(len(x), mc_site.Z_T - 0.06), s=s))
+        zh = np.convolve(np.r_[np.repeat(z_high[:1], kk), z_high, np.repeat(z_high[-1:], kk)], ww, 'valid')
+        s = np.arange(len(vv)) * step
+        top = zh + mc_site.PARAPET + 0.02 * np.sin(s * 0.9 + k) + 0.012 * np.sin(s * 2.7 + 1.3 * k)
+        # the free end of each run dies into the bank: the cope steps down to the ground over the last 2.2 m
+        end = s if k == 0 else (s[-1] - s)
+        ramp = np.clip(end / 2.2, 0, 1)
+        top = np.minimum(top, np.maximum(z_low, z_high - 0.25) + 0.12 + (top - z_low) * ramp ** 0.7)
+        out.append(dict(xy=np.c_[x, y], n=nrm, top=top, foot_out=z_low - 0.14, foot_in=zh - 0.06, s=s))
     return out
 
 

@@ -1,0 +1,325 @@
+--- a/asr_gui.py
++++ b/asr_gui.py
+@@ -12,7 +12,8 @@
+ 转换视频或非 16 kHz 音频需要 ffmpeg（winget install ffmpeg）。
+ 
+ 开启局域网共享后，同一网络中的手机和电脑可以打开界面上传录音，
+-程序也可以通过 /api/v1/transcribe 或 OpenAI 兼容的 /v1/audio/transcriptions 调用转写。
++程序也可以通过 /api/v1/transcribe 或 OpenAI 兼容的 /v1/audio/transcriptions 调用转写，
++通过 /api/v1/detect 判断录音里说话、唱歌、音乐各占多少（FireRedVAD 的 AED，只用 CPU，不启动识别进程）。
+ 设置（是否共享、访问码、端口）保存在仓库根目录的 asr_server.json。
+ """
+ import argparse
+@@ -52,6 +53,8 @@
+ INSTANCE_FILE = WORK / "instance.json"    # 正在运行的转写台记下自己的端口，防止重复启动时互相删临时文件
+ LOG_FILE = REPO / "logs" / "asr_gui.log"   # 后台运行（没有命令行窗口）时的输出
+ ENGINE_LOG = REPO / "logs" / "asr_engine.log"
++DETECT_LOG = REPO / "logs" / "aed_engine.log"
++DETECT_TIMEOUT = 5 * 60                    # 一次检测（不含转格式）超过这么多秒仍没结果，结束检测进程并报错
+ LOAD_TIMEOUT = 6 * 60                      # 模型加载超过这么多秒仍未完成，视为失败并结束识别进程
+ IDLE_UNLOAD = 10 * 60                      # 识别进程空闲这么多秒后退出；asr_server.json 的 idle_minutes 可改
+ MEDIA_EXT = "*.mp4 *.mkv *.mov *.avi *.flv *.webm *.wav *.mp3 *.m4a *.aac *.flac *.ogg *.wma *.opus"
+@@ -149,6 +152,7 @@
+ 
+ def on_exit():
+     ENGINE.stop()
++    DETECTOR.stop()
+     stop_mdns()
+     freed = clean_work()
+     if freed:
+@@ -525,6 +529,185 @@
+ ENGINE = Engine()
+ 
+ 
++# ---------------------------------------------------------------- 音乐判断（AED）
++# FireRedVAD 的多标签检测：逐帧判断说话、唱歌、音乐，输出各类的占比和起止时间。
++# 放在单独的“检测进程”里，只用 CPU、只加载这一个小模型：第一次调用时启动，空闲规则和识别进程相同。
++# 和识别进程互不影响，转写和检测可以同时进行。
++AED_CONFIG = dict(use_gpu=False, speech_threshold=0.4, singing_threshold=0.5, music_threshold=0.5,
++                  smooth_window_size=5)         # FireRedVAD 官方示例的参数；录音库的阈值是在这组参数下测出来的
++
++
++def aed_available():
++    return model_ready("FireRedVAD/AED") and (MODELS / "FireRedVAD" / "AED" / "cmvn.ark").exists()
++
++
++def detector_main():
++    """检测进程。标准输入每行一个 {"id", "wav"}（16 kHz 单声道 PCM16 WAV），标准输出每行一个结果；一次只处理一个。"""
++    proto = os.fdopen(os.dup(sys.stdout.fileno()), "wb", buffering=0)
++    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
++    sys.stdout = sys.stderr
++
++    def send(obj):
++        proto.write((json.dumps(obj, ensure_ascii=True, default=_jsonable) + "\n").encode("ascii"))
++
++    try:
++        t = time.time()
++        import soundfile as sf
++        from fireredasr2s.fireredvad import FireRedAed, FireRedAedConfig
++        aed = FireRedAed.from_pretrained(str(MODELS / "FireRedVAD" / "AED"), FireRedAedConfig(**AED_CONFIG))
++        logging.getLogger().setLevel(logging.WARNING)
++        print(f"{time.strftime('%H:%M:%S')} AED 加载完成，用时 {time.time() - t:.1f} 秒。")
++    except Exception as e:
++        traceback.print_exc()
++        send({"ready": False, "error": f"{type(e).__name__}: {e}"})
++        return
++    send({"ready": True})
++    for raw in sys.stdin.buffer:                    # 转写台关闭管道时循环结束，进程退出
++        try:
++            msg = json.loads(raw)
++        except ValueError:
++            continue
++        try:
++            with open(msg["wav"], "rb") as f:     # 自己打开文件再交给 soundfile，路径里有中文也能读
++                wav, sr = sf.read(f, dtype="int16")
++            if wav.ndim > 1:
++                wav = wav[:, 0]
++            if sr != 16000:
++                raise ValueError(f"采样率是 {sr} Hz，需要 16 kHz")
++            result, _ = aed.detect((wav, sr))
++            send({"id": msg["id"], "ok": True, "dur": result["dur"], "ratio": result["event2ratio"],
++                  "segments": {k: [[s, e] for s, e in v] for k, v in result["event2timestamps"].items()}})
++        except Exception as e:
++            traceback.print_exc()
++            send({"id": msg.get("id"), "ok": False, "error": f"{type(e).__name__}: {e}"})
++
++
++class Detector:
++    """转写台这一侧：按需启动检测进程，一次转发一个请求，空闲时让它退出。"""
++
++    def __init__(self):
++        self.proc = None
++        self.out = None
++        self.lock = threading.Lock()              # 同一时间只有一个检测请求在进行，其余排队
++        self.last = time.time()
++        self.seq = 0
++
++    def running(self):
++        return self.proc is not None and self.proc.poll() is None
++
++    def _start(self):
++        exe = Path(sys.executable)
++        if exe.name.lower() == "pythonw.exe":
++            exe = exe.with_name("python.exe")
++        DETECT_LOG.parent.mkdir(exist_ok=True)
++        log = open(DETECT_LOG, "ab")
++        log.write(f"---- {time.strftime('%Y-%m-%d %H:%M:%S')} 启动检测进程\n".encode("utf-8"))
++        log.flush()
++        self.out = queue.Queue()
++        self.proc = subprocess.Popen([str(exe), str(Path(__file__).resolve()), "--detector"], cwd=str(REPO),
++                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
++                                     creationflags=0x08000000 if os.name == "nt" else 0)
++        log.close()
++
++        def read(proc, out):
++            for raw in proc.stdout:
++                try:
++                    out.put(json.loads(raw))
++                except ValueError:
++                    pass
++            out.put({"exit": proc.wait()})
++        threading.Thread(target=read, args=(self.proc, self.out), daemon=True).start()
++        try:
++            msg = self.out.get(timeout=LOAD_TIMEOUT)
++        except queue.Empty:
++            msg = {"error": f"加载超过 {LOAD_TIMEOUT // 60} 分钟仍未完成"}
++        if not msg.get("ready"):
++            self._kill()
++            raise RuntimeError("音乐判断模型加载失败：" + (msg.get("error") or f"检测进程退出，退出码 {msg.get('exit')}")
++                               + "。详情见 logs\\aed_engine.log")
++
++    def _kill(self):
++        proc, self.proc = self.proc, None
++        if proc and proc.poll() is None:
++            try:
++                proc.stdin.close()
++                proc.wait(5)
++            except Exception:
++                proc.kill()
++
++    def detect(self, wav):
++        """返回检测进程的结果 {"ok", "dur", "ratio", "segments"} 或 {"ok": False, "error"}。"""
++        with self.lock:
++            try:
++                if not self.running():
++                    self._start()
++                self.seq += 1
++                self.proc.stdin.write((json.dumps({"id": self.seq, "wav": str(wav)}, ensure_ascii=True) + "\n").encode("ascii"))
++                self.proc.stdin.flush()
++                deadline = time.time() + DETECT_TIMEOUT
++                while True:
++                    try:
++                        msg = self.out.get(timeout=max(0.1, deadline - time.time()))
++                    except queue.Empty:
++                        self._kill()
++                        raise RuntimeError(f"检测超过 {DETECT_TIMEOUT // 60} 分钟仍没有结果，已结束检测进程")
++                    if "exit" in msg:
++                        self.proc = None
++                        raise RuntimeError("检测进程意外退出，详情见 logs\\aed_engine.log")
++                    if msg.get("id") == self.seq:
++                        return msg
++            except (OSError, ValueError) as e:
++                self._kill()
++                raise RuntimeError(f"无法与检测进程通信：{e}")
++            finally:
++                self.last = time.time()
++
++    def idle(self):
++        return self.running() and not self.lock.locked() and time.time() - self.last >= IDLE_UNLOAD
++
++    def stop(self):
++        with self.lock:
++            self._kill()
++
++
++DETECTOR = Detector()
++
++
++class ConvertError(Exception):
++    pass
++
++
++def detect_audio(src):
++    """准备检测用的音频：已经是 16 kHz 单声道 PCM16 的 WAV 就直接用，否则用 ffmpeg 转到 gui_work。
++    返回 (路径, 是不是临时文件)。"""
++    import soundfile as sf
++    src = Path(src)
++    if src.suffix.lower() == ".wav":
++        try:
++            with open(src, "rb") as f:
++                info = sf.info(f)
++            if info.samplerate == 16000 and info.channels == 1 and info.subtype == "PCM_16":
++                return src, False
++        except Exception:
++            pass
++    ffmpeg = shutil.which("ffmpeg")
++    if not ffmpeg:
++        raise ConvertError("需要 ffmpeg 转换格式，但没有找到 ffmpeg")
++    WORK.mkdir(exist_ok=True)
++    dst = WORK / f"detect_{secrets.token_hex(6)}.wav"
++    r = subprocess.run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(src), "-vn", "-ac", "1", "-ar", "16000",
++                        "-c:a", "pcm_s16le", str(dst)], capture_output=True, text=True, encoding="utf-8",
++                       errors="replace", creationflags=0x08000000 if os.name == "nt" else 0)
++    if r.returncode != 0 or not dst.exists() or dst.stat().st_size <= 44:
++        remove_temp(dst)
++        tail = [ln.strip() for ln in (r.stderr or "").strip().splitlines() if ln.strip()][-1:]
++        raise ConvertError("ffmpeg 无法转换这个文件" + (f"：{tail[0]}" if tail else ""))
++    return dst, True
++
++
++MEDIA_SUFFIXES = {e.lstrip("*") for e in MEDIA_EXT.split()}
++
++
+ def busy():
+     return any(j["stage"] == "queued" or j["stage"] in ACTIVE for j in all_jobs())
+ 
+@@ -536,6 +719,9 @@
+         if ENGINE.running() and not busy() and time.time() - LAST_USED[0] >= IDLE_UNLOAD:
+             ENGINE.stop()
+             print(f"{time.strftime('%H:%M')} 空闲超过 {IDLE_UNLOAD // 60} 分钟，识别进程已退出。")
++        if DETECTOR.idle():
++            DETECTOR.stop()
++            print(f"{time.strftime('%H:%M')} 空闲超过 {IDLE_UNLOAD // 60} 分钟，检测进程已退出。")
+ 
+ 
+ # ---------------------------------------------------------------- 音频准备
+@@ -1346,7 +1532,8 @@
+             return self.send_json({"repo": str(REPO)})
+         if r == "/api/health":
+             return self.send_json({"ok": True, "models": STATE["models"], "busy": CUR is not None,
+-                                   "queued": sum(1 for j in all_jobs() if j["stage"] == "queued")})
++                                   "queued": sum(1 for j in all_jobs() if j["stage"] == "queued"),
++                                   "aed": aed_available()})
+         if not self.authed():
+             return self.deny()
+         if r == "/api/state":
+@@ -1498,6 +1685,8 @@
+             return self.send_json({"ok": True, "info": info, "sentences": job["sentences"]})
+         if r == "/api/v1/transcribe":
+             return self.api_transcribe()
++        if r == "/api/v1/detect":
++            return self.api_detect()
+         if r == "/v1/audio/transcriptions":
+             return self.openai_transcribe()
+         if r == "/s":
+@@ -1652,6 +1841,57 @@
+             return self.send_json(api_job(job), 500 if job["stage"] == "error" else 409)
+         return self.send_result(job, fmt)
+ 
++    def api_detect(self):
++        """判断一段录音里说话、唱歌、音乐各占多少。同步返回，不进任务列表，不写 gui_outputs。
++        三种传法：JSON {"path": ...}（只限本机）、表单字段 file、请求正文就是文件（文件名放 X-Filename）。"""
++        t0 = time.time()
++        stamps = truthy(self.q("timestamps"), False)
++        temps = []
++        try:
++            if (self.headers.get("Content-Type") or "").lower().startswith("application/json"):
++                if not self.is_local():
++                    self.drain()
++                    return self.send_json({"error": "按路径检测只允许本机请求，其他设备请上传文件"}, 403)
++                path = str(self.read_json().get("path") or "").strip().strip('"')
++                if not path:
++                    return self.send_json({"error": "没有传文件：JSON 里缺少 path"}, 400)
++                src = Path(path)
++                if not src.is_file():
++                    return self.send_json({"error": f"找不到文件：{path}"}, 404)
++            else:
++                try:
++                    fields, files = self.receive_upload()
++                except ValueError as e:
++                    return self.send_json({"error": str(e)}, 400)
++                temps += [p for _, p in files]
++                if not files:
++                    return self.send_json({"error": "没有收到文件，请用表单字段 file 上传，或把文件放在请求正文里"}, 400)
++                stamps = stamps or truthy(fields.get("timestamps"), False)
++                src = Path(files[0][1])
++            suffix = src.suffix.lower()
++            if suffix and suffix not in MEDIA_SUFFIXES and suffix != ".bin":
++                return self.send_json({"error": f"不支持这种格式：{suffix}"}, 400)
++            try:
++                wav, temp = detect_audio(src)
++            except ConvertError as e:
++                return self.send_json({"error": str(e)}, 422)
++            if temp:
++                temps.append(wav)
++            try:
++                r = DETECTOR.detect(wav)
++            except RuntimeError as e:
++                return self.send_json({"error": str(e)}, 500)
++            if not r.get("ok"):
++                return self.send_json({"error": "无法读取音频：" + (r.get("error") or "未知错误")}, 422)
++            out = {"dur": r["dur"], "ratio": r["ratio"]}
++            if stamps:
++                out["segments"] = r["segments"]
++            out["elapsed"] = round(time.time() - t0, 1)
++            return self.send_json(out)
++        finally:
++            for p in temps:
++                remove_temp(p)
++
+     def shortcut_upload(self):
+         """给 iPhone 快捷指令用：请求正文就是文件，返回这条任务的页面地址，快捷指令接着用“打开 URL”打开它。"""
+         try:
+@@ -2136,6 +2376,9 @@
+     <dl class="kv"><dt>接口地址</dt><dd class="num" id="oaBase"></dd><dt>API Key</dt><dd>局域网内任意填写</dd><dt>模型</dt><dd>任意名称</dd></dl>
+     <div class="snip"><pre id="pyCmd"></pre><button class="icon-btn" data-copy="pyCmd" type="button" aria-label="复制代码" title="复制"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button></div>
+     <p class="d-text">长录音需要几分钟，请把调用方的超时设得足够长。</p>
++    <p class="d-sub">音乐判断</p>
++    <p class="d-text">POST /api/v1/detect 返回说话、唱歌、音乐各占的比例（0 到 1，可以加起来超过 1），只用 CPU，不加载转写模型，同步返回。
++      本机可以直接传路径：JSON {"path": "D:\\录音\\a.mp3"}；其他设备用表单字段 file 或请求正文上传。加 timestamps=1 同时返回每类的起止时间（秒）。</p>
+     <p class="d-sub">外部访问</p>
+     <p class="d-text">经反向代理、隧道或公网访问时需要访问码，填在 API Key 或 Authorization: Bearer 中。</p>
+     <div class="row" style="gap:8px"><span class="sv code num" id="lanCode"></span>
+@@ -2653,9 +2896,12 @@
+     ap.add_argument("--port", type=int, help="只使用这个端口，被占用时直接退出；不指定时用设置里的端口，默认 17860")
+     ap.add_argument("--no-browser", action="store_true", help="启动后不自动打开浏览器")
+     ap.add_argument("--engine", action="store_true", help=argparse.SUPPRESS)
++    ap.add_argument("--detector", action="store_true", help=argparse.SUPPRESS)
+     args = ap.parse_args()
+     if args.engine:
+         return engine_main()
++    if args.detector:
++        return detector_main()
+     setup_log()
+ 
+     load_config()

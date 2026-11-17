@@ -297,3 +297,9 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
   - 建议只在代理卡快过期、剿灭又用不完时扫。maa-cli 的 `ssscopilot` 是打保全战斗用的，不能扫荡。
 - **领取奖励**：除免费单抽（recruit）外全部打开：邮件、幸运墙合成玉（orundum）、限时开采许可（mining）、特别访问月卡（specialaccess）、活动签到（signinevent）。
 - **信用作战**（credit_fight）保持关闭：OF-1 每次 12 理智才换 30 信用。
+
+## 12. 保留端口与 LocalSend（2026-11-17）
+- Hyper-V/WSL 的网络组件（winnat、HNS）每次开机在动态端口段（49152–65535）里随机保留若干 100 个一段的端口。查看：`netsh int ipv4 show excludedportrange protocol=tcp`（或 `udp`）。
+- 2026-11-17 重启后 TCP 53229–53328 被保留，用户的 LocalSend（默认 53317）报 socket error、起不了服务器。
+- 处理（主账号管理员 PowerShell）：`net stop winnat`，`netsh int ipv4 add excludedportrange protocol=tcp startport=53317 numberofports=1`（udp 同样一条），`net start winnat`。带 `*` 的是管理员保留，永久有效，程序自己仍能绑定；Hyper-V 不会再占。加保留时端口不能正被占用，要先退出 LocalSend。现在 TCP、UDP 的 53317 和 50000–50059 都是管理员保留。
+- 不要用改 LocalSend 端口来绕开：它的组播发现也用这个端口，改了就搜不到其他设备（2026-11-17 改成 43317 时就是这样）。

@@ -1,7 +1,7 @@
 # 明日方舟托管流程（maa-cli，blender 账号）
 
 > 本文描述**现在实际在跑的**流程。每次改动流程（脚本、任务配置、排班、队列、计划任务）都要同步改这里，并在文末“变更记录”加一行。
-> PC 运维的通用内容（MCP 管线、exec、清理）见 `ops/README.md`；这里只写游戏托管。游戏机制和工具的已知事实见 `arknights/GAME_NOTES.md`。最后更新：2026-11-17。
+> PC 运维的通用内容（MCP 管线、exec、清理）见 `ops/README.md`；这里只写游戏托管。游戏机制和工具的已知事实见 `arknights/GAME_NOTES.md`。MAA 和 maa-cli 的官方文档副本在 `ops/maa/upstream/`：用某个参数或功能之前先查那里，不要只看 `--help`。最后更新：2026-11-17。
 
 ## 1. 一句话概览
 
@@ -154,3 +154,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
   - 领取奖励打开邮件、签到、免费合成玉等。
   - 核对剿灭和保全派驻的奖励周期；确认游戏内预设队列不需要维护。
 - 2026-11-17：查明之前记为完成的 11 个突袭其实都按普通模式打了（`--raid` 对单个作业无效）；`ev_run.py` 改为自己切换并确认突袭开关，突袭记录已清空重打（备份 `state\ev_done.json.bak-20261117`）。
+- 2026-11-17：保存 MAA 和 maa-cli 官方文档副本到 `ops/maa/upstream/`（突袭问题本可以从文档里提前看出来）。

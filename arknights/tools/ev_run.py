@@ -3,7 +3,10 @@
 Clears side-story stages with prts.plus copilots. maa-cli's copilot list only navigates main-story stages,
 so this script navigates itself: adb screenshot -> agent-ocr (text + coordinates) -> tap. For each pending
 entry of QUEUE it goes home, opens the event, opens the zone, taps the stage code, reads the current sanity
-and the stage cost from the stage screen, then runs `maa copilot prts://<id> --formation --raid <mode>`.
+and the stage cost from the stage screen, sets the stage's mode switch (set_mode), then runs
+`maa copilot prts://<id> --formation`. maa-cli's `--raid` does nothing for a single copilot (it only steers its
+own main-story navigation), and MaaCore just presses whichever start button the stage screen shows: before
+2026-11-17 every "raid" entry was therefore fought in normal mode.
 Stops at the first entry it cannot afford. Finished entries go to state\\ev_done.json.
 
     python ev_run.py [--dry]      --dry: navigate and read sanity, but do not fight
@@ -162,7 +165,7 @@ def abandon_battle():
 def run_copilot(cid, mode, log):
     """Run maa copilot while watching the life counter. A leak means no 3 stars (and a 2-star clear refunds
     nothing), so on two consecutive readings below the starting value maa is stopped and the battle abandoned."""
-    p = subprocess.Popen([MAA, 'copilot', 'prts://%d' % cid, '--formation', '--raid', mode, '--log-file=' + log],
+    p = subprocess.Popen([MAA, 'copilot', 'prts://%d' % cid, '--formation', '--log-file=' + log],
                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     start, low, t0 = None, 0, time.time()
     while p.poll() is None and time.time() - t0 < 1800:
@@ -234,7 +237,7 @@ def open_stage(code, zone):
         if c:
             tap(*c, wait=3)
             items = ocr()
-            if find(items, '开始行动'):
+            if find(items, '开始行动') or find(items, '开始突袭'):
                 return items
             raise RuntimeError('tapped %s but the stage screen did not open' % code)
         # the stage map can be wider than the screen: look left, then right
@@ -242,6 +245,25 @@ def open_stage(code, zone):
         adb('shell', 'input', 'swipe', str(x1), '450', str(x2), '450', '600')
         time.sleep(1.5)
     raise RuntimeError('stage %s not found in %s' % (code, zone))
+
+
+RAID_ON, RAID_OFF = '开始突袭', '开始行动'   # start button text in raid / normal mode
+RAID_SWITCH = {'raid': '突袭模式', 'normal': '普通难度'}   # what the switch left of 演习 reads, to change INTO that mode
+
+
+def set_mode(mode, items):
+    """Put the side-story stage screen into normal or raid mode and confirm it from the start button text.
+    Returns the OCR items of the confirmed screen, or None (then nothing is fought)."""
+    want = RAID_ON if mode == 'raid' else RAID_OFF
+    for _ in range(2):
+        if find(items, want) and not (mode == 'normal' and find(items, RAID_ON)):
+            return items
+        c = find(items, RAID_SWITCH[mode])
+        if not c:
+            return None
+        tap(*c, wait=2.5)
+        items = ocr()
+    return items if find(items, want) and not (mode == 'normal' and find(items, RAID_ON)) else None
 
 
 def sanity_and_cost(items):
@@ -266,7 +288,10 @@ def main():
         return
     for code, zone, cid, mode in pending:
         key = '%s/%s' % (code, mode)
-        items = open_stage(code, zone)               # raid: maa switches the mode itself (ChangeToRaidDifficulty)
+        items = set_mode(mode, open_stage(code, zone))
+        if items is None:
+            say('%s: could not switch the stage screen to %s mode; stopping' % (key, mode))
+            break
         cur, cost = sanity_and_cost(items)
         say('%s: sanity %s, cost %s' % (key, cur, cost))
         if cur is None or cost is None:
@@ -291,8 +316,9 @@ def main():
             items = ocr()
             if in_battle(items):
                 abandon_battle()
-            if attempt == 1:
-                open_stage(code, zone)
+            if attempt == 1 and set_mode(mode, open_stage(code, zone)) is None:
+                say('%s: could not switch to %s mode for the retry' % (key, mode))
+                break
         if res != 'ok':
             fail[key] = fail.get(key, 0) + 1
             json.dump(fail, open(FAIL, 'w', encoding='utf-8'), ensure_ascii=False)

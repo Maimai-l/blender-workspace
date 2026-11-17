@@ -71,10 +71,11 @@ echo
 echo "== for a person to look at (not deleted) =="
 echo "-- exec working dir C:\\Users\\blender\\ExecMCP (should be empty between sessions):"
 ls -A /c/Users/blender/ExecMCP 2>/dev/null | sed 's/^/   /'
-echo "-- Documents (only vocabulary.db and junctions belong here):"
-find /c/Users/blender/Documents -maxdepth 1 -mindepth 1 ! -name desktop.ini ! -name vocabulary.db ! -type l 2>/dev/null | sed 's/^/   /'
+echo "-- Documents (only vocabulary.db, LDPlayer's leidian9 and junctions belong here):"
+find /c/Users/blender/Documents -maxdepth 1 -mindepth 1 ! -name desktop.ini ! -name vocabulary.db ! -name leidian9 ! -type l 2>/dev/null | sed 's/^/   /'
 echo "-- C:\\Users\\blender (entries beyond the known set):"
-KNOWN='|.claude|.claude.json|.thumbnails|.unity-mcp|AppData|Application Data|BlenderMCP-run|Contacts|Cookies|Desktop|Documents|Downloads|ExecMCP|ExecMCP-run|Favorites|Links|Local Settings|Music|My Documents|NetHood|OneDrive|Pictures|PrintHood|Recent|Saved Games|Searches|SendTo|Templates|Unity user templates|UnityMCP-run|Videos|blender-mcp-secret.txt|exec-mcp-secret.txt|unity-mcp-secret.txt|「开始」菜单|'
+# .Ld9VirtualBox/.android: LDPlayer and adb; .cache/.modelscope/.paddlex: agent-ocr models; .skland: Skland login (stays on the PC)
+KNOWN='|.Ld9VirtualBox|.android|.cache|.modelscope|.paddlex|.skland|.claude|.claude.json|.thumbnails|.unity-mcp|AppData|Application Data|BlenderMCP-run|Contacts|Cookies|Desktop|Documents|Downloads|ExecMCP|ExecMCP-run|Favorites|Links|Local Settings|Music|My Documents|NetHood|OneDrive|Pictures|PrintHood|Recent|Saved Games|Searches|SendTo|Templates|Unity user templates|UnityMCP-run|Videos|blender-mcp-secret.txt|exec-mcp-secret.txt|unity-mcp-secret.txt|「开始」菜单|'
 ls -A /c/Users/blender | while read -r n; do
   case "$n" in NTUSER.DAT*|ntuser.*) continue;; esac
   case "$KNOWN" in *"|$n|"*) ;; *) echo "   $n";; esac

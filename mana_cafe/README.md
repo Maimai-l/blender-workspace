@@ -81,6 +81,7 @@ The scripts run from the cloud session through the tools in `tools/` (see `tools
 tools/pyrun.py scripts/proc/fab_prep.py          # texture copies and manifest
 tools/pyrun.py scripts/proc/far_build.py far_hi  # then far_lo, near
 tools/pyrun.py scripts/proc/mesh_far.py          # then mesh_near.py, trees.py
+tools/pyrun.py scripts/proc/paving.py            # flagstone layout (dem/paving.npz); only for a paved terrace, not in the final frame
 tools/rdefer.py scripts/build_fab.py             # Megascans meshes into the open .blend
 tools/rdefer.py scripts/bake_ground.py && tools/pyrun.py scripts/proc/fab_seamless.py
 tools/rdefer.py scripts/build_terrain.py         # then build_site, build_building, look, build_forest,

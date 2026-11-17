@@ -3,6 +3,8 @@ full text is updated with only the changed lines instead of re-sending the whole
 
     python3 doc_diff_ops.py old_file new_file [segment_start_regex ...] > ops.json
 
+    e.g. asr_gui.py: python3 doc_diff_ops.py old.py new.py '^# -+ HTTP$' '^PAGE = r' '^def main\('
+
 The doc must hold exactly old_file (check its SHA256 against the doc's note first). Each op replaces the smallest
 unique run of old lines (grown with context until it occurs once) by its new text, with "as":"text". Pass the
 regexes of the lines that start each code block when the file is split over several blocks: an anchor that would

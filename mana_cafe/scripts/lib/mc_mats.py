@@ -5,14 +5,32 @@ from mc_core import NT
 
 # sky radiance near the horizon in the view direction, measured in the HDRI (waterkloof_farm, 1-6 deg above the
 # horizon, 95-110 deg from the sun), before the world's own grading
-AIR_COLOR = (0.235, 0.385, 0.545)
+AIR_COLOR = (0.17, 0.44, 0.85)        # airlight of the clean air: towards the horizon sky the camera sees
 CAM_Z = 11.76
 
 
+# The massif stands 10.8 km from the cafe in this scene but 23-30 km in reality (proc/composite.py moves it
+# SHIFT metres closer). The air is computed for the real distance, so the peak keeps the haze of a far range.
+SHIFT = 12300.0
+BLEND = (3000.0, 6000.0)               # the composite's blend radii round the sketch camera
+BLEND_C = (9.6, 32.79)
+MIST_TOP = -750.0                      # top of the moist air in the valley: just above the cloud (mc_clouds.SEA_TOP)
+MIST_AIR = (0.44, 0.54, 0.68)
+# tunables of the air, edited centrally: named Value nodes inside the group ("P_...")
+AIR_PARAMS = dict(P_density=0.28, P_shift=SHIFT, P_mid=0.08, P_mist=0.5, P_keep=0.5)
+
+
 def aerial_group(name='MC_aerial'):
-    """Shader in -> shader out with air between the camera and the surface.
-    L = L_surface * T + A * (1 - T_c),  T_c = exp(-beta_c * d * f(dz)); f makes the air thinner upwards (scale
-    height H) so that valleys haze more than summits."""
+    """Shader in -> shader out with the air between the camera and the surface (camera rays only).
+
+        L = L_surface * (1 - keep * (1 - T)) + A_air * (1 - T_air) * T_mist + A_mist * (1 - T_mist)
+
+    T_air: clean thin air, bluer than aerosol, thinning upwards (scale height 2.6 km), over the REAL distance
+           d + shift, where shift fades in with the massif layer; plus a small fixed depth for anything beyond
+           2.5 km (P_mid), which sets the ridges across the valley a step back from the foreground.
+    T_mist: the moist layer below MIST_TOP, by the share of the ray that runs inside it.
+    keep < 1 leaves the sunlit snow nearly as bright as it is (the photographs hold their highlights), while the
+    airlight lifts and cools the shadows. Nothing is added in the foreground (d small)."""
     g = bpy.data.node_groups.get(name)
     if g is not None and 'Mask' not in [i.name for i in g.interface.items_tree]:
         g.interface.new_socket('Mask', in_out='INPUT', socket_type='NodeSocketFloat').default_value = 1.0
@@ -27,10 +45,23 @@ def aerial_group(name='MC_aerial'):
     n = NT(g)
     gi = n.node('NodeGroupInput')
     go = n.node('NodeGroupOutput')
+
+    def param(k):
+        nd = n.node('ShaderNodeValue')
+        nd.name = nd.label = k
+        nd.outputs[0].default_value = AIR_PARAMS[k]
+        return nd.outputs[0]
+    p_density, p_shift, p_mid, p_mist, p_keep = (param(k) for k in ('P_density', 'P_shift', 'P_mid', 'P_mist', 'P_keep'))
     cam = n.node('ShaderNodeCameraData')
     geo = n.node('ShaderNodeNewGeometry')
     d = cam.outputs['View Distance']
-    z = n.node('ShaderNodeSeparateXYZ', inputs={0: geo.outputs['Position']}).outputs['Z']
+    xyz = n.node('ShaderNodeSeparateXYZ', inputs={0: geo.outputs['Position']}).outputs
+    z = xyz[2]
+    # --- real distance: the massif layer is SHIFT metres further away than it stands here
+    r = n.math('SQRT', n.math('ADD', n.math('POWER', n.math('SUBTRACT', xyz[0], BLEND_C[0]), 2.0),
+                              n.math('POWER', n.math('SUBTRACT', xyz[1], BLEND_C[1]), 2.0)))
+    wf = n.smooth(r, BLEND[0], BLEND[1])
+    d_eff = n.math('ADD', d, n.math('MULTIPLY', wf, p_shift))
     H = 2600.0
     x = n.math('DIVIDE', n.math('SUBTRACT', z, CAM_Z), H)                 # dz / H
     # f = (1 - exp(-x)) / x, with the limit 1 at x -> 0
@@ -40,25 +71,67 @@ def aerial_group(name='MC_aerial'):
     xx = n.math('MULTIPLY', xs, n.math('ADD', sgn, n.math('LESS_THAN', ax, 1e-9)))   # x with |x| >= 1e-3
     f = n.math('DIVIDE', n.math('SUBTRACT', 1.0, n.math('EXPONENT', n.math('MULTIPLY', xx, -1.0))), xx)
     f = n.math('MINIMUM', n.math('MAXIMUM', f, 0.3), 2.5)
-    tau = n.math('MULTIPLY', n.math('MULTIPLY', d, f), gi.outputs['Density'])
+    tau = n.math('MULTIPLY', n.math('MULTIPLY', n.math('MULTIPLY', d_eff, f), gi.outputs['Density']), p_density)
+    tmid = n.math('MULTIPLY', n.smooth(d, 400.0, 2500.0), p_mid)
     # extinction per metre (R, G, B): clean thin air, a little bluer than pure aerosol
     beta = (1.05e-5, 1.75e-5, 2.9e-5)
-    T = [n.math('EXPONENT', n.math('MULTIPLY', tau, -b)) for b in beta]
-    Tavg = n.math('DIVIDE', n.math('ADD', n.math('ADD', T[0], T[1]), T[2]), 3.0)
-    one_m = n.math('MAXIMUM', n.math('SUBTRACT', 1.0, Tavg), 1e-5)
-    comb = n.node('ShaderNodeCombineColor', inputs={0: n.math('DIVIDE', n.math('SUBTRACT', 1.0, T[0]), one_m),
-                                                    1: n.math('DIVIDE', n.math('SUBTRACT', 1.0, T[1]), one_m),
-                                                    2: n.math('DIVIDE', n.math('SUBTRACT', 1.0, T[2]), one_m)})
-    col = n.mix(1.0, comb.outputs[0], gi.outputs['Air'], 'MULTIPLY')
-    em = n.node('ShaderNodeEmission', inputs={'Color': col, 'Strength': 1.0})
-    # only camera rays see the veil (it must not light the scene)
+    kmid = (0.45, 1.0, 1.9)
+    T = [n.math('EXPONENT', n.math('MULTIPLY', n.math('ADD', n.math('MULTIPLY', tau, b), n.math('MULTIPLY', tmid, k)), -1.0))
+         for b, k in zip(beta, kmid)]
+    # --- the moist layer in the valley
+    frac = n.math('DIVIDE', n.math('SUBTRACT', MIST_TOP, z), n.math('MAXIMUM', n.math('SUBTRACT', CAM_Z, z), 1.0))
+    frac = n.math('MINIMUM', n.math('MAXIMUM', frac, 0.0), 1.0)
+    tm = n.math('MULTIPLY', n.math('MULTIPLY', n.math('MULTIPLY', d, 8.0e-5), n.math('POWER', frac, 1.5)), p_mist)
+    Tm = n.math('EXPONENT', n.math('MULTIPLY', tm, -1.0))
+    Tavg = n.math('MULTIPLY', n.math('DIVIDE', n.math('ADD', n.math('ADD', T[0], T[1]), T[2]), 3.0), Tm)
     lp = n.node('ShaderNodeLightPath')
-    fac = n.math('MULTIPLY', n.math('MULTIPLY', n.math('SUBTRACT', 1.0, Tavg), lp.outputs['Is Camera Ray']), gi.outputs['Mask'])
-    mx = n.node('ShaderNodeMixShader', inputs={0: fac})
+    cm = n.math('MULTIPLY', lp.outputs['Is Camera Ray'], gi.outputs['Mask'])
+    # airlight
+    one_m = n.node('ShaderNodeCombineColor', inputs={0: n.math('SUBTRACT', 1.0, T[0]), 1: n.math('SUBTRACT', 1.0, T[1]),
+                                                     2: n.math('SUBTRACT', 1.0, T[2])}).outputs[0]
+    pa = n.node('ShaderNodeRGB')
+    pa.name = pa.label = 'P_air'
+    pa.outputs[0].default_value = AIR_COLOR + (1,)
+    air = n.mix(1.0, one_m, pa.outputs[0], 'MULTIPLY')
+    air = n.mix(1.0, air, n.node('ShaderNodeCombineColor', inputs={0: Tm, 1: Tm, 2: Tm}).outputs[0], 'MULTIPLY')
+    mist = n.mix(n.math('SUBTRACT', 1.0, Tm), (0, 0, 0, 1), MIST_AIR + (1,))
+    veil = n.mix(1.0, air, mist, 'ADD', clamp=False)
+    em = n.node('ShaderNodeEmission', inputs={'Color': veil, 'Strength': cm})
+    black = n.node('ShaderNodeEmission', inputs={'Color': (0, 0, 0, 1), 'Strength': 0.0})
+    att = n.math('MULTIPLY', n.math('MULTIPLY', n.math('SUBTRACT', 1.0, Tavg), p_keep), cm)      # share of the surface taken away
+    mx = n.node('ShaderNodeMixShader', inputs={0: att})
     n.link(gi.outputs['Shader'], mx.inputs[1])
-    n.link(em.outputs[0], mx.inputs[2])
-    n.link(mx.outputs[0], go.inputs['Shader'])
+    n.link(black.outputs[0], mx.inputs[2])
+    ad = n.node('ShaderNodeAddShader')
+    n.link(mx.outputs[0], ad.inputs[0])
+    n.link(em.outputs[0], ad.inputs[1])
+    n.link(ad.outputs[0], go.inputs['Shader'])
     return g
+
+
+def set_air(**kw):
+    """Edit the air's tunables in place (P_density, P_shift, P_mid, P_mist, P_keep)."""
+    g = aerial_group() if 'MC_aerial' not in bpy.data.node_groups else bpy.data.node_groups['MC_aerial']
+    for k, v in kw.items():
+        g.nodes[k].outputs[0].default_value = tuple(v) + (1,) if k == 'P_air' else v
+    return {nd.name: ([round(c, 3) for c in nd.outputs[0].default_value][:3] if nd.name == 'P_air' else round(nd.outputs[0].default_value, 4))
+            for nd in g.nodes if nd.name.startswith('P_')}
+
+
+def wrap_aerial(m, density=1.25):
+    """Put the air in front of an existing material (idempotent)."""
+    t = m.node_tree
+    out = next(x for x in t.nodes if x.type == 'OUTPUT_MATERIAL' and x.is_active_output)
+    src = out.inputs['Surface'].links[0].from_socket
+    if src.node.type == 'GROUP' and src.node.node_tree and src.node.node_tree.name == 'MC_aerial':
+        return m
+    grp = t.nodes.new('ShaderNodeGroup')
+    grp.node_tree = aerial_group()
+    grp.inputs['Density'].default_value = density
+    t.links.new(src, grp.inputs['Shader'])
+    t.links.new(grp.outputs['Shader'], out.inputs['Surface'])
+    no_light(m)
+    return m
 
 
 def no_light(m):
@@ -181,8 +254,9 @@ def mountain_material(name='MC_mountain', P=None, near=False):
 
     g = n.mix(f_earth, meadow, earth)
     # gullies hold shrubs (dark dendritic lines), crests are dry and stony
-    f_gully = n.math('MULTIPLY', n.smooth(n.math('ADD', flow, n.math('MULTIPLY', n.math('MULTIPLY', curv, -1.0), 0.12)), 2.9, 3.7), n.smooth(a2, 420.0, 180.0))
-    f_crest = n.math('MULTIPLY', n.smooth(curv, 1.2, 4.5), 0.55)
+    nearl = n.math('SUBTRACT', 1.0, A('wfar'))                                 # the real ground within 3-6 km
+    f_gully = n.math('MULTIPLY', n.smooth(n.math('ADD', flow, n.math('MULTIPLY', n.math('MULTIPLY', curv, -1.0), n.mixf(nearl, 0.12, 0.30))), n.mixf(nearl, 2.9, 2.5), n.mixf(nearl, 3.7, 3.2)), n.smooth(a2, 420.0, 180.0))
+    f_crest = n.math('MULTIPLY', n.smooth(curv, n.mixf(nearl, 1.2, 0.4), n.mixf(nearl, 4.5, 2.0)), n.mixf(nearl, 0.55, 0.75))
     g = n.mix(f_crest, g, n.mix(n_tiny, (0.15, 0.135, 0.095, 1), (0.21, 0.20, 0.17, 1)))
     g = n.mix(n.math('MAXIMUM', f_shrub, n.math('MULTIPLY', f_gully, 0.8)), g, shrub)
     vor = n.node('ShaderNodeTexVoronoi', feature='F1', inputs={'Vector': pos, 'Scale': 1.0 / 6.5, 'Randomness': 1.0})
@@ -190,9 +264,14 @@ def mountain_material(name='MC_mountain', P=None, near=False):
                   n.smooth(n.math('ADD', n_mid2, n.math('MULTIPLY', c(n_fine), 0.6)), 0.42, 0.62))
     g = n.mix(n.math('MULTIPLY', dots, 0.7), g, (0.022, 0.025, 0.015, 1))                         # shrub clumps
     g = n.mix(f_forest, g, n.mix(f_dark, oak, forest))
+    # on the slope across the valley: beds of rock cropping out in broken bands, scree running down from them
+    f_band = n.math('MULTIPLY', n.math('MULTIPLY', riser, n.smooth(slope, 0.52, 0.80)), nearl)
+    f_run = n.math('MULTIPLY', n.math('MULTIPLY', n.smooth(vst, 0.56, 0.72), n.smooth(slope, 0.48, 0.75)), n.math('MULTIPLY', nearl, 0.65))
+    f_scree = n.math('MAXIMUM', f_scree, f_run)
+    f_rock = n.math('MAXIMUM', f_rock, f_band)
     g = n.mix(f_scree, g, scree)
     g = n.mix(f_rock, g, rock)
-    band = n.math('MULTIPLY', riser, steep)
+    band = n.math('MULTIPLY', riser, n.math('MAXIMUM', steep, f_band))
 
     near_bump = None
     if near:
@@ -234,7 +313,7 @@ def mountain_material(name='MC_mountain', P=None, near=False):
         gcol = n.mix(fs_, gcol, n.mix(1.0, sc_, (0.50, 0.46, 0.41, 1), 'MULTIPLY'))
         gh = n.mixf(fs_, gh, n.math('MULTIPLY', sh_, 0.016))
         # turf and litter under the shrubs: darker and a little less colourful than the open scans
-        gcol = n.node('ShaderNodeHueSaturation', inputs={'Saturation': 0.70, 'Value': 0.55, 'Color': gcol}).outputs[0]
+        gcol = n.node('ShaderNodeHueSaturation', inputs={'Saturation': 0.70, 'Value': 0.43, 'Color': gcol}).outputs[0]
         g = n.mix(nearw, g, gcol)
         # ---- gravel: the terrace and the track
         gc_, gh_ = two('gravel', 2.0, ('color', 'disp'), scale2=1.37, rot2=0.9, off2=(0.7, 2.9, 0.5), nscale=1 / 3.0, w=4.0)

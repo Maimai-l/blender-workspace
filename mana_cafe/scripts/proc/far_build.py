@@ -47,7 +47,7 @@ def tin_raster(xs, ys):
 
 
 def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=print, amp0=5.0, amp1=34.0,
-          use_tin=False, kdt=0.018, max_cut=2.2, talus=1.55, crest=0.0):
+          use_tin=False, kdt=0.018, max_cut=2.2, talus=1.55, crest=0.0, gully=0.0):
     t0 = time.time()
     xs = np.arange(x0, x1 + 0.5 * cell, cell, dtype=np.float64)
     ys = np.arange(y0, y1 + 0.5 * cell, cell, dtype=np.float64)
@@ -108,6 +108,15 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
     creep = (1.0 - rocky).astype(np.float32)
     if tinw is not None:
         creep = creep * (1.0 - tinw)
+    if gully:
+        # seed a drainage net on the open slopes: shallow fall-line furrows that the erosion then deepens into
+        # gullies a few metres deep, spaced tens of metres apart (what tells a 2 km slope from a small hill)
+        fur = tl.ridged(shape, cell, seed + 401, octaves=3, base_wl=55.0)
+        fur2 = tl.ridged(shape, cell, seed + 409, octaves=2, base_wl=19.0)
+        wsl = smooth(sl_s, 0.25, 0.6) * (1.0 - (tinw if tinw is not None else 0.0))
+        z -= ((1.0 - fur) * 1.0 + (1.0 - fur2) * 0.35) * gully * wsl
+        del fur, fur2, wsl
+    z_pre = z.copy()
     z, A = tl.erode(z, cell, rounds=rounds, kdt=kdt, m=0.45, a_sat=3e5, max_cut=max_cut,
                     talus=talus, th_rate=0.22, th_iters=2, creep=creep, creep_coef=0.10, log=log)
     # --- 5. rock ribs and ledges on the bare high faces, after the erosion so they stay crisp
@@ -116,6 +125,8 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
     rib3 = tl.ridged(shape, cell, seed + 227, octaves=2, base_wl=11.0)
     z += ((rib - 0.5) * 17.0 + (rib2 - 0.5) * 6.5 + (rib3 - 0.5) * 2.4) * rocky * rocky
     del rib, rib2, rib3
+    if tinw is not None:
+        z = (z * (1.0 - 0.9 * tinw) + z_pre * (0.9 * tinw)).astype(np.float32)      # the surveyed site is not cut up
     log('eroded', '%.1fs' % (time.time() - t0), 'dz', float((z - zreal).min()), float((z - zreal).max()))
 
     # --- masks
@@ -138,8 +149,8 @@ PRESETS = {
     # name: (x0, y0, x1, y1, cell, kwargs)   boxes in the real scene frame
     'far_hi': (-31000, -19000, -12000, 1000, 5.0, dict(seed=7, rounds=22, kdt=0.034, max_cut=4.0, talus=1.95, crest=42.0)),
     'far_lo': (-45000, -34000, -5000, 12000, 15.0, dict(seed=11, rounds=10, kdt=0.03, max_cut=4.0, talus=1.9, crest=30.0)),
-    'near': (-7500, -8500, 3000, 1500, 2.5, dict(seed=23, amp0=1.6, amp1=30.0, use_tin=True, rounds=14, kdt=0.020,
-                                                   max_cut=2.0, talus=1.8)),
+    'near': (-7500, -8500, 3000, 1500, 2.5, dict(seed=23, amp0=1.6, amp1=32.0, use_tin=True, rounds=22, kdt=0.040,
+                                                   max_cut=3.2, talus=1.8, gully=3.0)),
 }
 
 if __name__ == '__main__':

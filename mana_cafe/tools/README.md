@@ -13,6 +13,7 @@ Run the Python tools with `python3 -I`.
 | `pyrun.py <scripts/proc/x.py> [args]` | runs a data-processing script on the PC with Blender's bundled Python, outside Blender. `<PC project>\pylib` holds numba, SciPy, Pillow and rasterio for it |
 | `rr.py <name> [--scale] [--samples] [--res WxH] [--cam] [--border x0 y0 x1 y1] [--png] [--pre code]` | renders from a timer, fetches the image to `~/.cache/mana_cafe/renders/`. It leaves the scene at the given resolution and camera |
 | `regrade.py <name> "<code>"` | saves the last render again with other display settings (look, exposure, curve) and prints tone statistics of a few picture regions; no re-render |
+| `depthcheck.py <render> [depth name] [--fetch]` | measures a render by band of real view distance (shadows, midtones, highlights, blue/red), from the depth pass that `scripts/depth_pass.py` writes (run it through `rdefer.py`) |
 | `tiles.py <image> [cols rows]` | cuts a render into overlapping tiles for region-by-region inspection |
 | `calib.py`, `calq.py`, `gridcrop.py` | camera fitting and reference crops, unchanged from Qiting |
 

@@ -78,58 +78,79 @@ BED_N = (math.sin(math.radians(DIP)) * math.cos(math.radians(DIP_AZ)), math.sin(
 #   member: (asset, down, along, scale, buried fraction, flipped end for end, yaw offset deg)
 # Sites (convexity of the ground at 5 m scale, from tools: convex.py): crests where the soil is thin, and the foot
 # of the slope below an outcrop. The hollows and the open meadow between the groups stay free of rock.
+# Sizes (checked against the 2.2 m door): one ledge of bedrock per group, lying in the turf and mostly under it
+# (formation scale 0.2 = a 5 m ledge showing 20-30 cm; boulder 0.3-0.45 = 0.9-1.3 m long, knee-high at most), one or
+# two blocks of 40-70 cm, and round them the small stuff, fist- to head-sized (stone scale 0.09-0.20 = 11-25 cm).
 GROUPS = [
-    # C  crest of the knoll behind the terrace (+120 cm convex): the bedrock comes through, blocks weather off it
+    # C  crest of the knoll beside the building (+120 cm convex): the bedrock comes through, pieces weather off it
     dict(name='crest', uv=(0.685, 0.690), rocks=[
-        ('rock_formation', 0.0, 0.0, 0.34, 0.60, False, 0.0),
-        ('boulder_a', 2.6, -3.2, 0.62, 0.45, False, 4.0),
-        ('boulder_b', 4.4, 1.6, 0.40, 0.55, True, -5.0),
-        ('stone', 3.4, -5.6, 0.70, 0.50, False, 6.0),
-        ('stone', 5.6, -1.2, 0.42, 0.60, True, -3.0),
-        ('stone', 6.3, 3.4, 0.30, 0.55, False, 8.0),
+        ('rock_formation', 0.0, 0.0, 0.21, 0.80, False, 0.0),
+        ('boulder_a', 1.5, -1.8, 0.24, 0.64, False, 4.0),
+        ('boulder_b', 2.4, 0.9, 0.22, 0.55, True, -5.0),
+        ('stone', 1.9, -2.9, 0.34, 0.50, False, 6.0),
+        ('stone', 2.9, -0.7, 0.19, 0.55, True, -3.0),
+        ('stone', 3.3, 1.8, 0.15, 0.50, False, 8.0),
+        ('stone', 1.0, 1.3, 0.12, 0.45, False, -9.0),
+        ('stone', 2.3, -2.0, 0.10, 0.45, True, 3.0),
+        ('stone', 3.8, 0.3, 0.17, 0.55, False, -4.0),
+        ('stone', 0.7, -0.9, 0.09, 0.40, False, 7.0),
     ]),
     # D  where the knoll breaks off towards the valley (+80, 51 % slope): a ledge and what has slid from it
     dict(name='break', uv=(0.775, 0.752), rocks=[
-        ('boulder_b', 0.0, 0.0, 0.95, 0.50, False, 0.0),
-        ('boulder_a', 2.2, 2.4, 0.50, 0.55, True, 5.0),
-        ('stone', 3.0, -1.6, 0.75, 0.45, False, -6.0),
-        ('stone', 4.3, 0.9, 0.40, 0.60, True, 3.0),
+        ('boulder_b', 0.0, 0.0, 0.38, 0.55, False, 0.0),
+        ('boulder_a', 1.2, 1.3, 0.22, 0.55, True, 5.0),
+        ('stone', 1.6, -0.9, 0.36, 0.48, False, -6.0),
+        ('stone', 2.3, 0.5, 0.19, 0.55, True, 3.0),
+        ('stone', 2.9, -0.4, 0.13, 0.50, False, 9.0),
+        ('stone', 0.8, -1.5, 0.10, 0.45, False, -3.0),
+        ('stone', 3.4, 1.0, 0.16, 0.55, True, -8.0),
     ]),
     # E  shoulder in the right foreground (+88, 53 %): outcrop on the convex edge
     dict(name='shoulder', uv=(0.925, 0.915), rocks=[
-        ('rock_formation', 0.0, 0.0, 0.30, 0.62, True, 0.0),
-        ('boulder_a', 3.0, -2.0, 0.78, 0.48, False, -4.0),
-        ('boulder_b', 4.6, 2.2, 0.45, 0.58, False, 6.0),
-        ('stone', 5.4, -3.6, 0.62, 0.50, True, 2.0),
-        ('stone', 6.6, 0.4, 0.34, 0.62, False, -7.0),
+        ('rock_formation', 0.0, 0.0, 0.19, 0.80, True, 0.0),
+        ('boulder_a', 1.6, -1.1, 0.40, 0.50, False, -4.0),
+        ('boulder_b', 2.5, 1.2, 0.24, 0.58, False, 6.0),
+        ('stone', 2.9, -1.9, 0.32, 0.50, True, 2.0),
+        ('stone', 3.5, 0.2, 0.18, 0.58, False, -7.0),
+        ('stone', 1.1, 0.9, 0.12, 0.45, False, 5.0),
+        ('stone', 2.1, -0.4, 0.10, 0.45, True, -2.0),
+        ('stone', 4.0, -1.0, 0.15, 0.55, False, 9.0),
     ]),
     # A  shoulder of the left ridge (+88, 52 %)
     dict(name='ridge_shoulder', uv=(0.275, 0.642), rocks=[
-        ('rock_formation', 0.0, 0.0, 0.30, 0.62, False, 0.0),
-        ('boulder_a', 2.8, 2.6, 0.70, 0.45, True, 5.0),
-        ('stone', 4.0, -1.8, 0.80, 0.50, False, -4.0),
-        ('stone', 5.2, 1.4, 0.38, 0.60, False, 7.0),
+        ('rock_formation', 0.0, 0.0, 0.20, 0.80, False, 0.0),
+        ('boulder_a', 1.5, 1.4, 0.34, 0.48, True, 5.0),
+        ('stone', 2.1, -1.0, 0.38, 0.50, False, -4.0),
+        ('stone', 2.8, 0.7, 0.19, 0.58, False, 7.0),
+        ('stone', 1.0, -1.6, 0.13, 0.48, True, -6.0),
+        ('stone', 3.3, -0.3, 0.11, 0.45, False, 3.0),
     ]),
     # B  top of the left ridge (+40..54)
     dict(name='ridge_top', uv=(0.095, 0.588), rocks=[
-        ('rock_formation', 0.0, 0.0, 0.36, 0.60, True, 0.0),
-        ('boulder_b', 2.4, -3.0, 0.80, 0.50, False, -5.0),
-        ('boulder_a', 3.6, 2.8, 0.42, 0.55, False, 4.0),
-        ('stone', 5.0, -0.6, 0.66, 0.48, True, 6.0),
+        ('rock_formation', 0.0, 0.0, 0.23, 0.80, True, 0.0),
+        ('boulder_b', 1.3, -1.6, 0.42, 0.50, False, -5.0),
+        ('boulder_a', 1.9, 1.5, 0.22, 0.55, False, 4.0),
+        ('stone', 2.7, -0.3, 0.33, 0.48, True, 6.0),
+        ('stone', 3.2, 1.0, 0.16, 0.55, False, -5.0),
+        ('stone', 0.9, 0.8, 0.11, 0.45, False, 8.0),
     ]),
     # G  foot of the left ridge's slope (-44..-65: concave), below B: blocks that have come down and stopped here
     dict(name='slope_foot', uv=(0.080, 0.652), rocks=[
-        ('boulder_a', 0.0, 0.0, 0.85, 0.42, False, 0.0),
-        ('boulder_b', 1.6, 2.6, 0.52, 0.50, True, 9.0),
-        ('stone', -1.4, -2.4, 0.85, 0.45, False, -8.0),
-        ('stone', 2.4, -1.0, 0.44, 0.55, False, 5.0),
-        ('stone', 3.2, 1.8, 0.30, 0.60, True, -4.0),
+        ('boulder_a', 0.0, 0.0, 0.40, 0.42, False, 0.0),
+        ('boulder_b', 0.9, 1.4, 0.26, 0.50, True, 9.0),
+        ('stone', -0.8, -1.3, 0.40, 0.45, False, -8.0),
+        ('stone', 1.3, -0.5, 0.20, 0.55, False, 5.0),
+        ('stone', 1.7, 1.0, 0.14, 0.55, True, -4.0),
+        ('stone', 0.4, 0.8, 0.10, 0.45, False, 6.0),
+        ('stone', 2.2, 0.1, 0.12, 0.50, False, -9.0),
     ]),
-    # F  a low rise in the near foreground (+32..36): one stone showing its back, two small ones beside it
+    # F  a low rise in the near foreground (+32..36): one stone showing its back, small ones beside it
     dict(name='foreground', uv=(0.640, 0.962), rocks=[
-        ('boulder_b', 0.0, 0.0, 0.48, 0.62, False, 0.0),
-        ('stone', 1.5, 1.1, 0.50, 0.55, True, 5.0),
-        ('stone', 0.9, -1.4, 0.30, 0.60, False, -6.0),
+        ('boulder_b', 0.0, 0.0, 0.30, 0.60, False, 0.0),
+        ('stone', 0.8, 0.6, 0.24, 0.55, True, 5.0),
+        ('stone', 0.5, -0.8, 0.14, 0.55, False, -6.0),
+        ('stone', 1.3, -0.2, 0.10, 0.45, False, 4.0),
+        ('stone', 1.6, 0.9, 0.12, 0.50, True, -5.0),
     ]),
 ]
 
@@ -145,7 +166,7 @@ def build():
     for o in list(col.objects):
         C.remove_object(o.name)
     for key in ('rock_formation', 'boulder_a', 'boulder_b', 'stone'):
-        mc_fab.rock_material(key, sat=0.55, val=0.50)                # one rock: the same tone on every scan
+        mc_fab.rock_material(key, sat=0.55, val=0.40)                # one rock: the same tone on every scan
     mc_fab.rock_material('granite_cliff', sat=0.5, val=0.6)
     out = []
     for grp in GROUPS:

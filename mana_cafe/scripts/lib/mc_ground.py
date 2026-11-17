@@ -139,7 +139,7 @@ def gn_scatter(name, base, collection, attr, density, scale=(0.6, 1.0), seed=0, 
     ci = N.new('GeometryNodeCollectionInfo')
     ci.inputs['Collection'].default_value = collection
     ci.inputs['Separate Children'].default_value = True
-    ci.inputs['Reset Children'].default_value = True
+    ci.inputs['Reset Children'].default_value = False      # sized copies carry their scale (all stand at the origin)
     ci.transform_space = 'RELATIVE'
     ip = N.new('GeometryNodeInstanceOnPoints')
     L.new(dp.outputs['Points'], ip.inputs['Points'])
@@ -246,7 +246,7 @@ def make_patch(name, seed, dry, green, n_dry=60, n_green=12, radius=0.75):
         ci = N.new('GeometryNodeCollectionInfo')
         ci.inputs['Collection'].default_value = col
         ci.inputs['Separate Children'].default_value = True
-        ci.inputs['Reset Children'].default_value = True
+        ci.inputs['Reset Children'].default_value = False      # sized copies carry their scale (all stand at the origin)
         ip = N.new('GeometryNodeInstanceOnPoints')
         L.new(dp.outputs['Points'], ip.inputs['Points']); L.new(ci.outputs['Instances'], ip.inputs['Instance'])
         ip.inputs['Pick Instance'].default_value = True
@@ -486,8 +486,8 @@ def base_near(name='SCAT_near', R=175.0, half_angle=52.0, cell=0.4):
     trd = g._s(np.load(os.path.join(C.DEM, 'site_h.npz'))['trackd'].astype(np.float32), X, Y)
     slope = np.hypot((g.z(X + 0.4, Y) - g.z(X - 0.4, Y)) / 0.8, (g.z(X, Y + 0.4) - g.z(X, Y - 0.4)) / 0.8)
     T, B, G, F, S = cover_fields(X, Y, slope, r)
-    lod = smooth(r, 50.0, 150.0)
-    kd = (1.0 - 0.80 * lod) * smooth(r, R, R - 25.0)              # thinner with distance, out at the rim
+    lod = smooth(r, 62.0, 125.0)                                  # (the knoll hides nearly all ground beyond 70 m)
+    kd = (1.0 - 0.88 * lod) * smooth(r, R, R - 25.0)              # thinner with distance, out at the rim
     # the track: nothing in the ruts, turf on the crown and creeping in from the verges
     on_track = smooth(trd, 2.2, 1.7)
     tr_turf = np.maximum(smooth(trd, 0.42, 0.15) * 0.45, smooth(trd, 1.35, 1.9) * 0.7)
@@ -498,20 +498,21 @@ def base_near(name='SCAT_near', R=175.0, half_angle=52.0, cell=0.4):
     shrub_ok = clear * (1 - on_track) * (sdf > 0.9)
     wallfoot = in_v * smooth(mc_site.WALL_U - U, 1.6, 0.5) * (U < mc_site.WALL_U - 0.5)      # rank grass at the wall's foot
     veg = open_ * (1 - B)
+    # plants at their real size (lib: SIZES): turf a few centimetres high, so it takes ~100 plants per m2 to close
     A = {
-        'd_wild': veg * (15.0 * (1 - T) + 4.0 * T + 5.0 * wallfoot),
-        'd_mat': veg * (3.4 * (1 - T) + 0.6 * T),
-        'd_tall': veg * (1 - T) * (0.5 + 1.6 * G),
-        'd_dry': veg * (1 - 0.7 * T) * (0.25 + 1.6 * G),
-        'd_tuft': veg * (1 - T) * (0.06 + 0.5 * G),
-        'd_ling': veg * shrub_ok * (8.0 * T + 0.8 * (1 - T)),
-        'd_will': veg * shrub_ok * (5.5 * T + 1.2 * (1 - T)),
-        'd_birch': veg * shrub_ok * (5.5 * T + 1.4 * wallfoot),
-        'd_flower': veg * (1 - T) * F * 0.7,
+        'd_wild': veg * (70.0 * (1 - T) + 16.0 * T + 20.0 * wallfoot),
+        'd_mat': veg * (11.0 * (1 - T) + 2.0 * T),
+        'd_tall': veg * (1 - T) * (1.2 + 4.0 * G),
+        'd_dry': veg * (1 - 0.7 * T) * (0.6 + 4.5 * G),
+        'd_tuft': veg * (1 - T) * (0.25 + 2.2 * G),
+        'd_ling': veg * shrub_ok * (22.0 * T + 2.0 * (1 - T)),
+        'd_will': veg * shrub_ok * (7.0 * T + 1.6 * (1 - T)),
+        'd_birch': veg * shrub_ok * (13.0 * T + 2.5 * wallfoot),
+        'd_flower': veg * (1 - T) * F * 1.4,
     }
     for k in A:
         A[k] = A[k] * kd
-    A['sc'] = 1.0 + 0.75 * lod
+    A['sc'] = 1.0 + 1.2 * lod
     kq = keepv[:-1, :-1] & keepv[1:, :-1] & keepv[:-1, 1:] & keepv[1:, 1:]
     me = C.grid_mesh(name, np.stack([X, Y, Z], -1).reshape(-1, 3), X.shape[0], X.shape[1], keep=kq,
                      attrs={k: v.ravel() for k, v in A.items()})
@@ -561,6 +562,41 @@ def base_far(name='SCAT_far', R0=150.0, R1=640.0, half_angle=50.0, cell=2.0):
     return o, int(kq.sum()) * cell * cell
 
 
+# Real sizes of the plants on this ridge at 4400 m (height in m of each scan at instance scale 1). The scans are of
+# lowland tundra and stand 2-5 times higher: next to the 2.2 m door that makes the building a model. Each variant
+# is brought to its species' height through a sized copy of the object; the scatter then varies it by its range.
+SIZES = dict(wild=0.085, mat=0.08, tall=0.16, dry=0.17, tuft=0.19, ling=0.10, birch=0.40, flower=0.10)
+
+
+def mesh_size(o):
+    """(height above ground, widest horizontal extent) from the vertices: o.dimensions is stale for library
+    objects, which are in no view layer."""
+    co = np.empty(len(o.data.vertices) * 3, np.float32)
+    o.data.vertices.foreach_get('co', co)
+    co = co.reshape(-1, 3)
+    return float(co[:, 2].max() - max(float(co[:, 2].min()), 0.0)), float(max(np.ptp(co[:, 0]), np.ptp(co[:, 1])))
+
+
+def sized(objs, height, tag, smax=1.0, flat=0.45):
+    """Copies of the objects (sharing their meshes) scaled so that each stands `height` high. Never enlarged beyond
+    smax; variants that are flat by nature (height < flat x width) keep their proportion to the others."""
+    out = []
+    hs = [mesh_size(o) for o in objs]
+    for o, (h, w) in zip(objs, hs):
+        k = min(height / max(h, 1e-3), smax)
+        if h < flat * w:                                   # a mat, a rosette: size it by its width instead
+            k = min(height / (flat * w), smax)
+        nm = 'SZ_%s_%s' % (tag, o.name[-4:])
+        c = bpy.data.objects.get(nm)
+        if c is None:
+            c = bpy.data.objects.new(nm, o.data)
+        c.data = o.data
+        c.scale = (k, k, k)
+        c.use_fake_user = True
+        out.append(c)
+    return out
+
+
 def build_fab(density=1.0):
     """Meadow of Megascans plants and stones: continuous cover growing in drifts (see cover_fields)."""
     import mc_fab
@@ -572,13 +608,13 @@ def build_fab(density=1.0):
     F = mc_fab.objects
     P = mc_fab.plant_material
     # autumn tundra at 4400 m: olive and straw turf, dark russet-brown shrubs
-    P('wild_grass', hue=0.49, sat=0.50, val=0.46, jitter=(0.015, 0.16, 0.14))
-    P('tundra_grass', hue=0.495, sat=0.52, val=0.52, jitter=(0.015, 0.16, 0.16))
-    P('tufted_grass', hue=0.46, sat=0.45, val=0.55, jitter=(0.02, 0.14, 0.16))
-    P('dry_grass', hue=0.5, sat=0.62, val=0.70, jitter=(0.01, 0.14, 0.18))
-    P('lingonberry', hue=0.5, sat=0.55, val=0.38, jitter=(0.02, 0.18, 0.14))
-    P('dwarf_willow', hue=0.47, sat=0.55, val=0.38, jitter=(0.025, 0.18, 0.14))
-    P('dwarf_birch', hue=0.455, sat=0.60, val=0.32, jitter=(0.03, 0.18, 0.12), transl=0.2)
+    P('wild_grass', hue=0.49, sat=0.50, val=0.34, jitter=(0.015, 0.16, 0.14))
+    P('tundra_grass', hue=0.495, sat=0.52, val=0.37, jitter=(0.015, 0.16, 0.16))
+    P('tufted_grass', hue=0.46, sat=0.45, val=0.41, jitter=(0.02, 0.14, 0.16))
+    P('dry_grass', hue=0.5, sat=0.60, val=0.50, jitter=(0.01, 0.14, 0.18))
+    P('lingonberry', hue=0.5, sat=0.55, val=0.32, jitter=(0.02, 0.18, 0.14))
+    P('dwarf_willow', hue=0.47, sat=0.55, val=0.32, jitter=(0.025, 0.18, 0.14))
+    P('dwarf_birch', hue=0.455, sat=0.60, val=0.27, jitter=(0.03, 0.18, 0.12), transl=0.2)
     P('yellow_flower', hue=0.5, sat=0.8, val=0.75, jitter=(0.01, 0.1, 0.1))
     for key in ('stone', 'boulder_a', 'boulder_b'):
         mc_fab.rock_material(key, sat=0.6, val=0.62)
@@ -589,22 +625,24 @@ def build_fab(density=1.0):
     stones = F('stone')
     boulders = F('boulder_a') + F('boulder_b')
     shrubs = F('dwarf_birch')
+    Z = lambda objs, k, **kw: sized(objs, SIZES[k], k, **kw)
+    knee = Z(shrubs, 'birch')
     L = [  # name, base, objects, attr, density per m2, scale range, upright, sink, tilt
-        ('SC_wild', near, F('wild_grass'), 'd_wild', 1.0, (0.75, 1.5), True, 0.0, 0.15),
-        ('SC_mat', near, mats, 'd_mat', 1.0, (0.6, 1.15), True, 0.0, 0.08),
-        ('SC_tall', near, tall, 'd_tall', 1.0, (0.55, 1.0), True, 0.0, 0.12),
-        ('SC_dry', near, F('dry_grass'), 'd_dry', 1.0, (0.6, 1.1), True, 0.0, 0.15),
-        ('SC_tuft', near, F('tufted_grass'), 'd_tuft', 1.0, (0.35, 0.62), True, 0.0, 0.1),
-        ('SC_ling', near, F('lingonberry'), 'd_ling', 1.0, (0.8, 1.5), True, 0.0, 0.12),
-        ('SC_will', near, F('dwarf_willow'), 'd_will', 1.0, (0.8, 1.6), 'align', 0.0, 0.06),
-        ('SC_birch', near, shrubs, 'd_birch', 1.0, (0.9, 1.7), True, 0.03, 0.2),
-        ('SC_flower', near, flowers, 'd_flower', 1.0, (0.9, 1.6), True, 0.0, 0.1),
+        ('SC_wild', near, Z(F('wild_grass'), 'wild'), 'd_wild', 1.0, (0.65, 1.5), True, 0.0, 0.15),      # 5-13 cm
+        ('SC_mat', near, Z(mats, 'mat'), 'd_mat', 1.0, (0.7, 1.4), True, 0.0, 0.08),                    # 6-11 cm
+        ('SC_tall', near, Z(tall, 'tall'), 'd_tall', 1.0, (0.6, 1.5), True, 0.0, 0.12),                 # 10-24 cm
+        ('SC_dry', near, Z(F('dry_grass'), 'dry'), 'd_dry', 1.0, (0.6, 1.5), True, 0.0, 0.15),          # 10-25 cm
+        ('SC_tuft', near, Z(F('tufted_grass'), 'tuft'), 'd_tuft', 1.0, (0.6, 1.4), True, 0.0, 0.1),     # tussocks 11-27 cm
+        ('SC_ling', near, Z(F('lingonberry'), 'ling'), 'd_ling', 1.0, (0.7, 1.4), True, 0.0, 0.12),     # 7-14 cm
+        ('SC_will', near, F('dwarf_willow'), 'd_will', 1.0, (0.7, 1.3), 'align', 0.0, 0.06),            # creeping mats
+        ('SC_birch', near, knee, 'd_birch', 1.0, (0.7, 1.35), True, 0.02, 0.2),                         # knee-high: 28-54 cm
+        ('SC_flower', near, Z(flowers, 'flower'), 'd_flower', 1.0, (0.7, 1.4), True, 0.0, 0.1),
         # (no scattered stones here: the foreground rocks are placed by hand, lib/mc_rocks.py)
-        ('SF_shrub', far, shrubs + F('dwarf_willow')[:3], 'd_shrub', 1.0, (1.1, 1.8), True, 0.05, 0.15),
-        ('SF_grass', far, mats + F('wild_grass')[:4], 'd_grass', 1.0, (1.2, 2.0), True, 0.0, 0.1),
-        ('SF_gold', far, F('dry_grass')[:3] + tall[:2], 'd_gold', 1.0, (1.4, 2.2), True, 0.0, 0.12),
-        ('SF_stone', far, stones, 'd_stone', 1.0, (0.25, 0.9), 'bedded', 0.45, 0.08),
-        ('SF_block', far, F('boulder_a'), 'd_block', 1.0, (0.35, 0.9), 'bedded', 0.5, 0.08),
+        ('SF_shrub', far, knee + F('dwarf_willow')[:3], 'd_shrub', 1.0, (1.4, 2.4), True, 0.05, 0.15),
+        ('SF_grass', far, mats + F('wild_grass')[:4], 'd_grass', 1.0, (0.9, 1.5), True, 0.0, 0.1),
+        ('SF_gold', far, F('dry_grass')[:3] + tall[:2], 'd_gold', 1.0, (0.9, 1.5), True, 0.0, 0.12),
+        ('SF_stone', far, stones, 'd_stone', 1.0, (0.15, 0.5), 'bedded', 0.45, 0.08),
+        ('SF_block', far, F('boulder_a'), 'd_block', 1.0, (0.2, 0.5), 'bedded', 0.5, 0.08),
     ]
     for nm, base, objs, attr, dens, sc, up, sink, tilt in L:
         if not objs:

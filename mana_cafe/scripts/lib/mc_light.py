@@ -8,7 +8,7 @@ SUN_EL = 28.6
 
 
 def world(hdr='waterkloof_farm_16k.hdr', strength=0.78, sun_clamp=40.0, sky_az=None, gamma=1.16, sat=1.12,
-          tint=(0.90, 0.96, 1.0), sun_az=SUN_AZ):
+          tint=(0.90, 0.96, 1.0), sun_az=SUN_AZ, cam_gamma=0.72, cam_sat=0.74, cam_gain=1.85):
     """Photographed sky (Poly Haven 'waterkloof_farm', CC0). Its sun (pixel azimuth 216.08 deg, 37.7 deg high) is
     turned to sun_az and clamped out; MC_sun replaces it, so sun and sky can be balanced for 4400 m: a stronger
     sun and a darker, deeper blue sky than at the lowland site of the photograph.
@@ -38,6 +38,12 @@ def world(hdr='waterkloof_farm_16k.hdr', strength=0.78, sun_clamp=40.0, sky_az=N
     col = n.node('ShaderNodeGamma', inputs={'Color': col, 'Gamma': gamma}).outputs[0]
     col = n.node('ShaderNodeHueSaturation', inputs={'Saturation': sat, 'Color': col}).outputs[0]
     col = n.mix(1.0, col, tuple(tint) + (1,), 'MULTIPLY')
+    # what the camera sees of the sky is graded apart from what lights the scene: the light stays that of thin
+    # air at 4400 m (dark, saturated sky dome), the picture gets the lighter, softer blue of the photographs
+    colc = n.node('ShaderNodeGamma', inputs={'Color': col, 'Gamma': cam_gamma}).outputs[0]
+    colc = n.node('ShaderNodeHueSaturation', inputs={'Saturation': cam_sat, 'Value': cam_gain, 'Color': colc}).outputs[0]
+    lp = n.node('ShaderNodeLightPath')
+    col = n.mix(lp.outputs['Is Camera Ray'], col, colc)
     bg = n.node('ShaderNodeBackground', inputs={'Color': col, 'Strength': strength})
     n.link(bg.outputs[0], out.inputs['Surface'])
     # the sun is a lamp: a small importance map is enough for the clamped sky (a 16k map costs 2.5 GB)
@@ -61,7 +67,7 @@ def sun(strength=10.5, az=SUN_AZ, el=SUN_EL, color=(1.0, 0.975, 0.91), angle=0.5
     return o
 
 
-def render_settings(scale=50, samples=128, res=(3840, 2160), exposure=-1.3, look='AgX - Medium High Contrast'):
+def render_settings(scale=50, samples=128, res=(3840, 2160), exposure=0.35, look='AgX - High Contrast'):
     sc = bpy.context.scene
     sc.render.engine = 'CYCLES'
     cy = sc.cycles
@@ -112,3 +118,49 @@ def camera(name='CAM_final', loc=None, az=None, pitch=None, lens=None, fstop=Non
         o.data.dof.focus_distance = focus or 45.0
     sc.camera = o
     return o
+
+
+def grade(sat=0.82, wb=(0.975, 1.0, 1.035), curve=((0.0, 0.0), (0.08, 0.045), (0.2, 0.14), (0.5, 0.5), (1.0, 1.0))):
+    """Picture grade, kept inside the file: a compositor chain in scene-linear light (white balance a touch cool,
+    restrained saturation) and a display curve after the view transform. Returns a description of what was set."""
+    sc = bpy.context.scene
+    done = []
+    try:
+        t = bpy.data.node_groups.get('MC_grade')
+        if t is not None:
+            bpy.data.node_groups.remove(t)
+        t = bpy.data.node_groups.new('MC_grade', 'CompositorNodeTree')
+        t.interface.new_socket('Image', in_out='OUTPUT', socket_type='NodeSocketColor')
+        N, L = t.nodes, t.links
+        rl = N.new('CompositorNodeRLayers')
+        rl.scene = sc
+        go = N.new('NodeGroupOutput')
+        hs = N.new('CompositorNodeHueSat')
+        hs.inputs['Saturation'].default_value = sat
+        L.new(rl.outputs['Image'], hs.inputs['Image'])
+        mx = N.new('ShaderNodeMix')
+        mx.data_type = 'RGBA'
+        mx.blend_type = 'MULTIPLY'
+        mx.inputs[0].default_value = 1.0
+        L.new(hs.outputs['Image'], mx.inputs[6])
+        mx.inputs[7].default_value = tuple(wb) + (1.0,)
+        L.new(mx.outputs[2], go.inputs[0])
+        sc.compositing_node_group = t
+        sc.render.use_compositing = True
+        done.append('compositor sat %.2f wb %s' % (sat, wb))
+    except Exception as e:                       # the picture still renders; the grade then lives in the display curve only
+        sc.render.use_compositing = False
+        done.append('compositor not set: %s' % e)
+    vs = sc.view_settings
+    vs.use_curve_mapping = True
+    cm = vs.curve_mapping
+    cv = cm.curves[3]                            # combined curve
+    while len(cv.points) > 2:
+        cv.points.remove(cv.points[1])
+    cv.points[0].location = curve[0]
+    cv.points[1].location = curve[-1]
+    for p in curve[1:-1]:
+        cv.points.new(p[0], p[1])
+    cm.update()
+    done.append('display curve %s' % (curve,))
+    return done

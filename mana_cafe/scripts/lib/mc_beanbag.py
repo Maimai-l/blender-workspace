@@ -69,10 +69,10 @@ def simulate(name, kind='round', seed=0, frames=70, sit=(0.0, 0.05, 0.26), sit_s
     rng = np.random.default_rng(seed)
     k = rng.uniform(0.94, 1.06)
     if kind == 'round':
-        V, F = _uv_sphere(seg=64, rings=40, rx=0.58 * k, ry=0.58 * rng.uniform(0.95, 1.06), rz=0.50, pear=0.28)
+        V, F = _uv_sphere(seg=72, rings=46, rx=0.76 * k, ry=0.76 * rng.uniform(0.95, 1.06), rz=0.62, pear=0.28)
     else:                                    # a longer lounger
-        V, F = _uv_sphere(seg=64, rings=44, rx=0.58 * k, ry=0.84 * rng.uniform(0.95, 1.05), rz=0.42, pear=0.15)
-    z0 = 0.58
+        V, F = _uv_sphere(seg=72, rings=50, rx=0.78 * k, ry=1.08 * rng.uniform(0.95, 1.05), rz=0.50, pear=0.15)
+    z0 = 0.72
     V = V + rng.normal(0, 0.004, V.shape)
     ox, oy = SIM_AT
     me = _mesh(name + '_sim', V, F)
@@ -106,7 +106,7 @@ def simulate(name, kind='round', seed=0, frames=70, sit=(0.0, 0.05, 0.26), sit_s
     sitter.collision.thickness_outer = 0.01
     sitter.collision.cloth_friction = 20.0
     f_down0, f_down1 = int(frames * 0.42), int(frames * 0.72)
-    sitter.location = (ox + sit[0], oy + sit[1], 1.6)
+    sitter.location = (ox + sit[0], oy + sit[1], 2.0)
     sitter.keyframe_insert('location', frame=1)
     sitter.keyframe_insert('location', frame=f_down0)
     sitter.location = (ox + sit[0], oy + sit[1], sit[2])
@@ -120,7 +120,7 @@ def simulate(name, kind='round', seed=0, frames=70, sit=(0.0, 0.05, 0.26), sit_s
     v0 = abs(bm.calc_volume())
     bm.free()
     cs.quality = quality
-    cs.mass = 7.0 / len(V)                  # a 7 kg bag (the cloth mass is per vertex)
+    cs.mass = 9.0 / len(V)                  # a 9 kg bag (the cloth mass is per vertex)
     cs.air_damping = 3.0
     cs.tension_stiffness = 22.0
     cs.compression_stiffness = 22.0
@@ -176,61 +176,71 @@ def simulate(name, kind='round', seed=0, frames=70, sit=(0.0, 0.05, 0.26), sit_s
     return out, (float(w[:, 2].min()), float(w[:, 2].max()), float(np.ptp(w[:, 0])), float(np.ptp(w[:, 1])))
 
 
-def fabric(name, color, seam=(0.0, 0.0, 0.0)):
-    """Solution-dyed outdoor canvas: matte weave with a soft sheen, sun-faded on top, dust in the folds."""
+def fabric(name, color, key='wool'):
+    """Outdoor bean-bag cover from the Megascans wool / furniture fabric scan (box-projected, recoloured), slightly
+    sun-faded on top, with dust in the folds."""
+    import mc_fab
     m, t = C.new_mat(name)
     n = NT(t)
     out = n.node('ShaderNodeOutputMaterial')
     geo = n.node('ShaderNodeNewGeometry')
     tc = n.node('ShaderNodeTexCoord')
     P = tc.outputs['Object']
+    mp = n.node('ShaderNodeMapping', vector_type='POINT', inputs={'Vector': P, 'Scale': (1.6, 1.6, 1.6)})
+
+    def tex(kind):
+        nd = n.node('ShaderNodeTexImage', projection='BOX', projection_blend=0.3, inputs={'Vector': mp.outputs[0]})
+        nd.image = mc_fab.image(key, kind)
+        return nd
+    base = tex('color').outputs['Color']
+    lum = n.node('ShaderNodeRGBToBW', inputs={0: base}).outputs[0]
+    weave = n.lin(lum, 0.25, 0.75, 0.72, 1.2)                                   # the scan's own light and dark threads
     Nz = n.node('ShaderNodeSeparateXYZ', inputs={0: geo.outputs['Normal']}).outputs['Z']
     big = n.noise(P, 2.2, 4, 0.55).outputs['Fac']
-    fine = n.noise(P, 26.0, 4, 0.6).outputs['Fac']
-    col = n.mix(1.0, tuple(color) + (1,), n.ramp(big, [(0.25, (0.84, 0.84, 0.84, 1)), (0.75, (1.12, 1.12, 1.12, 1))]), 'MULTIPLY')
-    fade = n.math('MULTIPLY', n.smooth(Nz, 0.2, 0.95), 0.07)                    # bleached where the sun hits most
-    col = n.mix(fade, col, (0.62, 0.60, 0.55, 1))
-    ao = n.node('ShaderNodeAmbientOcclusion', inputs={'Distance': 0.12}, samples=4)
-    col = n.mix(n.math('MULTIPLY', n.smooth(ao.outputs['AO'], 0.8, 0.3), 0.35), col, (0.10, 0.085, 0.07, 1))   # dust in folds
-    # weave: two crossed wave patterns, far below a pixel from the camera: mostly a matte, slightly rough response
-    wv1 = n.node('ShaderNodeTexWave', wave_type='BANDS', bands_direction='X', inputs={'Vector': P, 'Scale': 900.0, 'Distortion': 0.4})
-    wv2 = n.node('ShaderNodeTexWave', wave_type='BANDS', bands_direction='Z', inputs={'Vector': P, 'Scale': 900.0, 'Distortion': 0.4})
-    wh = n.math('ADD', wv1.outputs['Fac'], wv2.outputs['Fac'])
-    bh = n.math('ADD', n.math('MULTIPLY', wh, 0.00025), n.math('MULTIPLY', fine, 0.0012))
-    bump = n.node('ShaderNodeBump', inputs={'Strength': 1.0, 'Distance': 1.0, 'Height': bh})
-    bsdf = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': col, 'Roughness': 0.82, 'Normal': bump.outputs[0],
-                                                      'Specular IOR Level': 0.25})
-    bsdf.inputs['Sheen Weight'].default_value = 0.35
-    bsdf.inputs['Sheen Roughness'].default_value = 0.45
+    col = n.mix(1.0, tuple(color) + (1,), n.node('ShaderNodeCombineColor', inputs={0: weave, 1: weave, 2: weave}).outputs[0], 'MULTIPLY')
+    col = n.mix(1.0, col, n.ramp(big, [(0.25, (0.86, 0.86, 0.86, 1)), (0.75, (1.1, 1.1, 1.1, 1))]), 'MULTIPLY')
+    col = n.mix(n.math('MULTIPLY', n.smooth(Nz, 0.2, 0.95), 0.10), col, (0.42, 0.41, 0.39, 1))        # bleached on top
+    ao = n.node('ShaderNodeAmbientOcclusion', inputs={'Distance': 0.15}, samples=4)
+    col = n.mix(n.math('MULTIPLY', n.smooth(ao.outputs['AO'], 0.8, 0.3), 0.3), col, (0.07, 0.06, 0.05, 1))   # dust in folds
+    orm = n.node('ShaderNodeSeparateColor', inputs={0: tex('orm').outputs['Color']}).outputs
+    nrm = tex('normal').outputs['Color']
+    hgt = n.node('ShaderNodeRGBToBW', inputs={0: nrm}).outputs[0]
+    bump = n.node('ShaderNodeBump', inputs={'Strength': 0.5, 'Distance': 0.002, 'Height': lum})
+    bsdf = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': col, 'Roughness': n.math('MAXIMUM', orm[1], 0.75),
+                                                      'Normal': bump.outputs[0], 'Specular IOR Level': 0.2})
+    bsdf.inputs['Sheen Weight'].default_value = 0.4
+    bsdf.inputs['Sheen Roughness'].default_value = 0.5
     n.link(bsdf.outputs[0], out.inputs['Surface'])
     return m
 
 
+# muted outdoor colours that sit with rusted steel, slate and tundra
 PALETTE = {
-    'oat': (0.40, 0.33, 0.235), 'rust': (0.30, 0.075, 0.028), 'petrol': (0.016, 0.070, 0.090), 'char': (0.030, 0.030, 0.034),
-    'sage': (0.105, 0.125, 0.070), 'sand': (0.33, 0.25, 0.15),
+    'stone': (0.235, 0.215, 0.185), 'charcoal': (0.032, 0.033, 0.036), 'olive': (0.085, 0.090, 0.058),
+    'taupe': (0.150, 0.125, 0.100), 'slate': (0.060, 0.075, 0.090), 'umber': (0.115, 0.058, 0.036),
 }
 
-# (name, kind, colour, u, v, yaw offset deg, sitter offset, lean)  -- local terrace coordinates; all face the peaks (-u)
+# (name, kind, colour, fabric scan, u, v, yaw offset deg, sitter offset, sitter size)  -- local terrace coordinates;
+# all look towards the peaks (-u). Round bags are 1.35 m across, loungers 1.45 x 1.9 m: the real things.
 LAYOUT = [
-    ('BAG_1', 'round', 'oat', -3.3, 14.1, 10.0, (0.0, -0.10, 0.27), (0.27, 0.25, 0.18)),
-    ('BAG_2', 'round', 'rust', -1.4, 15.0, -16.0, (0.03, -0.08, 0.30), (0.25, 0.24, 0.17)),
-    ('BAG_3', 'long', 'petrol', 1.9, 14.6, 14.0, (-0.02, -0.20, 0.23), (0.27, 0.27, 0.16)),
-    ('BAG_4', 'round', 'sage', 4.6, 13.7, -8.0, (0.0, -0.09, 0.28), (0.26, 0.24, 0.18)),
-    ('BAG_5', 'round', 'char', 6.3, 11.2, 30.0, (-0.04, -0.10, 0.25), (0.27, 0.25, 0.17)),
-    ('BAG_6', 'long', 'sand', -5.4, 12.5, -22.0, (0.04, -0.22, 0.24), (0.27, 0.26, 0.15)),
+    ('BAG_1', 'round', 'stone', 'wool', -3.5, 14.0, 10.0, (0.0, -0.12, 0.33), (0.31, 0.29, 0.20)),
+    ('BAG_2', 'round', 'umber', 'wool', -1.3, 15.1, -16.0, (0.03, -0.10, 0.36), (0.30, 0.28, 0.20)),
+    ('BAG_3', 'long', 'slate', 'furniture_fabric', 2.1, 14.4, 14.0, (-0.02, -0.26, 0.28), (0.32, 0.32, 0.19)),
+    ('BAG_4', 'round', 'olive', 'wool', 4.9, 13.3, -8.0, (0.0, -0.11, 0.34), (0.31, 0.28, 0.21)),
+    ('BAG_5', 'round', 'charcoal', 'wool', 6.4, 10.6, 30.0, (-0.04, -0.12, 0.31), (0.31, 0.29, 0.20)),
+    ('BAG_6', 'long', 'taupe', 'wool', -5.6, 12.3, -22.0, (0.04, -0.28, 0.29), (0.32, 0.31, 0.18)),
 ]
 
 
 def build(only=None):
     col = C.coll('MC_bags')
     info = {}
-    for name, kind, cname, u, v, yaw, sit, ssize in LAYOUT:
+    for name, kind, cname, fkey, u, v, yaw, sit, ssize in LAYOUT:
         if only and name not in only:
             continue
         seed = zlib.crc32(name.encode()) % 100000
         me, dims = simulate(name, kind, seed, sit=sit, sit_size=ssize, volume=0.74 if kind == 'round' else 0.70)
-        me.materials.append(fabric('MC_bag_' + cname, PALETTE[cname]))
+        me.materials.append(fabric('MC_bag_' + cname, PALETTE[cname], fkey))
         o = C.obj(name, me, col)
         x, y = mc_site.to_world(u, v)
         # the bag's own +y is where the sitter's back was; it should look towards -u (the view)

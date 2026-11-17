@@ -15,7 +15,7 @@ P_REAL = (-22470.0, -5360.0)          # Chanadorje (5958 m) in the real scene fr
 CAM = (9.6, 32.79, 11.76)             # sketch camera; centre of the polar grid and of the blend
 CAM_VIEW = (15.0, 41.0, 13.5)         # the picture's camera (lib/mc_light.CAMERA): used for visibility tests
 LAYOUT = dict(az_t=-146.5, D=10800.0, dz=0.0, blend=(3000.0, 6000.0), seam=2500.0)
-KEYS = ('slope', 'north', 'curv', 'flow', 'rocky')
+KEYS = ('slope', 'north', 'east', 'curv', 'curv2', 'flow', 'rocky')
 
 
 def catmull(a, r, c):
@@ -60,7 +60,7 @@ class Raster:
         self.h = np.load(os.path.join(OUT, name + '_h.npy'))
         m = np.load(os.path.join(OUT, name + '_masks.npz'))
         self.x0, self.y0, self.cell, self.nx, self.ny = m['box']
-        self.m = {k: m[k].astype(np.float32) for k in ('slope', 'nx', 'ny', 'curv', 'flow', 'rocky')}
+        self.m = {k: m[k].astype(np.float32) for k in ('slope', 'nx', 'ny', 'curv', 'curv2', 'flow', 'rocky')}
 
     def rc(self, x, y):
         return (y - self.y0) / self.cell, (x - self.x0) / self.cell
@@ -104,6 +104,7 @@ class Composite:
         b = self.hi.sample(px, py)
         o = {k: a[k] * (1 - w) + b[k] * w for k in a}
         o['north'] = self.sd * o['nx'] + self.cd * o['ny']      # scene-north component of the normal
+        o['east'] = self.cd * o['nx'] - self.sd * o['ny']
         o['z'] = o['z'] + self.L['dz']
         return o
 
@@ -121,6 +122,7 @@ class Composite:
         if mn.any():
             a = self.near.sample(qx[mn], qy[mn])
             a['north'] = a['ny']
+            a['east'] = a['nx']
             for k in out:
                 out[k][mn] += a[k] * (1 - w[mn])
         if mf.any():

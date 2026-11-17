@@ -84,12 +84,24 @@ def _wrap_material(src, name, hue=0.5, sat=1.0, val=1.0):
         grp.inputs['Hue'].default_value = hue
         grp.inputs['Saturation'].default_value = sat
         grp.inputs['Value'].default_value = val
+    for nd in t.nodes:                                     # materials without the colour group: their own HSV nodes
+        if nd.type == 'HUE_SAT' and grp is None:
+            for k, v in (('Hue', hue), ('Saturation', sat), ('Value', val)):
+                if not nd.inputs[k].is_linked:
+                    nd.inputs[k].default_value = v
     srcs = out.inputs['Surface'].links[0].from_socket
     air = t.nodes.new('ShaderNodeGroup')
     air.node_tree = mc_mats.aerial_group()
     air.inputs['Density'].default_value = 1.25
-    t.links.new(srcs, air.inputs['Shader'])
-    t.links.new(air.outputs['Shader'], out.inputs['Surface'])
+    last = srcs.node
+    if last.type == 'MIX_SHADER' and last.inputs[1].is_linked and last.inputs[1].links[0].from_node.type == 'BSDF_TRANSPARENT':
+        # alpha-cut foliage: the air belongs on the leaf, not on the cut-out part of every card the ray crosses
+        opaque = last.inputs[2].links[0].from_socket
+        t.links.new(opaque, air.inputs['Shader'])
+        t.links.new(air.outputs['Shader'], last.inputs[2])
+    else:
+        t.links.new(srcs, air.inputs['Shader'])
+        t.links.new(air.outputs['Shader'], out.inputs['Surface'])
     mc_mats.no_light(m)
     return m
 
@@ -125,9 +137,9 @@ def build(name='MC_forest'):
     d = np.load(os.path.join(C.DEM, 'trees.npz'))
     big = mc_assets.load('fir_tree_01')
     small = mc_assets.load('fir_sapling_medium')
-    srcs = [big.objects['fir_tree_01_a_LOD2'], big.objects['fir_tree_01_b_LOD2'], big.objects['fir_tree_01_c_LOD2'],
-            small.objects['fir_sapling_medium_a_LOD2'], big.objects['fir_tree_01_c_LOD2'],
-            small.objects['fir_sapling_medium_b_LOD2']]
+    F = mc_assets.find
+    srcs = [F(big, 'fir_tree_01_a_LOD2'), F(big, 'fir_tree_01_b_LOD2'), F(big, 'fir_tree_01_c_LOD2'),
+            F(small, 'fir_sapling_medium_a_LOD2'), F(big, 'fir_tree_01_c_LOD2'), F(small, 'fir_sapling_medium_b_LOD2')]
     lib = bpy.data.collections.get('LIB_trees') or bpy.data.collections.new('LIB_trees')
     for o in list(lib.objects):
         dd = o.data
@@ -140,9 +152,9 @@ def build(name='MC_forest'):
             if m is None or m.name in green:
                 continue
             leafy = 'twig' in m.name
-            green[m.name] = _wrap_material(m, 'MC_' + m.name, 0.5, 0.9, 0.85 if leafy else 1.0)
-            gold[m.name] = _wrap_material(m, 'MC_gold_' + m.name, 0.385 if leafy else 0.5, 1.5 if leafy else 1.0,
-                                          2.1 if leafy else 1.0)
+            green[m.name] = _wrap_material(m, 'MC_' + m.name, 0.5, 0.85, 0.80 if leafy else 1.0)
+            gold[m.name] = _wrap_material(m, 'MC_gold_' + m.name, 0.40 if leafy else 0.5, 1.15 if leafy else 1.0,
+                                          1.7 if leafy else 1.0)
     for i, src in enumerate(srcs):
         lib.objects.link(_unit_tree(src, 'TREE_%d' % i, gold if i >= 4 else green))
     # points

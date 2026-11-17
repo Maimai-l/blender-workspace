@@ -190,7 +190,7 @@ def wall_paths(g):
         ww = np.hanning(2 * kk + 1)
         ww /= ww.sum()
         zs = np.convolve(np.r_[np.repeat(z_out[:1], kk), z_out, np.repeat(z_out[-1:], kk)], ww, 'valid')
-        top = np.maximum(mc_site.Z_T + mc_site.PARAPET, zs + 0.50)
+        top = np.maximum(mc_site.Z_T + mc_site.PARAPET, zs + 0.80)
         s = np.arange(len(x)) * step
         top = top + 0.02 * np.sin(s * 0.9 + a) + 0.012 * np.sin(s * 2.7 + 1.3 * a)
         out.append(dict(xy=np.c_[x, y], n=np.c_[nx_, ny_], top=top, foot_out=z_out - 0.14,
@@ -465,3 +465,118 @@ def grit_material(name='MC_grit'):
     bsdf = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': col, 'Roughness': 0.9, 'Normal': bump.outputs[0]})
     n.link(bsdf.outputs[0], out.inputs['Surface'])
     return m
+
+
+# ------------------------------------------------------------------ retaining walls from the Megascans wall scan
+def _mesh_arrays(me):
+    n = len(me.vertices)
+    co = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get('co', co)
+    nl = len(me.loops)
+    li = np.empty(nl, np.int32)
+    me.loops.foreach_get('vertex_index', li)
+    ls = np.empty(len(me.polygons), np.int32)
+    lt = np.empty(len(me.polygons), np.int32)
+    me.polygons.foreach_get('loop_start', ls)
+    me.polygons.foreach_get('loop_total', lt)
+    uv = np.empty(nl * 2, np.float32)
+    me.uv_layers[0].uv.foreach_get('vector', uv)
+    return co.reshape(-1, 3), li, ls, lt, uv.reshape(-1, 2)
+
+
+def wall_module(key='mossy_wall', budget=110000):
+    """Decimated copy of the wall scan (cached as mesh 'FAB_<key>_module')."""
+    import mc_fab
+    name = 'FAB_%s_module' % key
+    me = bpy.data.meshes.get(name)
+    if me is not None:
+        return me
+    src = mc_fab.objects(key)[0]
+    tmp = bpy.data.objects.new('tmp_wall', src.data)
+    bpy.context.scene.collection.objects.link(tmp)
+    md = tmp.modifiers.new('dec', 'DECIMATE')
+    md.ratio = min(1.0, budget / len(src.data.polygons))
+    dg = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(tmp.evaluated_get(dg), depsgraph=dg)
+    me.name = name
+    me.use_fake_user = True
+    bpy.data.objects.remove(tmp, do_unlink=True)
+    return me
+
+
+def build_walls_scan(name='MC_walls', key='mossy_wall', seed=11, overlap=0.07):
+    """Dry-stone retaining walls: the scanned wall module repeated along the terrace outline and bent to it. Each
+    repeat shows another side of the scan (turned, mirrored), is stretched a little differently and sits at its own
+    height in the ground, so the 3.5 m scan does not read as a repeat."""
+    import mc_fab
+    g = Ground()
+    rng = np.random.default_rng(seed)
+    co, li, ls, lt, uv = _mesh_arrays(wall_module(key))
+    x0, x1 = co[:, 0].min(), co[:, 0].max()
+    y0, y1 = co[:, 1].min(), co[:, 1].max()
+    z0, z1 = co[:, 2].min(), co[:, 2].max()
+    Lm, Hm = x1 - x0, z1 - z0
+    yc = 0.5 * (y0 + y1)
+    V, LI, LS, LT, UV = [], [], [], [], []
+    nv = nl = 0
+    count = 0
+    for W in wall_paths(g):
+        xy, nrm, top, s = W['xy'], W['n'], W['top'], W['s']
+        Ltot = float(s[-1])
+        if Ltot < 0.8:
+            continue
+        nmod = max(1, int(round(Ltot / (Lm * 0.96))))
+        seg = Ltot / nmod
+        foot = np.minimum(W['foot_out'], W['foot_in'] - 0.3)
+        for k in range(nmod):
+            flip = rng.uniform() < 0.5                      # show the other face of the scan
+            mirror = rng.uniform() < 0.5
+            xm = (co[:, 0] - x0) / Lm                       # 0..1 along the module
+            ym = co[:, 1] - yc
+            if flip:
+                xm, ym = 1.0 - xm, -ym
+            if mirror:
+                xm = 1.0 - xm
+            sm = k * seg - overlap + xm * (seg + 2 * overlap)
+            sm = np.clip(sm, 0.0, Ltot)
+            px = np.interp(sm, s, xy[:, 0])
+            py = np.interp(sm, s, xy[:, 1])
+            nx_ = np.interp(sm, s, nrm[:, 0])
+            ny_ = np.interp(sm, s, nrm[:, 1])
+            tp = np.interp(sm, s, top)
+            ft = np.interp(sm, s, foot)
+            need = float(np.percentile(tp - ft, 85)) + 0.10          # wall height here, with 10 cm in the ground
+            zs = np.clip(need / Hm, 0.92, 1.45)
+            dz = rng.uniform(-0.025, 0.02)
+            P = np.stack([px + nx_ * ym * 0.97, py + ny_ * ym * 0.97, tp + dz - (z1 - co[:, 2]) * zs], 1)
+            V.append(P.astype(np.float32))
+            if mirror:                                      # a mirrored copy needs its faces turned back
+                idx = li.reshape(-1, 3)[:, ::-1].ravel()
+                uvm = uv.reshape(-1, 3, 2)[:, ::-1].reshape(-1, 2)
+            else:
+                idx, uvm = li, uv
+            LI.append(idx + nv)
+            UV.append(uvm)
+            LS.append(ls + nl)
+            LT.append(lt)
+            nv += len(co)
+            nl += len(li)
+            count += 1
+    co2 = np.concatenate(V)
+    me = bpy.data.meshes.new(name)
+    me.vertices.add(len(co2))
+    me.vertices.foreach_set('co', co2.ravel())
+    lic = np.concatenate(LI).astype(np.int32)
+    me.loops.add(len(lic))
+    me.loops.foreach_set('vertex_index', lic)
+    lsc = np.concatenate(LS).astype(np.int32)
+    me.polygons.add(len(lsc))
+    me.polygons.foreach_set('loop_start', lsc)
+    me.polygons.foreach_set('loop_total', np.concatenate(LT).astype(np.int32))
+    me.update(calc_edges=True)
+    uvl = me.uv_layers.new(name='UVMap')
+    uvl.uv.foreach_set('vector', np.concatenate(UV).astype(np.float32).ravel())
+    me.shade_smooth()
+    mat = mc_fab.rock_material(key, sat=0.65, val=0.66)
+    o = C.obj(name, me, C.coll('MC_site'), mat)
+    return o, count

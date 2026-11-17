@@ -68,29 +68,42 @@ def main(log=print):
         return comp.sample(x, y)['z']
     site = mc_site.Site(nat)
     Z = np.empty(nv, np.float32)
-    att = {k: np.empty(nv, np.float32) for k in KEYS + ('alt', 'wfar', 'track', 'terrace', 'sdf')}
+    att = {k: np.empty(nv, np.float32) for k in KEYS + ('alt', 'wfar', 'track', 'terrace', 'sdf', 'trackd')}
     CH = 400000
     for s in range(0, nv, CH):
         x = X[s:s + CH]
         y = Y[s:s + CH]
-        z, mt, mp, sdf = site.height(x, y)
+        z, mt, mp, sdf, trd = site.height(x, y)
         o = comp.sample(x, y)
         Z[s:s + CH] = z - np.maximum(0.0, np.hypot(x - CAM[0], y - CAM[1]) - seam)
         att['alt'][s:s + CH] = z
         att['track'][s:s + CH] = mt
         att['terrace'][s:s + CH] = mp
         att['sdf'][s:s + CH] = sdf
+        att['trackd'][s:s + CH] = trd
         att['wfar'][s:s + CH] = o['wfar']
         for k in KEYS:
             att[k][s:s + CH] = o[k]
     # graded ground on a 0.1 m grid round the site, for the wall / paving / scatter builders inside Blender
     gx = np.arange(-130.0, 130.01, 0.1)
     GX, GY = np.meshgrid(gx, gx)
-    gz, gt, gp, gs = site.height(GX.ravel(), GY.ravel())
+    gz, gt, gp, gs, gd = site.height(GX.ravel(), GY.ravel())
     np.savez(os.path.join(OUT, 'site_h.npz'), z=gz.reshape(GX.shape).astype(np.float32),
              track=gt.reshape(GX.shape).astype(np.float16), sdf=gs.reshape(GX.shape).astype(np.float16),
+             trackd=gd.reshape(GX.shape).astype(np.float16),
              x0=-130.0, y0=-130.0, cell=0.1)
     del GX, GY
+    # the same on a 1 m grid out to 700 m, for the far vegetation and rock scatter
+    fx = np.arange(-720.0, 320.01, 1.0)
+    FX, FY = np.meshgrid(fx, fx)
+    fz = site.height(FX.ravel(), FY.ravel())
+    fo = comp.sample(FX.ravel(), FY.ravel())
+    np.savez(os.path.join(OUT, 'site_far.npz'), z=fz[0].reshape(FX.shape).astype(np.float32),
+             slope=fo['slope'].reshape(FX.shape).astype(np.float16), rocky=fo['rocky'].reshape(FX.shape).astype(np.float16),
+             curv=fo['curv'].reshape(FX.shape).astype(np.float16), north=fo['north'].reshape(FX.shape).astype(np.float16),
+             track=fz[1].reshape(FX.shape).astype(np.float16), sdf=fz[3].reshape(FX.shape).astype(np.float16),
+             x0=-720.0, y0=-720.0, cell=1.0)
+    del FX, FY
     d2 = X * X + Y * Y
     co = np.stack([X, Y, Z - d2 / (2.0 * tl.R_EARTH) * 0.87], 1).astype(np.float32)
     np.savez(os.path.join(OUT, 'mesh_near.npz'), co=co, quads=quads, **{'a_' + k: v for k, v in att.items()})

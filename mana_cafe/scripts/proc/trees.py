@@ -51,7 +51,7 @@ def horizon(comp, daz=0.1, dr=0.006):
     return az, rr, H
 
 
-def main(n_cand=5_000_000, seed=4, log=print):
+def main(n_cand=9_000_000, seed=4, log=print):
     t0 = time.time()
     comp = Composite()
     rng = np.random.default_rng(seed)
@@ -64,21 +64,27 @@ def main(n_cand=5_000_000, seed=4, log=print):
         r = np.sqrt(rng.uniform(0, 1, CH) * (R1 * R1 - R0 * R0) + R0 * R0)
         qx, qy = CAM[0] + r * np.cos(np.radians(az)), CAM[1] + r * np.sin(np.radians(az))
         o = comp.sample(qx, qy)
-        alt, slope, north = o['z'], o['slope'], o['north']
-        a2n = alt + 150.0 * (vnoise(qx, qy, 110.0, 1) - 0.5) + 160.0 * (vnoise(qx, qy, 700.0, 2) - 0.5) - 120.0 * north
-        patch = smooth(vnoise(qx, qy, 240.0, 3), 0.30, 0.55)
-        p = smooth(a2n, -110.0, -230.0) * smooth(slope, 1.25, 0.8) * (0.45 + 0.55 * smooth(north, -0.25, 0.25)) * (0.25 + 0.75 * patch)
-        p += 0.035 * smooth(a2n, 10.0, -110.0) * smooth(slope, 1.1, 0.7)          # stragglers above the tree line
+        alt, slope, north, flow, rocky = o['z'], o['slope'], o['north'], o['flow'], o['rocky']
+        big = vnoise(qx, qy, 700.0, 2)
+        mid = vnoise(qx, qy, 110.0, 1)
+        # the tree line (m above the cafe): higher on sunny slopes and spurs, pulled down in the avalanche gullies
+        line = -150.0 - 120.0 * north + 180.0 * (big - 0.5) + 100.0 * (mid - 0.5) - 90.0 * smooth(flow, 3.0, 3.8)
+        depth = line - alt                                              # metres below the tree line
+        dens = smooth(depth, -30.0, 170.0)                              # stragglers at the line, closed forest below
+        clear = smooth(vnoise(qx, qy, 260.0, 3) * 0.6 + vnoise(qx, qy, 85.0, 7) * 0.4, 0.50, 0.60) * (0.35 + 0.65 * smooth(depth, 500.0, 60.0))
+        aval = smooth(flow, 3.25, 3.75) * smooth(slope, 0.42, 0.68)     # avalanche tracks stay open
+        rockx = np.clip(smooth(slope, 0.95, 1.25) + smooth(rocky, 0.62, 0.86), 0, 1)
+        p = dens * (1.0 - 0.92 * clear) * (1.0 - aval) * (1.0 - rockx) * (0.55 + 0.45 * smooth(north, -0.3, 0.3))
         p *= np.minimum(1.0, (4200.0 / r) ** 1.1)                               # thinner far away (a tree is a pixel there)
         keep = rng.uniform(0, 1, CH) < p
-        h = (22.0 - 15.0 * smooth(a2n, -420.0, -110.0)) * rng.uniform(0.7, 1.25, CH)
+        h = (7.0 + 17.0 * smooth(depth, 0.0, 320.0)) * rng.uniform(0.7, 1.3, CH)   # small trees towards the line
         h *= 1.0 + 0.5 * smooth(r, 4200.0, 9000.0)                              # far "trees" stand for small groups
         drop = (qx * qx + qy * qy) / (2 * tl.R_EARTH) * 0.87
         el = np.degrees(np.arctan2(alt + h - drop - CAM[2], r))
         ci = np.clip(np.round((az - az_t[0]) / (az_t[1] - az_t[0])).astype(int), 0, len(az_t) - 1)
         ri = np.clip(np.searchsorted(rr_t, r), 0, len(rr_t) - 1)
         keep &= el >= H[ri, ci] - 0.15
-        larch = rng.uniform(0, 1, CH) < (0.07 + 0.30 * smooth(a2n, -330.0, -130.0))
+        larch = rng.uniform(0, 1, CH) < (0.04 + 0.16 * smooth(depth, 220.0, 20.0))
         sp = np.where(larch, 4 + rng.integers(0, 2, CH), rng.integers(0, 4, CH))      # 0-3 fir shapes, 4-5 larch
         out['co'].append(np.c_[qx, qy, alt - drop - 0.3][keep])
         out['h'].append(h[keep])
@@ -88,7 +94,7 @@ def main(n_cand=5_000_000, seed=4, log=print):
     np.savez(os.path.join(OUT, 'trees.npz'), co=res['co'].astype(np.float32), h=res['h'].astype(np.float32),
              yaw=res['yaw'].astype(np.float32), sp=res['sp'].astype(np.int32))
     r = np.hypot(res['co'][:, 0] - CAM[0], res['co'][:, 1] - CAM[1])
-    log('trees', len(r), 'larch %.0f%%' % (100 * (res['sp'] >= 2).mean()),
+    log('trees', len(r), 'larch %.0f%%' % (100 * (res['sp'] >= 4).mean()),
         'by range km', np.histogram(r, [0, 1000, 2000, 3000, 5000, 7000, 11000])[0].tolist(), '%.1fs' % (time.time() - t0))
 
 

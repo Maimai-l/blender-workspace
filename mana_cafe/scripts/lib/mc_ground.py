@@ -111,7 +111,7 @@ def instance_collection(name, objs):
 
 
 def gn_scatter(name, base, collection, attr, density, scale=(0.6, 1.0), seed=0, upright=True, sink=0.0, tilt=0.12,
-               align=False):
+               align=False, scale_attr=None, yaw=None):
     """Object that instances `collection` over `base`: density (per m2) x the named weight attribute."""
     ng = bpy.data.node_groups.get('GN_' + name)
     if ng is not None:
@@ -150,6 +150,10 @@ def gn_scatter(name, base, collection, attr, density, scale=(0.6, 1.0), seed=0, 
     t = 0.0 if upright is True else math.pi
     rv.inputs['Min'].default_value = (-tilt if upright else -t, -tilt if upright else -t, 0.0)
     rv.inputs['Max'].default_value = (tilt if upright else t, tilt if upright else t, 2 * math.pi)
+    if yaw is not None:                            # bedded rock: one direction, a few degrees of play
+        y0, yj = math.radians(yaw[0]), math.radians(yaw[1])
+        rv.inputs['Min'].default_value = (-tilt, -tilt, y0 - yj)
+        rv.inputs['Max'].default_value = (tilt, tilt, y0 + yj)
     rv.inputs['Seed'].default_value = seed + 1
     er = N.new('FunctionNodeEulerToRotation')
     L.new(rv.outputs['Value'], er.inputs['Euler'])
@@ -167,7 +171,17 @@ def gn_scatter(name, base, collection, attr, density, scale=(0.6, 1.0), seed=0, 
     rs.inputs['Min'].default_value = scale[0]      # (sockets follow data_type in Blender 5)
     rs.inputs['Max'].default_value = scale[1]
     rs.inputs['Seed'].default_value = seed + 2
-    L.new(rs.outputs['Value'], ip.inputs['Scale'])
+    scl = rs.outputs['Value']
+    if scale_attr:                                 # e.g. plants drawn larger and sparser with distance
+        sa = N.new('GeometryNodeInputNamedAttribute')
+        sa.data_type = 'FLOAT'
+        sa.inputs['Name'].default_value = scale_attr
+        sm = N.new('ShaderNodeMath')
+        sm.operation = 'MULTIPLY'
+        L.new(rs.outputs['Value'], sm.inputs[0])
+        L.new(sa.outputs[0], sm.inputs[1])
+        scl = sm.outputs[0]
+    L.new(scl, ip.inputs['Scale'])
     last = ip.outputs['Instances']
     if sink:
         # bury part of each stone: move down by a fraction of its size (instance scale x sink)
@@ -176,7 +190,7 @@ def gn_scatter(name, base, collection, attr, density, scale=(0.6, 1.0), seed=0, 
         m2 = N.new('ShaderNodeMath')
         m2.operation = 'MULTIPLY'
         m2.inputs[1].default_value = -sink
-        L.new(rs.outputs['Value'], m2.inputs[0])
+        L.new(scl, m2.inputs[0])
         L.new(m2.outputs[0], cz.inputs['Z'])
         L.new(last, ti.inputs['Instances'])
         L.new(cz.outputs[0], ti.inputs['Translation'])
@@ -414,5 +428,189 @@ def build(density=1.0):
         col = instance_collection('LIB_' + nm, objs)
         gn_scatter(nm, base, col, attr, dens * density, sc, seed=zlib.crc32(nm.encode()) % 10000, upright=bool(up), sink=sink,
                    align=(up == 'align'), tilt=0.05 if up == 'align' else 0.12)
+        out[nm] = len(objs)
+    return out
+
+
+# ====================================================================== Megascans ground cover
+class FarGround:
+    """Graded ground on the 1 m grid out to 700 m (written by proc/mesh_near.py)."""
+
+    def __init__(self):
+        d = np.load(os.path.join(C.DEM, 'site_far.npz'))
+        self.a = {k: d[k].astype(np.float32) for k in ('z', 'slope', 'rocky', 'curv', 'north', 'track', 'sdf')}
+        self.x0, self.y0, self.cell = float(d['x0']), float(d['y0']), float(d['cell'])
+
+    def s(self, k, x, y):
+        a = self.a[k]
+        c = np.clip((np.asarray(x, float) - self.x0) / self.cell, 0, a.shape[1] - 1.001)
+        r = np.clip((np.asarray(y, float) - self.y0) / self.cell, 0, a.shape[0] - 1.001)
+        c0, r0 = c.astype(int), r.astype(int)
+        fc, fr = c - c0, r - r0
+        return (a[r0, c0] * (1 - fr) * (1 - fc) + a[r0 + 1, c0] * fr * (1 - fc) + a[r0, c0 + 1] * (1 - fr) * fc +
+                a[r0 + 1, c0 + 1] * fr * fc)
+
+
+def _view():
+    cam = bpy.data.objects.get('CAM_final')
+    if cam is None:
+        return CAM, VIEW_AZ
+    return tuple(cam.location), mc_light_az(cam)
+
+
+def cover_fields(X, Y, slope, r):
+    """Where things grow (0..1 fields in world space): shrub thickets in drifts, turf between them, bare patches,
+    golden grass drifts, flower patches, stony ground."""
+    T = smooth(vnoise(X, Y, 12.0, 41) * 0.7 + vnoise(X, Y, 3.6, 43) * 0.3 + 0.12 * smooth(slope, 0.15, 0.55), 0.47, 0.56)
+    B = smooth(vnoise(X, Y, 6.0, 17) + 0.2 * smooth(slope, 0.5, 0.9), 0.67, 0.75)
+    G = smooth(vnoise(X, Y, 9.0, 55), 0.45, 0.70)
+    F = smooth(vnoise(X, Y, 7.0, 71), 0.62, 0.75) * smooth(r, 95.0, 55.0)
+    S = smooth(vnoise(X, Y, 6.5, 73) + 0.5 * B, 0.55, 0.80)
+    return T, B, G, F, S
+
+
+def base_near(name='SCAT_near', R=175.0, half_angle=52.0, cell=0.4):
+    """Carrier mesh for the ground cover within R of the camera (inside the view), with a density weight per
+    species and a scale factor that grows with distance while the density thins."""
+    g = Ground()
+    cam, az0 = _view()
+    xs = np.arange(cam[0] - R, cam[0] + 30.0, cell)
+    ys = np.arange(cam[1] - R, cam[1] + 30.0, cell)
+    X, Y = np.meshgrid(xs, ys)
+    r = np.hypot(X - cam[0], Y - cam[1])
+    da = (np.degrees(np.arctan2(Y - cam[1], X - cam[0])) - az0 + 180) % 360 - 180
+    keepv = ((np.abs(da) < half_angle) & (r < R)) | (r < 14.0)
+    keepv &= (np.abs(X) < 128) & (np.abs(Y) < 128)
+    Z = g.z(X, Y)
+    sdf = g.sdf(X, Y)
+    trd = g._s(np.load(os.path.join(C.DEM, 'site_h.npz'))['trackd'].astype(np.float32), X, Y)
+    slope = np.hypot((g.z(X + 0.4, Y) - g.z(X - 0.4, Y)) / 0.8, (g.z(X, Y + 0.4) - g.z(X, Y - 0.4)) / 0.8)
+    T, B, G, F, S = cover_fields(X, Y, slope, r)
+    lod = smooth(r, 50.0, 150.0)
+    kd = (1.0 - 0.80 * lod) * smooth(r, R, R - 25.0)              # thinner with distance, out at the rim
+    # the track: nothing in the ruts, turf on the crown and creeping in from the verges
+    on_track = smooth(trd, 2.2, 1.7)
+    tr_turf = np.maximum(smooth(trd, 0.42, 0.15) * 0.45, smooth(trd, 1.35, 1.9) * 0.7)
+    open_ = (sdf > 0.36) * ((1 - on_track) + on_track * tr_turf * smooth(vnoise(X, Y, 2.0, 81), 0.35, 0.6))
+    shrub_ok = (sdf > 0.36) * (1 - on_track)
+    wallfoot = smooth(sdf, 1.3, 0.45) * (sdf > 0.36)
+    veg = open_ * (1 - B)
+    A = {
+        'd_wild': veg * (15.0 * (1 - T) + 4.0 * T + 5.0 * wallfoot),
+        'd_mat': veg * (3.4 * (1 - T) + 0.6 * T),
+        'd_tall': veg * (1 - T) * (0.5 + 1.6 * G),
+        'd_dry': veg * (1 - 0.7 * T) * (0.25 + 1.6 * G),
+        'd_tuft': veg * (1 - T) * (0.06 + 0.5 * G),
+        'd_ling': veg * shrub_ok * (8.0 * T + 0.8 * (1 - T)),
+        'd_will': veg * shrub_ok * (5.5 * T + 1.2 * (1 - T)),
+        'd_birch': veg * shrub_ok * (5.5 * T + 1.4 * wallfoot),
+        'd_flower': veg * (1 - T) * F * 0.7,
+    }
+    for k in A:
+        A[k] = A[k] * kd
+    A['sc'] = 1.0 + 0.75 * lod
+    kq = keepv[:-1, :-1] & keepv[1:, :-1] & keepv[:-1, 1:] & keepv[1:, 1:]
+    me = C.grid_mesh(name, np.stack([X, Y, Z], -1).reshape(-1, 3), X.shape[0], X.shape[1], keep=kq,
+                     attrs={k: v.ravel() for k, v in A.items()})
+    o = C.obj(name, me, C.coll('MC_scatter'))
+    o.hide_render = True
+    o.hide_viewport = True
+    return o, int(kq.sum()) * cell * cell
+
+
+def base_far(name='SCAT_far', R0=150.0, R1=640.0, half_angle=50.0, cell=2.0):
+    """Carrier for the cover between R0 and R1: shrubs and tussocks as larger, sparser instances (3-10 px each)."""
+    g = FarGround()
+    cam, az0 = _view()
+    xs = np.arange(max(g.x0 + 2, cam[0] - R1), min(cam[0] + 60.0, 318.0), cell)
+    ys = np.arange(max(g.y0 + 2, cam[1] - R1), min(cam[1] + 60.0, 318.0), cell)
+    X, Y = np.meshgrid(xs, ys)
+    r = np.hypot(X - cam[0], Y - cam[1])
+    da = (np.degrees(np.arctan2(Y - cam[1], X - cam[0])) - az0 + 180) % 360 - 180
+    keepv = (np.abs(da) < half_angle) & (r > R0 - 4) & (r < R1)
+    Z = g.s('z', X, Y)
+    slope = g.s('slope', X, Y)
+    rocky = g.s('rocky', X, Y)
+    trk = g.s('track', X, Y)
+    T, B, G, F, S = cover_fields(X, Y, slope, r)
+    curv = g.s('curv', X, Y)
+    crest = smooth(curv, 0.2, 1.2)
+    foot = smooth(slope, 0.25, 0.5) * smooth(curv, -0.2, -1.0)
+    cluster = smooth(vnoise(X, Y, 16.0, 91), 0.64, 0.72)
+    k = smooth(r, R0 - 4, R0 + 22.0) * smooth(r, R1, R1 - 120.0) * (1 - np.clip(trk * 2, 0, 1)) * smooth(slope, 1.3, 0.9)
+    k = k * np.clip(260.0 / r, 0.25, 1.0)                               # thinner still far out
+    A = {
+        'd_shrub': k * (1 - B) * (0.55 * T + 0.05) * (1 - 0.6 * rocky),
+        'd_grass': k * (1 - B) * (0.9 * (1 - T) + 0.15),
+        'd_gold': k * (1 - B) * (1 - T) * 0.25 * G,
+        # rock in the middle distance follows the ground: groups on the convex crests where the soil is thin and at
+        # the foot of steep slopes, almost none in the grassy hollows
+        'd_stone': k * cluster * (0.9 * crest + 0.7 * foot + 0.03) * 0.30,
+        'd_block': k * cluster * (crest + foot) * 0.018,
+        'sc': 1.0 + 0.8 * smooth(r, R0, 520.0),
+    }
+    kq = keepv[:-1, :-1] & keepv[1:, :-1] & keepv[:-1, 1:] & keepv[1:, 1:]
+    me = C.grid_mesh(name, np.stack([X, Y, Z], -1).reshape(-1, 3), X.shape[0], X.shape[1], keep=kq,
+                     attrs={k_: v.ravel() for k_, v in A.items()})
+    o = C.obj(name, me, C.coll('MC_scatter'))
+    o.hide_render = True
+    o.hide_viewport = True
+    return o, int(kq.sum()) * cell * cell
+
+
+def build_fab(density=1.0):
+    """Meadow of Megascans plants and stones: continuous cover growing in drifts (see cover_fields)."""
+    import mc_fab
+    for o in [o for o in bpy.data.objects if o.name.startswith(('SC_', 'PATCH_'))]:
+        C.remove_object(o.name)
+    near, a1 = base_near()
+    far, a2 = base_far()
+    out = {'near_m2': round(a1), 'far_m2': round(a2)}
+    F = mc_fab.objects
+    P = mc_fab.plant_material
+    # autumn tundra at 4400 m: olive and straw turf, dark russet-brown shrubs
+    P('wild_grass', hue=0.49, sat=0.50, val=0.46, jitter=(0.015, 0.16, 0.14))
+    P('tundra_grass', hue=0.495, sat=0.52, val=0.52, jitter=(0.015, 0.16, 0.16))
+    P('tufted_grass', hue=0.46, sat=0.45, val=0.55, jitter=(0.02, 0.14, 0.16))
+    P('dry_grass', hue=0.5, sat=0.62, val=0.70, jitter=(0.01, 0.14, 0.18))
+    P('lingonberry', hue=0.5, sat=0.55, val=0.38, jitter=(0.02, 0.18, 0.14))
+    P('dwarf_willow', hue=0.47, sat=0.55, val=0.38, jitter=(0.025, 0.18, 0.14))
+    P('dwarf_birch', hue=0.455, sat=0.60, val=0.32, jitter=(0.03, 0.18, 0.12), transl=0.2)
+    P('yellow_flower', hue=0.5, sat=0.8, val=0.75, jitter=(0.01, 0.1, 0.1))
+    for key in ('stone', 'boulder_a', 'boulder_b'):
+        mc_fab.rock_material(key, sat=0.6, val=0.62)
+    tg = F('tundra_grass')
+    mats = [o for o in tg if o.name[-4:] in ('VarD', 'VarE', 'VarH', 'VarI')]
+    tall = [o for o in tg if o.name[-4:] in ('VarA', 'VarB', 'VarC', 'VarF', 'VarG')]
+    flowers = [o for o in F('yellow_flower') if o.name[-4:] in ('VarB', 'VarC', 'VarE', 'VarF', 'VarG', 'VarH')]
+    stones = F('stone')
+    boulders = F('boulder_a') + F('boulder_b')
+    shrubs = F('dwarf_birch')
+    L = [  # name, base, objects, attr, density per m2, scale range, upright, sink, tilt
+        ('SC_wild', near, F('wild_grass'), 'd_wild', 1.0, (0.75, 1.5), True, 0.0, 0.15),
+        ('SC_mat', near, mats, 'd_mat', 1.0, (0.6, 1.15), True, 0.0, 0.08),
+        ('SC_tall', near, tall, 'd_tall', 1.0, (0.55, 1.0), True, 0.0, 0.12),
+        ('SC_dry', near, F('dry_grass'), 'd_dry', 1.0, (0.6, 1.1), True, 0.0, 0.15),
+        ('SC_tuft', near, F('tufted_grass'), 'd_tuft', 1.0, (0.35, 0.62), True, 0.0, 0.1),
+        ('SC_ling', near, F('lingonberry'), 'd_ling', 1.0, (0.8, 1.5), True, 0.0, 0.12),
+        ('SC_will', near, F('dwarf_willow'), 'd_will', 1.0, (0.8, 1.6), 'align', 0.0, 0.06),
+        ('SC_birch', near, shrubs, 'd_birch', 1.0, (0.9, 1.7), True, 0.03, 0.2),
+        ('SC_flower', near, flowers, 'd_flower', 1.0, (0.9, 1.6), True, 0.0, 0.1),
+        # (no scattered stones here: the foreground rocks are placed by hand, lib/mc_rocks.py)
+        ('SF_shrub', far, shrubs + F('dwarf_willow')[:3], 'd_shrub', 1.0, (1.1, 1.8), True, 0.05, 0.15),
+        ('SF_grass', far, mats + F('wild_grass')[:4], 'd_grass', 1.0, (1.2, 2.0), True, 0.0, 0.1),
+        ('SF_gold', far, F('dry_grass')[:3] + tall[:2], 'd_gold', 1.0, (1.4, 2.2), True, 0.0, 0.12),
+        ('SF_stone', far, stones, 'd_stone', 1.0, (0.25, 0.9), 'bedded', 0.45, 0.08),
+        ('SF_block', far, F('boulder_a'), 'd_block', 1.0, (0.35, 0.9), 'bedded', 0.5, 0.08),
+    ]
+    for nm, base, objs, attr, dens, sc, up, sink, tilt in L:
+        if not objs:
+            out[nm] = 'NO OBJECTS'
+            continue
+        col = instance_collection('LIB_' + nm, objs)
+        import mc_rocks
+        yaw = (mc_rocks.bedded_yaw('boulder_a' if nm == 'SF_block' else 'stone'), 8.0) if up == 'bedded' else None
+        gn_scatter(nm, base, col, attr, dens * density, sc, seed=zlib.crc32(nm.encode()) % 10000, upright=bool(up), sink=sink,
+                   align=(up == 'align'), tilt=tilt, scale_attr='sc', yaw=yaw)
         out[nm] = len(objs)
     return out

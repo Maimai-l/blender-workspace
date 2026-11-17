@@ -14,11 +14,14 @@ def aerial_group(name='MC_aerial'):
     L = L_surface * T + A * (1 - T_c),  T_c = exp(-beta_c * d * f(dz)); f makes the air thinner upwards (scale
     height H) so that valleys haze more than summits."""
     g = bpy.data.node_groups.get(name)
+    if g is not None and 'Mask' not in [i.name for i in g.interface.items_tree]:
+        g.interface.new_socket('Mask', in_out='INPUT', socket_type='NodeSocketFloat').default_value = 1.0
     if g is None:
         g = bpy.data.node_groups.new(name, 'ShaderNodeTree')
         g.interface.new_socket('Shader', in_out='INPUT', socket_type='NodeSocketShader')
         g.interface.new_socket('Density', in_out='INPUT', socket_type='NodeSocketFloat').default_value = 1.0
         g.interface.new_socket('Air', in_out='INPUT', socket_type='NodeSocketColor').default_value = AIR_COLOR + (1,)
+        g.interface.new_socket('Mask', in_out='INPUT', socket_type='NodeSocketFloat').default_value = 1.0
         g.interface.new_socket('Shader', in_out='OUTPUT', socket_type='NodeSocketShader')
     g.nodes.clear()
     n = NT(g)
@@ -50,7 +53,7 @@ def aerial_group(name='MC_aerial'):
     em = n.node('ShaderNodeEmission', inputs={'Color': col, 'Strength': 1.0})
     # only camera rays see the veil (it must not light the scene)
     lp = n.node('ShaderNodeLightPath')
-    fac = n.math('MULTIPLY', n.math('SUBTRACT', 1.0, Tavg), lp.outputs['Is Camera Ray'])
+    fac = n.math('MULTIPLY', n.math('MULTIPLY', n.math('SUBTRACT', 1.0, Tavg), lp.outputs['Is Camera Ray']), gi.outputs['Mask'])
     mx = n.node('ShaderNodeMixShader', inputs={0: fac})
     n.link(gi.outputs['Shader'], mx.inputs[1])
     n.link(em.outputs[0], mx.inputs[2])
@@ -90,71 +93,73 @@ def mountain_material(name='MC_mountain', P=None, near=False):
     n_mid2 = n.noise(pos, 1.0 / 60.0, 5, 0.6, dist=0.6, dims='4D', w=3.1).outputs['Fac']
     c = lambda x: n.math('SUBTRACT', x, 0.5)
 
+    east, curv2 = A('east'), A('curv2')
+    xyz = n.node('ShaderNodeSeparateXYZ', inputs={0: pos}).outputs
+    clampf = lambda x, lo, hi: n.math('MINIMUM', n.math('MAXIMUM', x, lo), hi)
+    # terrain structure shared by snow, rock and scree
+    rib = n.smooth(curv, 0.35, 2.2)                                           # convex: ribs, spurs, crests
+    gully = n.smooth(curv, -0.35, -2.2)                                       # concave: gullies, couloirs, hollows
+    steep = n.smooth(n.math('ADD', slope, n.math('MULTIPLY', c(n_fine), 0.25)), 0.70, 1.25)
+    wall = n.smooth(slope, 1.45, 2.3)
+    # bedding of the rock: dipping beds, warped, of uneven thickness; their risers are bare, their ledges hold snow
+    sc_ = n.math('ADD', n.math('ADD', xyz[2], n.math('MULTIPLY', xyz[0], 0.22)), n.math('MULTIPLY', xyz[1], 0.12))
+    sc_ = n.math('ADD', sc_, n.math('ADD', n.math('MULTIPLY', n_mid, 70.0), n.math('MULTIPLY', n_big, 260.0)))
+    bedn = n.node('ShaderNodeTexNoise', noise_dimensions='1D', inputs={'W': n.math('DIVIDE', sc_, 26.0), 'Scale': 1.0,
+                                                                       'Detail': 4.0, 'Roughness': 0.75})
+    riser = n.math('MULTIPLY', n.smooth(bedn.outputs['Fac'], 0.50, 0.62), n.smooth(n_mid2, 0.32, 0.55))   # broken bands
+    vst = n.noise(n.node('ShaderNodeMapping', vector_type='POINT', inputs={'Vector': pos, 'Scale': (1 / 9.0, 1 / 9.0, 1 / 240.0)}).outputs[0], 1.0, 4, 0.62).outputs['Fac']
+
     # ---------------- snow cover: where fresh snow lies after the first autumn storms
     # effective altitude: shaded (north) slopes hold it lower, sunny ones lose it higher up
     eff = n.math('ADD', alt, n.math('MULTIPLY', north, p['aspect']))
+    eff = n.math('SUBTRACT', eff, n.math('MULTIPLY', east, 70.0))                                     # the morning sun strips east faces
     eff = n.math('SUBTRACT', eff, n.math('MULTIPLY', n.math('SUBTRACT', 1.0, A('wfar')), 300.0))   # the ridge by the cafe is still bare
     s = n.math('DIVIDE', n.math('SUBTRACT', eff, p['snow_line']), p['snow_range'])
-    hollow = n.math('MULTIPLY', n.math('MAXIMUM', n.math('MINIMUM', n.math('MULTIPLY', curv, -0.30), 1.0), -1.0), 1.5)
-    s = n.math('ADD', s, hollow)                                              # gullies and hollows fill, crests blow bare
-    s = n.math('ADD', s, n.math('MULTIPLY', n.math('MINIMUM', n.math('SUBTRACT', flow, 2.4), 2.0), 0.22))
-    # rock bands: the massif is built of dipping strata; on steep ground the risers of the beds are bare rock and
-    # the ledges hold snow. Couloirs (fall-line chutes) stay filled and cut through the bands.
-    xyz = n.node('ShaderNodeSeparateXYZ', inputs={0: pos}).outputs
-    sc_ = n.math('ADD', n.math('ADD', xyz[2], n.math('MULTIPLY', xyz[0], 0.20)), n.math('MULTIPLY', xyz[1], 0.11))
-    sc_ = n.math('ADD', sc_, n.math('ADD', n.math('MULTIPLY', n_mid, 46.0), n.math('MULTIPLY', n_big, 150.0)))
-
-    def beds(spacing, lo, hi):
-        f = n.math('FRACT', n.math('DIVIDE', sc_, spacing))
-        return n.math('MULTIPLY', n.smooth(f, lo, lo + 0.10), n.smooth(f, 1.0, hi))
-    broken = n.smooth(n_mid2, 0.30, 0.52)                                       # the bands are not continuous
-    band = n.math('MAXIMUM', n.math('MULTIPLY', beds(47.0, 0.50, 0.88), broken),
-                  n.math('MULTIPLY', beds(15.0, 0.52, 0.86), n.math('MULTIPLY', n.smooth(n_fine, 0.38, 0.58), 0.75)))
-    vst = n.noise(n.node('ShaderNodeMapping', vector_type='POINT', inputs={'Vector': pos, 'Scale': (1 / 11.0, 1 / 11.0, 1 / 260.0)}).outputs[0], 1.0, 4, 0.62).outputs['Fac']
-    couloir = n.smooth(vst, 0.50, 0.66)
-    steep = n.smooth(n.math('ADD', slope, n.math('MULTIPLY', c(n_fine), 0.35)), 0.62, 1.25)
-    s = n.math('SUBTRACT', s, n.math('MULTIPLY', steep, n.math('ADD', 0.35, n.math('MULTIPLY', band, 2.6))))
-    s = n.math('ADD', s, n.math('MULTIPLY', n.math('MULTIPLY', steep, couloir), 1.15))
-    s = n.math('SUBTRACT', s, n.math('MULTIPLY', n.smooth(slope, 1.5, 2.4), 1.2))          # walls hold nothing
-    s = n.math('ADD', s, n.math('MULTIPLY', c(n_big), 0.28))
+    # it lies in the gullies and hollows and is blown or slides off the ribs and crests
+    s = n.math('ADD', s, n.math('MULTIPLY', clampf(n.math('MULTIPLY', curv, -0.42), -1.3, 1.3), n.mixf(steep, 0.9, 1.5)))
+    s = n.math('ADD', s, clampf(n.math('MULTIPLY', curv2, -0.035), -0.5, 0.6))                        # bowls and cirques
+    s = n.math('ADD', s, n.math('MULTIPLY', n.math('MINIMUM', n.math('SUBTRACT', flow, 2.6), 1.6), 0.20))
+    # steep rock sheds it, except on the ledges of the beds and in the couloirs
+    s = n.math('SUBTRACT', s, n.math('MULTIPLY', steep, n.math('ADD', 0.45, n.math('MULTIPLY', riser, 1.5))))
+    s = n.math('ADD', s, n.math('MULTIPLY', n.math('MULTIPLY', steep, n.smooth(vst, 0.50, 0.68)), 0.75))
+    s = n.math('SUBTRACT', s, n.math('MULTIPLY', wall, 1.4))
+    s = n.math('ADD', s, n.math('MULTIPLY', c(n_big), 0.30))
     s = n.math('ADD', s, n.math('MULTIPLY', c(n_xl), 0.30))
+    s = n.math('ADD', s, n.math('ADD', n.math('MULTIPLY', c(n_fine), 0.34), n.math('MULTIPLY', c(n_mid2), 0.30)))   # ragged, not dithered
+    s = n.math('ADD', s, n.math('MULTIPLY', c(n.noise(pos, 1 / 5.0, 3, 0.6, dims='4D', w=13.0).outputs['Fac']), 0.16))
     firn = n.smooth(alt, 560.0, 900.0)                                       # permanent snow and glaciers
     s = n.math('ADD', s, n.math('MULTIPLY', firn, n.mixf(n.smooth(slope, 1.3, 2.1), 1.9, 0.3)))
     cover = n.smooth(s, -0.35, 0.45)
-    # patchy at the edge: a fine threshold instead of a grey blend
-    dith = n.math('ADD', n.math('MULTIPLY', n_fine, 0.5), n.math('ADD', n.math('MULTIPLY', n_mid2, 0.2), n.math('MULTIPLY', n_tiny, 0.3)))
-    snow = n.smooth(n.math('SUBTRACT', cover, dith), -0.07, 0.07)
-    snow = n.math('MAXIMUM', snow, n.smooth(cover, 0.82, 0.97))
+    snow = n.smooth(s, -0.045, 0.045)
 
     # ---------------- ground under the snow
-    # rock: grey to brown, banded by the dipping strata, lichen and weathering variation
-    strata_c = n.math('ADD', n.math('ADD', n.node('ShaderNodeSeparateXYZ', inputs={0: pos}).outputs['Z'],
-                                    n.math('MULTIPLY', n_mid, 60.0)), n.math('MULTIPLY', n_big, 240.0))
-    bn = n.node('ShaderNodeTexNoise', noise_dimensions='1D', inputs={'W': n.math('DIVIDE', strata_c, 46.0),
-                                                                     'Scale': 1.0, 'Detail': 3.0, 'Roughness': 0.6})
-    rock_tone = n.ramp(bn.outputs['Fac'], [(0.25, (0.066, 0.064, 0.063, 1)), (0.45, (0.115, 0.110, 0.104, 1)),
-                                           (0.62, (0.165, 0.150, 0.135, 1)), (0.8, (0.225, 0.215, 0.20, 1))])
-    rock_var = n.ramp(n_fine, [(0.2, (0.72, 0.70, 0.68, 1)), (0.8, (1.22, 1.2, 1.17, 1))])
+    # rock: dark grey, a little warm, banded by its beds; the risers and overhangs darkest
+    rock_bed = n.ramp(bedn.outputs['Fac'], [(0.25, (0.034, 0.034, 0.036, 1)), (0.45, (0.056, 0.055, 0.055, 1)),
+                                            (0.62, (0.078, 0.074, 0.070, 1)), (0.8, (0.104, 0.100, 0.096, 1))])
+    rock_flat = n.ramp(n_mid, [(0.25, (0.060, 0.058, 0.056, 1)), (0.75, (0.118, 0.110, 0.100, 1))])
+    rock_tone = n.mix(n.smooth(slope, 0.75, 1.2), rock_flat, rock_bed)        # beds show on the faces, not on the slopes
+    rock_var = n.ramp(n_fine, [(0.2, (0.70, 0.70, 0.70, 1)), (0.8, (1.25, 1.24, 1.22, 1))])
     rock = n.mix(1.0, rock_tone, rock_var, 'MULTIPLY')
-    # water and rockfall streaks down the steep faces
-    rock = n.mix(n.math('MULTIPLY', n.smooth(slope, 1.0, 1.6), n.math('MULTIPLY', n.smooth(vst, 0.5, 0.75), 0.55)), rock, (0.045, 0.043, 0.042, 1))
+    rock = n.mix(n.math('MULTIPLY', n.smooth(slope, 1.0, 1.6), n.math('MULTIPLY', n.smooth(vst, 0.5, 0.75), 0.5)), rock, (0.030, 0.030, 0.031, 1))   # wet streaks
     warm = n.smooth(n_big, 0.45, 0.75)                                        # iron-stained zones
-    rock = n.mix(n.math('MULTIPLY', warm, 0.35), rock, (0.19, 0.135, 0.095, 1))
-    rock = n.mix(n.math('MULTIPLY', n.smooth(alt, 300.0, 800.0), 0.5), rock, (0.035, 0.033, 0.032, 1))     # dark summit rock
-    rock = n.mix(n.math('MULTIPLY', band, 0.45), rock, (0.030, 0.029, 0.030, 1))                          # overhung risers
-    scree = n.ramp(n_tiny, [(0.2, (0.15, 0.142, 0.132, 1)), (0.8, (0.265, 0.25, 0.23, 1))])
-    # meadow: dry gold with greener hollows and red-brown dwarf shrub patches
-    meadow = n.ramp(n_mid, [(0.2, (0.19, 0.142, 0.060, 1)), (0.45, (0.30, 0.225, 0.092, 1)), (0.7, (0.37, 0.285, 0.125, 1)),
-                            (0.9, (0.24, 0.20, 0.082, 1))])
-    green = n.math('MULTIPLY', n.smooth(n.math('ADD', n.math('MULTIPLY', curv, -0.1), n_fine), 0.45, 0.8), 0.32)
-    meadow = n.mix(green, meadow, (0.095, 0.11, 0.048, 1))
+    rock = n.mix(n.math('MULTIPLY', warm, 0.30), rock, (0.135, 0.100, 0.075, 1))
+    rock = n.mix(n.math('MULTIPLY', n.math('MULTIPLY', riser, steep), 0.5), rock, (0.024, 0.024, 0.026, 1))
+    rock = n.mix(n.math('MULTIPLY', rib, 0.25), rock, n.mix(1.0, rock, (1.5, 1.48, 1.44, 1), 'MULTIPLY'))    # weathered pale on the ribs
+    # scree: fans and aprons below the rock, fresher and paler down the gully lines, lichen-dark where it has settled
+    scree = n.ramp(n_tiny, [(0.2, (0.070, 0.069, 0.067, 1)), (0.8, (0.125, 0.122, 0.116, 1))])
+    scree = n.mix(n.math('MULTIPLY', n.smooth(flow, 2.9, 3.7), 0.55), scree, (0.17, 0.165, 0.155, 1))
+    scree = n.mix(n.math('MULTIPLY', n.smooth(n_mid, 0.5, 0.8), 0.5), scree, (0.070, 0.070, 0.064, 1))
+    # alpine turf: dark olive and brown, straw on the sunny spurs
+    meadow = n.ramp(n_mid, [(0.2, (0.085, 0.072, 0.038, 1)), (0.45, (0.125, 0.105, 0.052, 1)), (0.7, (0.165, 0.138, 0.070, 1)),
+                            (0.9, (0.110, 0.100, 0.048, 1))])
+    meadow = n.mix(n.math('MULTIPLY', n.smooth(north, 0.1, -0.4), 0.35), meadow, (0.21, 0.172, 0.085, 1))
     meadow = n.mix(1.0, meadow, n.ramp(n_tiny, [(0.2, (0.8, 0.8, 0.8, 1)), (0.8, (1.18, 1.18, 1.18, 1))]), 'MULTIPLY')
-    shrub = n.ramp(n_fine, [(0.25, (0.030, 0.040, 0.020, 1)), (0.6, (0.062, 0.072, 0.032, 1)), (0.85, (0.115, 0.07, 0.04, 1))])
-    forest = n.ramp(n_fine, [(0.3, (0.012, 0.022, 0.013, 1)), (0.7, (0.032, 0.048, 0.024, 1))])
-    oak = n.ramp(n_fine, [(0.3, (0.062, 0.055, 0.030, 1)), (0.6, (0.115, 0.095, 0.050, 1)), (0.85, (0.165, 0.135, 0.072, 1))])   # sunny-side scrub
-    earth = (0.19, 0.135, 0.085, 1)
+    shrub = n.ramp(n_fine, [(0.25, (0.020, 0.024, 0.014, 1)), (0.6, (0.040, 0.043, 0.024, 1)), (0.85, (0.068, 0.046, 0.030, 1))])
+    forest = n.ramp(n_fine, [(0.3, (0.010, 0.016, 0.010, 1)), (0.7, (0.024, 0.034, 0.019, 1))])
+    oak = n.ramp(n_fine, [(0.3, (0.040, 0.038, 0.022, 1)), (0.6, (0.075, 0.064, 0.036, 1)), (0.85, (0.105, 0.088, 0.050, 1))])   # sunny-side scrub
+    earth = (0.11, 0.082, 0.055, 1)
 
-    # belts (heights relative to the cafe: tree line about -150 m = 4250 m, shrubs to +120 m, meadow to +420 m)
+    # belts (heights relative to the cafe: tree line about -150 m = 4250 m, shrubs to +120 m, turf to +420 m)
     a2 = n.math('ADD', alt, n.math('MULTIPLY', c(n_mid), 150.0))
     a2 = n.math('ADD', a2, n.math('MULTIPLY', c(n_big), 160.0))
     a2n = n.math('ADD', a2, n.math('MULTIPLY', north, -120.0))                # belts reach higher on sunny slopes
@@ -162,59 +167,96 @@ def mountain_material(name='MC_mountain', P=None, near=False):
     f_dark = n.smooth(north, -0.25, 0.2)                                      # fir on shaded faces, oak scrub on sunny
     f_shrub = n.math('MULTIPLY', n.math('MULTIPLY', n.smooth(a2n, 150.0, -40.0), n.smooth(slope, 1.15, 0.7)),
                      n.smooth(n.math('ADD', n_mid2, n.math('MULTIPLY', north, 0.25)), 0.35, 0.6))
-    f_rock = n.math('MAXIMUM', n.smooth(n.math('ADD', slope, n.math('MULTIPLY', c(n_mid), 0.3)), 1.0, 1.38), n.smooth(a2, 430.0, 640.0))
-    f_rock = n.math('MAXIMUM', f_rock, n.smooth(n.math('ADD', rocky, n.math('MULTIPLY', c(n_fine), 0.5)), 0.66, 0.9))
-    f_scree = n.math('MULTIPLY', n.smooth(slope, 0.62, 0.9), n.smooth(n.math('ADD', n_mid, n.math('MULTIPLY', rocky, 0.6)), 0.52, 0.74))
+    # bare rock: the ribs and steps of steep ground, everything above the turf line, the rocky zones of the massif
+    f_rock = n.smooth(n.math('ADD', n.math('ADD', slope, n.math('MULTIPLY', rib, 0.45)), n.math('MULTIPLY', c(n_mid), 0.35)), 1.05, 1.40)
+    f_rock = n.math('MAXIMUM', f_rock, n.smooth(a2, 430.0, 640.0))
+    f_rock = n.math('MAXIMUM', f_rock, n.math('MULTIPLY', n.smooth(n.math('ADD', rocky, n.math('MULTIPLY', c(n_fine), 0.5)), 0.66, 0.9), n.smooth(alt, 60.0, 320.0)))
+    f_rock = n.math('MAXIMUM', f_rock, n.math('MULTIPLY', n.math('MULTIPLY', riser, n.smooth(slope, 0.8, 1.1)), 0.9))   # outcropping beds
+    # scree gathers below it: in the gullies and on the moderate slopes of the high ground
+    f_scree = n.math('MULTIPLY', n.smooth(slope, 0.55, 0.8), n.smooth(n.math('ADD', n.math('ADD', n_mid, n.math('MULTIPLY', rocky, 0.6)), n.math('MULTIPLY', gully, 0.35)), 0.55, 0.78))
     f_scree = n.math('MULTIPLY', f_scree, n.smooth(a2, -40.0, 240.0))
     chute = n.math('MULTIPLY', n.smooth(flow, 3.1, 3.8), n.smooth(slope, 0.55, 0.85))      # debris chutes in the gullies
     f_scree = n.math('MAXIMUM', f_scree, n.math('MULTIPLY', chute, n.smooth(a2, -150.0, 150.0)))
-    f_earth = n.math('MULTIPLY', n.smooth(n.math('ADD', n.math('MULTIPLY', flow, 0.22), n.math('MULTIPLY', n_fine, 0.6)), 1.0, 1.2), 0.6)
+    f_earth = n.math('MULTIPLY', n.smooth(n.math('ADD', n.math('MULTIPLY', flow, 0.22), n.math('MULTIPLY', n_fine, 0.6)), 1.0, 1.2), 0.5)
 
     g = n.mix(f_earth, meadow, earth)
     # gullies hold shrubs (dark dendritic lines), crests are dry and stony
     f_gully = n.math('MULTIPLY', n.smooth(n.math('ADD', flow, n.math('MULTIPLY', n.math('MULTIPLY', curv, -1.0), 0.12)), 2.9, 3.7), n.smooth(a2, 420.0, 180.0))
     f_crest = n.math('MULTIPLY', n.smooth(curv, 1.2, 4.5), 0.55)
-    g = n.mix(f_crest, g, n.mix(n_tiny, (0.27, 0.235, 0.15, 1), (0.36, 0.33, 0.27, 1)))
+    g = n.mix(f_crest, g, n.mix(n_tiny, (0.15, 0.135, 0.095, 1), (0.21, 0.20, 0.17, 1)))
     g = n.mix(n.math('MAXIMUM', f_shrub, n.math('MULTIPLY', f_gully, 0.8)), g, shrub)
     vor = n.node('ShaderNodeTexVoronoi', feature='F1', inputs={'Vector': pos, 'Scale': 1.0 / 6.5, 'Randomness': 1.0})
     dots = n.math('MULTIPLY', n.smooth(vor.outputs['Distance'], 0.34, 0.14),
                   n.smooth(n.math('ADD', n_mid2, n.math('MULTIPLY', c(n_fine), 0.6)), 0.42, 0.62))
-    g = n.mix(n.math('MULTIPLY', dots, 0.7), g, (0.035, 0.040, 0.022, 1))                         # shrub clumps
+    g = n.mix(n.math('MULTIPLY', dots, 0.7), g, (0.022, 0.025, 0.015, 1))                         # shrub clumps
     g = n.mix(f_forest, g, n.mix(f_dark, oak, forest))
     g = n.mix(f_scree, g, scree)
     g = n.mix(f_rock, g, rock)
+    band = n.math('MULTIPLY', riser, steep)
 
     near_bump = None
     if near:
-        # close to the cafe: scanned soil under the grass scatter, bare patches, and the gravel track
-        import mc_building
+        # the first few hundred metres: Megascans ground, box (triplanar) projected and blended by the height maps
+        import mc_fab
         cam = n.node('ShaderNodeCameraData')
-        nearw = n.smooth(cam.outputs['View Distance'], 300.0, 80.0)
+        nearw = n.smooth(cam.outputs['View Distance'], 560.0, 180.0)
 
-        def flat(asset, tile, rot=0.0, kind='diff', res='2k'):
+        def lay(key, tile, rot=0.0, off=(0.0, 0.0, 0.0), maps=('color', 'disp')):
             mp = n.node('ShaderNodeMapping', vector_type='POINT', inputs={'Vector': pos, 'Rotation': (0, 0, rot),
-                                                                         'Scale': (1.0 / tile,) * 3})
-            nd = n.node('ShaderNodeTexImage', inputs={'Vector': mp.outputs[0]})
-            nd.image = mc_building.img(asset, kind, res)
-            return nd.outputs['Color']
-        soil_a = flat('rocks_ground_02', 3.1, 0.4)
-        soil_b = flat('brown_mud_rocks_01', 4.7, 1.9)
-        soil = n.mix(n.smooth(n_fine, 0.35, 0.65), soil_a, soil_b)
-        lum = n.node('ShaderNodeRGBToBW', inputs={0: soil}).outputs[0]
-        thatch = n.mix(1.0, meadow, n.node('ShaderNodeCombineColor', inputs={
-            0: n.math('ADD', 0.42, n.math('MULTIPLY', lum, 1.7)), 1: n.math('ADD', 0.42, n.math('MULTIPLY', lum, 1.7)),
-            2: n.math('ADD', 0.42, n.math('MULTIPLY', lum, 1.6))}).outputs[0], 'MULTIPLY')
-        bare = n.smooth(n.math('ADD', n_mid2, n.math('MULTIPLY', slope, 0.25)), 0.60, 0.72)
-        soil_t = n.mix(1.0, soil, (0.80, 0.68, 0.54, 1), 'MULTIPLY')
-        near_col = n.mix(bare, thatch, soil_t)
-        g = n.mix(n.math('MULTIPLY', nearw, n.math('SUBTRACT', 1.0, f_rock)), g, near_col)
-        trk = A('track')
-        gravel = flat('rocky_trail', 3.6, 0.9, res='4k')
-        gravel = n.mix(1.0, gravel, n.ramp(n_fine, [(0.3, (0.78, 0.76, 0.72, 1)), (0.7, (1.08, 1.04, 1.0, 1))]), 'MULTIPLY')
-        tmask = n.smooth(n.math('ADD', trk, n.math('MULTIPLY', c(n_tiny), 0.5)), 0.35, 0.65)
-        g = n.mix(tmask, g, gravel)
-        gl = n.node('ShaderNodeRGBToBW', inputs={0: gravel}).outputs[0]
-        near_bump = n.math('MULTIPLY', nearw, n.math('ADD', n.math('MULTIPLY', lum, 0.05), n.math('MULTIPLY', n.math('MULTIPLY', tmask, gl), 0.04)))
+                                                                         'Location': off, 'Scale': (1.0 / tile,) * 3})
+            out_ = []
+            for mname in maps:
+                nd = n.node('ShaderNodeTexImage', projection='BOX', projection_blend=0.2, inputs={'Vector': mp.outputs[0]})
+                nd.image = mc_fab.image(key, mname)
+                out_.append(nd.outputs['Color'])
+            return out_
+
+        def two(key, tile, maps, scale2=1.31, rot2=1.1, off2=(3.3, 1.7, 0.4), nscale=1 / 5.5, w=0.0):
+            """Two differently placed samples of one scan, switched by a noise and their heights: hides the repeat."""
+            c1, h1 = lay(key, tile, 0.0, (0.0, 0.0, 0.0), maps)
+            c2, h2 = lay(key, tile * scale2, rot2, off2, maps)
+            m = n.smooth(n.noise(pos, nscale, 3, 0.5, dims='4D', w=w).outputs['Fac'], 0.40, 0.60)
+            f = mc_fab.height_blend(n, h1, h2, m, 0.2)
+            return n.mix(f, c1, c2), n.mixf(f, h1, h2)
+        bk = ('bake_color', 'bake_height')
+        ta = mc_fab.manifest()['rocky_ground_a']['bake']
+        tb = mc_fab.manifest()['rocky_ground_b']['bake']
+        ca, ha = two('rocky_ground_a', ta['tile_m'], bk, w=1.0)
+        cb, hb = two('rocky_ground_b', tb['tile_m'], bk, scale2=1.27, rot2=2.3, off2=(5.1, 2.2, 0.7), w=2.0)
+        drift = n.smooth(n.math('ADD', n.noise(pos, 1 / 17.0, 3, 0.5, dims='4D', w=5.0).outputs['Fac'], n.math('MULTIPLY', slope, 0.25)), 0.56, 0.76)
+        fab_ = mc_fab.height_blend(n, ha, hb, drift, 0.3)                              # gravelly soil <-> mossy rubble
+        gcol = n.mix(fab_, ca, n.mix(1.0, cb, (0.46, 0.46, 0.45, 1), 'MULTIPLY'))
+        gh = n.mixf(fab_, n.math('MULTIPLY', ha, ta['height_m']), n.math('MULTIPLY', hb, tb['height_m']))     # metres
+        hn = n.mixf(fab_, ha, hb)
+        sc_, sh_ = two('grassy_soil', 2.0, ('color', 'disp'), scale2=1.43, rot2=0.7, off2=(1.3, 4.1, 0.2), w=3.0)
+        bare = n.smooth(n.math('ADD', n.noise(pos, 1 / 6.0, 4, 0.55, dims='4D', w=9.0).outputs['Fac'], n.math('MULTIPLY', slope, 0.15)), 0.60, 0.70)
+        fs_ = mc_fab.height_blend(n, hn, sh_, bare, 0.3)                               # bare earth patches
+        gcol = n.mix(fs_, gcol, n.mix(1.0, sc_, (0.50, 0.46, 0.41, 1), 'MULTIPLY'))
+        gh = n.mixf(fs_, gh, n.math('MULTIPLY', sh_, 0.016))
+        # turf and litter under the shrubs: darker and a little less colourful than the open scans
+        gcol = n.node('ShaderNodeHueSaturation', inputs={'Saturation': 0.70, 'Value': 0.55, 'Color': gcol}).outputs[0]
+        g = n.mix(nearw, g, gcol)
+        # ---- gravel: the terrace and the track
+        gc_, gh_ = two('gravel', 2.0, ('color', 'disp'), scale2=1.37, rot2=0.9, off2=(0.7, 2.9, 0.5), nscale=1 / 3.0, w=4.0)
+        trk, ter, trd = A('track'), A('terrace'), A('trackd')
+        ragged = n.math('MULTIPLY', c(n.noise(pos, 1 / 0.9, 4, 0.6, dims='4D', w=6.0).outputs['Fac']), 0.9)
+        tmask = n.smooth(n.math('ADD', trk, ragged), 0.30, 0.70)
+        rut = n.math('EXPONENT', n.math('MULTIPLY', n.math('POWER', n.math('DIVIDE', n.math('SUBTRACT', trd, 0.78), 0.30), 2.0), -1.0))
+        centre = n.math('MULTIPLY', n.smooth(trd, 0.50, 0.12), n.smooth(n.noise(pos, 1 / 2.5, 3, 0.5, dims='4D', w=7.0).outputs['Fac'], 0.35, 0.60))
+        verge = n.math('MULTIPLY', n.smooth(trd, 1.25, 1.95), 0.6)
+        tmask = n.math('MULTIPLY', tmask, n.math('SUBTRACT', 1.0, n.math('MULTIPLY', n.math('MAXIMUM', centre, verge), 0.75)))   # turf creeps in
+        gmask = n.math('MAXIMUM', ter, tmask)
+        fg_ = mc_fab.height_blend(n, hn, gh_, gmask, 0.22)
+        fg_ = n.math('MAXIMUM', fg_, ter)
+        stain = n.noise(pos, 1 / 4.0, 4, 0.6, dims='4D', w=8.0).outputs['Fac']
+        tval = n.math('SUBTRACT', n.math('ADD', 0.52, n.math('MULTIPLY', stain, 0.18)), n.math('MULTIPLY', rut, 0.16))     # track: dark, damp ruts
+        wear = n.smooth(n.noise(pos, 1 / 6.0, 3, 0.5, dims='4D', w=11.0).outputs['Fac'], 0.3, 0.75)
+        pval = n.math('ADD', 0.66, n.math('MULTIPLY', wear, 0.22))                                                      # terrace
+        gcol2 = n.node('ShaderNodeHueSaturation', inputs={'Saturation': 0.80, 'Value': n.mixf(ter, tval, pval), 'Color': gc_}).outputs[0]
+        fine = n.mix(n.math('MULTIPLY', rut, 0.5), gcol2, n.mix(1.0, gcol2, (0.62, 0.58, 0.52, 1), 'MULTIPLY'))          # compacted fines in the ruts
+        g = n.mix(fg_, g, fine)
+        gh = n.mixf(fg_, gh, n.math('MULTIPLY', gh_, 0.04))
+        near_bump = n.math('MULTIPLY', n.smooth(cam.outputs['View Distance'], 400.0, 120.0), gh)
 
     # ---------------- snow surface: clean, a little blue ice where the glaciers break up
     ice = n.math('MULTIPLY', n.math('MULTIPLY', firn, n.smooth(slope, 0.55, 1.1)), n.smooth(n_mid2, 0.55, 0.8))
@@ -232,7 +274,7 @@ def mountain_material(name='MC_mountain', P=None, near=False):
     bh = n.mixf(f_rock, b_veg, b_rock)
     bh = n.mixf(snow, bh, n.math('ADD', b_snow, n.math('MULTIPLY', n.math('MULTIPLY', steep, vst), 9.0)))     # flutings
     if near_bump is not None:
-        bh = n.math('ADD', n.math('MULTIPLY', bh, n.math('SUBTRACT', 1.0, n.math('MULTIPLY', nearw, 0.8))), near_bump)
+        bh = n.math('ADD', n.math('MULTIPLY', bh, n.math('SUBTRACT', 1.0, n.math('MULTIPLY', nearw, 0.9))), n.math('MULTIPLY', near_bump, 1.6))
     bump = n.node('ShaderNodeBump', inputs={'Strength': 1.0, 'Distance': 1.0, 'Height': bh})
     bsdf = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': col, 'Roughness': rough,
                                                       'Normal': bump.outputs[0],

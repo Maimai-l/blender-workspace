@@ -8,6 +8,7 @@ print(bpy.data.filepath, len(bpy.data.objects))
 mc_light.world(**globals().get('WORLD', {}))
 mc_light.sun(**globals().get('SUN', {}))
 mc_light.render_settings(**globals().get('RS', {}))
+print(mc_light.grade(**globals().get('GRADE', {})))
 for n, near in (('TER_far', False), ('TER_near', True)):
     o = bpy.data.objects.get(n)
     if o:

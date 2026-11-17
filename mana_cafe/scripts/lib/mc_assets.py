@@ -25,6 +25,7 @@ def load(asset, res=None):
             bpy.data.objects.remove(o)
             continue
         col.objects.link(o)
+    col.use_fake_user = True          # not linked to the scene: keep it through save and reload
     return col
 
 
@@ -36,3 +37,14 @@ def report(col):
             o.name, [round(v, 3) for v in o.dimensions], [round(v, 2) for v in o.location], len(me.polygons),
             [m.name for m in me.materials if m], o.parent.name if o.parent else None))
     return out
+
+
+def find(col, base):
+    """Object of a library collection by name, tolerating the '.001' suffix of a re-appended copy."""
+    o = col.objects.get(base)
+    if o is None:
+        c = sorted([x for x in col.objects if x.name.startswith(base + '.')], key=lambda x: x.name)
+        o = c[0] if c else None
+    if o is None:
+        raise KeyError(base)
+    return o

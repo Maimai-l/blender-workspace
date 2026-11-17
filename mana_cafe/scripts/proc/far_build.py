@@ -47,7 +47,7 @@ def tin_raster(xs, ys):
 
 
 def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=print, amp0=5.0, amp1=34.0,
-          use_tin=False, kdt=0.018, max_cut=2.2):
+          use_tin=False, kdt=0.018, max_cut=2.2, talus=1.55, crest=0.0):
     t0 = time.time()
     xs = np.arange(x0, x1 + 0.5 * cell, cell, dtype=np.float64)
     ys = np.arange(y0, y1 + 0.5 * cell, cell, dtype=np.float64)
@@ -95,6 +95,13 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
         step = (smooth(fr, 0.0, 0.28) - fr) * spacing        # staircase minus the ramp: benches and risers
         z += step * a * rocky * smooth(sl_s, 0.5, 0.9)
     del s, warp, rid, rid2, fb
+    if crest:
+        # gendarmes: the crests of the high ridges break into teeth and notches
+        big = z - gaussian_filter(z, 220.0 / cell)
+        ridge = smooth(gaussian_filter(z, 25.0 / cell) - gaussian_filter(z, 110.0 / cell), 3.0, 14.0) * smooth(big, 10.0, 60.0) * high
+        teeth = tl.ridged(shape, cell, seed + 301, octaves=4, base_wl=95.0)
+        z += (teeth - 0.42) * crest * ridge
+        del big, ridge, teeth
     log('relief added', '%.1fs' % (time.time() - t0))
 
     # --- 4. erosion: gullies, sharper spurs, talus
@@ -102,7 +109,7 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
     if tinw is not None:
         creep = creep * (1.0 - tinw)
     z, A = tl.erode(z, cell, rounds=rounds, kdt=kdt, m=0.45, a_sat=3e5, max_cut=max_cut,
-                    talus=1.55, th_rate=0.22, th_iters=2, creep=creep, creep_coef=0.10, log=log)
+                    talus=talus, th_rate=0.22, th_iters=2, creep=creep, creep_coef=0.10, log=log)
     # --- 5. rock ribs and ledges on the bare high faces, after the erosion so they stay crisp
     rib = tl.ridged(shape, cell, seed + 211, octaves=4, base_wl=70.0)
     rib2 = tl.ridged(shape, cell, seed + 223, octaves=3, base_wl=24.0)
@@ -114,10 +121,11 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
     # --- masks
     sl, nx, ny, nz = tl.slope_normal(z, cell)
     lap = (gaussian_filter(z, 12.0 / cell) - gaussian_filter(z, 36.0 / cell))      # + on crests, - in hollows
+    lap2 = (gaussian_filter(z, 60.0 / cell) - gaussian_filter(z, 190.0 / cell))    # spurs and bowls
     flow = np.log10(np.maximum(A, cell * cell)).astype(np.float32)
     np.save(os.path.join(OUT, name + '_h.npy'), z)
     np.savez(os.path.join(OUT, name + '_masks.npz'), slope=sl.astype(np.float16), nx=nx.astype(np.float16),
-             ny=ny.astype(np.float16),
+             ny=ny.astype(np.float16), curv2=lap2.astype(np.float16),
              curv=lap.astype(np.float16), flow=flow.astype(np.float16), rocky=rocky.astype(np.float16),
              box=np.array([x0, y0, cell, shape[1], shape[0]], np.float64))
     hs = tl.hillshade(z, cell, az_deg=-35.0 - north_rot, el_deg=38.0)
@@ -128,10 +136,10 @@ def build(name, x0, y0, x1, y1, cell, north_rot=0.0, seed=7, rounds=14, log=prin
 
 PRESETS = {
     # name: (x0, y0, x1, y1, cell, kwargs)   boxes in the real scene frame
-    'far_hi': (-31000, -19000, -12000, 1000, 5.0, dict(seed=7)),
-    'far_lo': (-45000, -34000, -5000, 12000, 15.0, dict(seed=11, rounds=8)),
-    'near': (-7500, -8500, 3000, 1500, 2.5, dict(seed=23, amp0=1.6, amp1=26.0, use_tin=True, rounds=10, kdt=0.012,
-                                                   max_cut=1.2)),
+    'far_hi': (-31000, -19000, -12000, 1000, 5.0, dict(seed=7, rounds=22, kdt=0.034, max_cut=4.0, talus=1.95, crest=42.0)),
+    'far_lo': (-45000, -34000, -5000, 12000, 15.0, dict(seed=11, rounds=10, kdt=0.03, max_cut=4.0, talus=1.9, crest=30.0)),
+    'near': (-7500, -8500, 3000, 1500, 2.5, dict(seed=23, amp0=1.6, amp1=30.0, use_tin=True, rounds=14, kdt=0.020,
+                                                   max_cut=2.0, talus=1.8)),
 }
 
 if __name__ == '__main__':

@@ -41,8 +41,10 @@ def seam_dist(n, x, x0, period):
 
 
 def corten(name='Metal_06_1K'):
-    """Weathering steel: a scanned coarse-rust surface (box-mapped, shifted per panel), mottled in three scales,
-    with run-off streaks below the eaves and the panel joints and a darker splash zone at the foot."""
+    """Weathering steel from the Megascans 'Rusty Metal' scan (box-projected in the building's own axes, shifted per
+    panel), mottled in three scales, with 'Wall Rust Leakage' decals running down from the panel seams, run-off
+    streaks under the eaves and a darker splash zone at the foot."""
+    import mc_fab
     m, t = C.new_mat(name)
     n = NT(t)
     out = n.node('ShaderNodeOutputMaterial')
@@ -55,66 +57,122 @@ def corten(name='Metal_06_1K'):
     d_seam = n.mixf(gable, dv, du)
     pid = n.math('ADD', n.mixf(gable, kv, n.math('ADD', ku, 40.0)), n.math('MULTIPLY', roof, 100.0))
     rnd = n.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D', inputs={'W': pid})
-    # scanned rust, 2.2 m tile, random shift per panel so that no two panels match
     shift = n.node('ShaderNodeVectorMath', operation='SCALE', inputs={0: rnd.outputs['Color'], 'Scale': 7.0})
     vec = n.node('ShaderNodeVectorMath', operation='ADD', inputs={0: P, 1: shift.outputs[0]})
-    vec = n.node('ShaderNodeVectorMath', operation='SCALE', inputs={0: vec.outputs[0], 'Scale': 1.0 / 2.2})
+    vec = n.node('ShaderNodeVectorMath', operation='SCALE', inputs={0: vec.outputs[0], 'Scale': 1.0 / 2.0})
 
     def tex(kind):
         nd = n.node('ShaderNodeTexImage', projection='BOX', projection_blend=0.15, inputs={'Vector': vec.outputs[0]})
-        nd.image = img('rust_coarse_01', kind)
+        nd.image = mc_fab.image('rusty_metal', kind)
         return nd
-    diff, rough, disp = tex('diff'), tex('rough'), tex('disp')
-    # --- mottling
+    diff, rough, disp = tex('color'), tex('rough'), tex('disp')
+    # --- mottling: no two panels alike, clouds within each panel
     n_l = n.noise(P, 0.55, 4, 0.55).outputs['Fac']               # metre-scale clouds
     n_m = n.noise(P, 4.5, 5, 0.6, dist=0.4).outputs['Fac']       # hand-sized blotches
     n_s = n.noise(P, 60.0, 4, 0.7).outputs['Fac']                # speckle
-    col = diff.outputs['Color']
     col = n.node('ShaderNodeHueSaturation', inputs={
-        'Hue': n.math('ADD', 0.492, n.math('MULTIPLY', n.math('SUBTRACT', rnd.outputs['Value'], 0.5), 0.016)),
-        'Saturation': n.math('ADD', 0.98, n.math('MULTIPLY', n.math('SUBTRACT', n_l, 0.5), 0.30)),
-        'Value': n.math('ADD', 0.78, n.math('ADD', n.math('MULTIPLY', n.math('SUBTRACT', n_l, 0.5), 0.36),
-                                            n.math('MULTIPLY', n.math('SUBTRACT', rnd.outputs['Value'], 0.5), 0.16))),
-        'Color': col}).outputs[0]
-    dark = (0.060, 0.028, 0.020, 1)             # deep red-brown, where the patina is oldest and wettest
-    orange = (0.42, 0.165, 0.050, 1)            # fresh powdery orange
-    col = n.mix(n.math('MULTIPLY', n.smooth(n_m, 0.52, 0.80), 0.55), col, dark)
-    col = n.mix(n.math('MULTIPLY', n.smooth(n_m, 0.42, 0.18), 0.28), col, orange)
+        'Hue': n.math('ADD', 0.497, n.math('ADD', n.math('MULTIPLY', n.math('SUBTRACT', rnd.outputs['Value'], 0.5), 0.022), n.math('MULTIPLY', n.math('SUBTRACT', n_l, 0.5), 0.03))),
+        'Saturation': n.math('ADD', 0.90, n.math('MULTIPLY', n.math('SUBTRACT', n_l, 0.5), 0.36)),
+        'Value': n.math('ADD', 0.66, n.math('ADD', n.math('MULTIPLY', n.math('SUBTRACT', n_l, 0.5), 0.60),
+                                            n.math('MULTIPLY', n.math('SUBTRACT', rnd.outputs['Value'], 0.5), 0.34))),
+        'Color': diff.outputs['Color']}).outputs[0]
+    dark = (0.045, 0.024, 0.019, 1)             # deep red-brown, where the patina is oldest and wettest
+    orange = (0.33, 0.135, 0.045, 1)            # fresh powdery orange
+    n_b = n.noise(P, 1.7, 5, 0.62, dist=0.8).outputs['Fac']        # half-metre blotches: the patina never weathers evenly
+    col = n.mix(n.math('MULTIPLY', n.smooth(n_b, 0.48, 0.70), 0.50), col, (0.070, 0.036, 0.030, 1))
+    col = n.mix(n.math('MULTIPLY', n.smooth(n_m, 0.50, 0.78), 0.55), col, dark)
+    col = n.mix(n.math('MULTIPLY', n.smooth(n_m, 0.44, 0.18), 0.30), col, orange)
     col = n.mix(n.math('MULTIPLY', n.smooth(n_s, 0.62, 0.85), 0.25), col, dark)
-    # --- run-off streaks: narrow vertical runs on the walls, down the fall on the roof
+    # --- leakage decals: one scanned streak per seam on the walls, starting at the eave
+    ztop = n.math('MINIMUM', n.math('ADD', 2.7, n.math('MULTIPLY', n.math('ADD', u, 6.9), 0.10294)),
+                  n.math('SUBTRACT', 3.4, n.math('MULTIPLY', n.math('ADD', u, 0.1), 0.17647)))
+    seam_id = n.math('ADD', n.mixf(gable, kv, n.math('ADD', ku, 57.0)), n.math('MULTIPLY', n.math('SIGN', n.mixf(gable, nu, nv)), 200.0))
+    sr = n.node('ShaderNodeSeparateColor', inputs={0: n.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D',
+                                                             inputs={'W': n.math('ADD', seam_id, 0.37)}).outputs['Color']}).outputs
+    d_signed = n.mixf(gable, n.math('SUBTRACT', v, n.math('ADD', SEAM_V0, n.math('MULTIPLY', kv, SEAM_VP))),
+                      n.math('SUBTRACT', u, n.math('ADD', SEAM_U0, n.math('MULTIPLY', ku, SEAM_UP))))
+    d_signed = n.math('MULTIPLY', d_signed, n.math('SIGN', n.math('SUBTRACT', sr[0], 0.5)))       # some are mirrored
+    wd = n.math('ADD', 0.30, n.math('MULTIPLY', sr[1], 0.30))                                    # streak width, m
+    ld = n.math('ADD', 1.4, n.math('MULTIPLY', sr[2], 1.5))                                      # streak length, m
+    du_ = n.math('ADD', n.math('DIVIDE', d_signed, wd), 0.5)
+    dvv = n.math('SUBTRACT', 1.0, n.math('DIVIDE', n.math('SUBTRACT', ztop, z), ld))
+    duv = n.node('ShaderNodeCombineXYZ', inputs={0: du_, 1: dvv, 2: 0.0})
+    leak_col, leak_a = None, None
+    for i, key in enumerate(('leak_a', 'leak_b')):
+        nd = n.node('ShaderNodeTexImage', extension='CLIP', inputs={'Vector': duv.outputs[0]})
+        nd.image = mc_fab.image(key, 'color_alpha')
+        if leak_col is None:
+            leak_col, leak_a = nd.outputs['Color'], nd.outputs['Alpha']
+        else:
+            pick = n.math('GREATER_THAN', n.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D',
+                                                 inputs={'W': n.math('ADD', seam_id, 9.1)}).outputs['Value'], 0.5)
+            leak_col = n.mix(pick, leak_col, nd.outputs['Color'])
+            leak_a = n.mixf(pick, leak_a, nd.outputs['Alpha'])
+    walls = n.math('SUBTRACT', 1.0, roof)
+    has_leak = n.math('GREATER_THAN', n.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D',
+                                             inputs={'W': n.math('ADD', seam_id, 3.3)}).outputs['Value'], 0.22)   # most seams leak
+    la = n.math('MULTIPLY', n.math('MULTIPLY', leak_a, walls), has_leak)
+    # old run-off is a dark stain, fresh run-off a bright orange one
+    fresh = n.math('GREATER_THAN', n.node('ShaderNodeTexWhiteNoise', noise_dimensions='1D', inputs={'W': n.math('ADD', seam_id, 5.7)}).outputs['Value'], 0.55)
+    leak_tone = n.mix(fresh, n.mix(1.0, leak_col, (0.20, 0.15, 0.13, 1), 'MULTIPLY'), n.mix(1.0, leak_col, (0.95, 0.62, 0.36, 1), 'MULTIPLY'))
+    col = n.mix(n.math('MINIMUM', n.math('MULTIPLY', la, 1.15), 0.92), col, leak_tone)
+    # --- faint run-off streaks under the eaves between the seams, and down the fall of the roof
     sv_wall = n.node('ShaderNodeCombineXYZ', inputs={0: n.math('MULTIPLY', u, 26.0), 1: n.math('MULTIPLY', v, 26.0),
                                                      2: n.math('MULTIPLY', z, 0.55)})
-    sv_roof = n.node('ShaderNodeCombineXYZ', inputs={0: n.math('MULTIPLY', u, 0.5), 1: n.math('MULTIPLY', v, 22.0),
-                                                     2: 0.0})
+    sv_roof = n.node('ShaderNodeCombineXYZ', inputs={0: n.math('MULTIPLY', u, 0.5), 1: n.math('MULTIPLY', v, 22.0), 2: 0.0})
     sv = n.node('ShaderNodeMix', data_type='VECTOR', inputs={0: roof})
     n.link(sv_wall.outputs[0], sv.inputs[4])
     n.link(sv_roof.outputs[0], sv.inputs[5])
     st = n.noise(sv.outputs[1], 1.0, 4, 0.6).outputs['Fac']
     st2 = n.noise(sv.outputs[1], 0.23, 3, 0.5).outputs['Fac']
     streak = n.math('MULTIPLY', n.smooth(st, 0.60, 0.80), n.smooth(st2, 0.42, 0.70))
-    top = n.smooth(z, 1.0, 2.75)                                    # stronger under the eaves
-    near_seam = n.smooth(d_seam, 0.16, 0.012)                       # and beside the joints
-    wall_w = n.math('ADD', n.math('MULTIPLY', top, 0.55), n.math('MULTIPLY', near_seam, 0.75))
-    wall_w = n.math('ADD', wall_w, 0.12)
-    roof_w = n.math('ADD', 0.10, n.math('MULTIPLY', near_seam, 0.45))
-    sw = n.math('MULTIPLY', streak, n.mixf(roof, wall_w, roof_w))
-    col = n.mix(n.math('MINIMUM', n.math('MULTIPLY', sw, 0.7), 0.6), col, dark)
-    # bright orange bleed right at the joints and along the lower panel edge
-    bleed = n.math('MULTIPLY', n.smooth(d_seam, 0.05, 0.004), n.smooth(n_m, 0.3, 0.6))
-    col = n.mix(n.math('MULTIPLY', bleed, 0.35), col, orange)
+    top = n.smooth(z, 1.0, 2.75)
+    sw = n.math('MULTIPLY', streak, n.mixf(roof, n.math('MULTIPLY', n.smooth(z, 1.7, 2.75), 0.40), 0.05))
+    col = n.mix(n.math('MINIMUM', n.math('MULTIPLY', sw, 0.5), 0.35), col, dark)
+    bleed = n.math('MULTIPLY', n.smooth(d_seam, 0.035, 0.004), n.smooth(n_m, 0.3, 0.6))
+    col = n.mix(n.math('MULTIPLY', bleed, 0.3), col, orange)
     # splash zone at the foot of the walls: darker, dusty
-    foot = n.math('MULTIPLY', n.smooth(z, 0.45, 0.02), n.math('SUBTRACT', 1.0, roof))
+    foot = n.math('MULTIPLY', n.smooth(z, 0.45, 0.02), walls)
     foot = n.math('MULTIPLY', foot, n.math('ADD', 0.45, n.math('MULTIPLY', n_m, 0.7)))
-    col = n.mix(n.math('MULTIPLY', foot, 0.6), col, (0.075, 0.050, 0.038, 1))
+    col = n.mix(n.math('MULTIPLY', foot, 0.6), col, (0.060, 0.042, 0.033, 1))
     # dust settles on the low-pitched roof: a little paler and flatter
-    col = n.mix(n.math('MULTIPLY', roof, n.math('MULTIPLY', n.smooth(n_l, 0.3, 0.8), 0.22)), col, (0.30, 0.21, 0.15, 1))
-    r = n.math('ADD', n.math('MULTIPLY', rough.outputs['Color'], 0.25), 0.74)
-    r = n.math('MINIMUM', n.math('ADD', r, n.math('MULTIPLY', sw, 0.08)), 1.0)
-    bump = n.node('ShaderNodeBump', inputs={'Strength': 0.55, 'Distance': 0.004, 'Height': disp.outputs['Color']})
+    col = n.mix(n.math('MULTIPLY', roof, n.math('MULTIPLY', n.smooth(n_l, 0.3, 0.8), 0.22)), col, (0.24, 0.17, 0.125, 1))
+    r = n.math('ADD', n.math('MULTIPLY', rough.outputs['Color'], 0.25), 0.72)
+    r = n.math('MINIMUM', n.math('ADD', r, n.math('MULTIPLY', la, 0.05)), 1.0)
+    bump = n.node('ShaderNodeBump', inputs={'Strength': 0.35, 'Distance': 0.004, 'Height': disp.outputs['Color']})
     bump2 = n.node('ShaderNodeBump', inputs={'Strength': 0.25, 'Distance': 0.0015, 'Height': n_s, 'Normal': bump.outputs[0]})
     bsdf = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': col, 'Roughness': r, 'Metallic': 0.0,
                                                       'Specular IOR Level': 0.12, 'Normal': bump2.outputs[0]})
     n.link(bsdf.outputs[0], out.inputs['Surface'])
+    return m
+
+
+def planks(obj='_(Loose Entity)', name='MC_planks'):
+    """Boardwalk: Megascans 'Worn Wooden Planks', boards laid across the walk (the mesh is not changed)."""
+    import mc_fab
+    m, t = C.new_mat(name)
+    n = NT(t)
+    out = n.node('ShaderNodeOutputMaterial')
+    P, (u, v, z), Nl, _ = local_coords(n)
+    mp = n.node('ShaderNodeMapping', vector_type='POINT', inputs={'Vector': P, 'Scale': (0.5, 0.5, 0.5), 'Location': (0.13, 0.31, 0.0)})
+
+    def tex(kind):
+        nd = n.node('ShaderNodeTexImage', projection='BOX', projection_blend=0.05, inputs={'Vector': mp.outputs[0]})
+        nd.image = mc_fab.image('planks', kind)
+        return nd
+    diff, rough, disp = tex('color'), tex('rough'), tex('disp')
+    big = n.noise(P, 1.3, 3, 0.5).outputs['Fac']
+    col = n.node('ShaderNodeHueSaturation', inputs={'Saturation': 0.75, 'Value': n.math('ADD', 0.62, n.math('MULTIPLY', big, 0.3)),
+                                                    'Color': diff.outputs['Color']}).outputs[0]
+    col = n.mix(0.25, col, (0.16, 0.155, 0.15, 1))                                        # silvered by the weather
+    bump = n.node('ShaderNodeBump', inputs={'Strength': 1.0, 'Distance': 0.03, 'Height': disp.outputs['Color']})
+    bsdf = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': col, 'Roughness': n.math('ADD', n.math('MULTIPLY', rough.outputs['Color'], 0.4), 0.55),
+                                                      'Normal': bump.outputs[0], 'Specular IOR Level': 0.25})
+    n.link(bsdf.outputs[0], out.inputs['Surface'])
+    o = bpy.data.objects.get(obj)
+    if o is not None:
+        for i in range(len(o.data.materials)):
+            o.data.materials[i] = m
     return m
 
 
@@ -280,8 +338,73 @@ def interior_lights(power=1.0):
     return col
 
 
+def door_frame(name='Door frame (added)'):
+    """A real door frame for the entrance in the east wall (opening v 1.708..3.208, z 0.2..2.4 in a 150 mm wall whose
+    outer skin showed as a sheet): a welded steel surround, 100 mm wide and 216 mm deep, standing 60 mm proud of the
+    corten, with its lining just inside the reveal, a drip over the head and a sill plate on the boardwalk.
+    Added geometry only: no existing mesh of the building is edited. Parented to the building."""
+    V0, V1, Z0, Z1 = 1.708, 3.208, 0.200, 2.400              # the opening
+    U_IN, U_OUT = 3.141, 3.357                               # through the wall, proud of the skin (3.297)
+    W = 0.100                                                # face width of the surround
+    T = 0.006                                                # how far the lining stands inside the reveal
+    boxes = [  # (u0, u1, v0, v1, z0, z1)
+        (U_IN, U_OUT, V0 - W, V0 + T, 0.0, Z1 + W),          # south jamb, down to the slab
+        (U_IN, U_OUT, V1 - T, V1 + W, 0.0, Z1 + W),          # north jamb
+        (U_IN, U_OUT, V0 + T, V1 - T, Z1 - T, Z1 + W),       # head
+        (U_OUT - 0.004, U_OUT + 0.022, V0 - W - 0.012, V1 + W + 0.012, Z1 + W, Z1 + W + 0.012),   # drip over the head
+        (U_IN, U_OUT + 0.03, V0 + T, V1 - T, Z0 - 0.004, Z0 + 0.012),                             # sill plate
+    ]
+    verts, faces = [], []
+    for (u0, u1, v0, v1, z0, z1) in boxes:
+        b = len(verts)
+        for u in (u0, u1):
+            for v in (v0, v1):
+                for z in (z0, z1):
+                    x, y = mc_site.to_world(u, v)
+                    verts.append((x, y, z))
+        faces += [(b, b + 1, b + 3, b + 2), (b + 4, b + 6, b + 7, b + 5), (b, b + 4, b + 5, b + 1), (b + 2, b + 3, b + 7, b + 6),
+                  (b, b + 2, b + 6, b + 4), (b + 1, b + 5, b + 7, b + 3)]
+    old = bpy.data.objects.get(name)
+    if old is not None:
+        d = old.data
+        bpy.data.objects.remove(old, do_unlink=True)
+        if d.users == 0:
+            bpy.data.meshes.remove(d)
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], faces)
+    me.update()
+    o = bpy.data.objects.new(name, me)
+    root = bpy.data.objects[C.BUILDING]
+    (root.users_collection[0] if root.users_collection else bpy.context.scene.collection).objects.link(o)
+    o.parent = root
+    o.matrix_parent_inverse = root.matrix_world.inverted()
+    bv = o.modifiers.new('arris', 'BEVEL')                   # a 2 mm arris so the edges catch the light
+    bv.width = 0.002
+    bv.segments = 2
+    bv.limit_method = 'ANGLE'
+    # blackened, oiled steel that has begun to rust at the edges: darker and smoother than the cladding
+    m, t = C.new_mat('MC_door_frame')
+    n = NT(t)
+    out = n.node('ShaderNodeOutputMaterial')
+    geo = n.node('ShaderNodeNewGeometry')
+    P = geo.outputs['Position']
+    n1 = n.noise(P, 9.0, 4, 0.6).outputs['Fac']
+    n2 = n.noise(P, 70.0, 4, 0.7).outputs['Fac']
+    col = n.mix(n.smooth(n1, 0.45, 0.75), (0.038, 0.030, 0.026, 1), (0.075, 0.042, 0.028, 1))
+    edge = n.node('ShaderNodeNewGeometry').outputs['Pointiness']
+    col = n.mix(n.math('MULTIPLY', n.smooth(edge, 0.52, 0.60), 0.6), col, (0.16, 0.075, 0.035, 1))       # rust on the arrises
+    bump = n.node('ShaderNodeBump', inputs={'Strength': 0.3, 'Distance': 0.001, 'Height': n2})
+    bsdf = n.node('ShaderNodeBsdfPrincipled', inputs={'Base Color': col, 'Metallic': 0.6, 'Normal': bump.outputs[0],
+                                                      'Roughness': n.math('ADD', 0.52, n.math('MULTIPLY', n2, 0.2))})
+    n.link(bsdf.outputs[0], out.inputs['Surface'])
+    me.materials.append(m)
+    return o
+
+
 def apply():
     corten()
+    door_frame()
+    planks()
     solar()
     glass()
     tune_simple()

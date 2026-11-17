@@ -58,15 +58,58 @@ WISPS = [
 ]
 
 
+def sea_material(name='MC_cloud_sea', top=-900.0, density=0.014):
+    """Morning cloud lying in the deep valley, seen from above: a bank that is solid low down and breaks into
+    billows and shreds towards its top. The density comes from a 3D noise whose threshold falls with depth below
+    the top, so the upper surface has real relief that the low sun shades."""
+    m, t = C.new_mat(name)
+    n = NT(t)
+    out = n.node('ShaderNodeOutputMaterial')
+    geo = n.node('ShaderNodeNewGeometry')
+    P = geo.outputs['Position']
+    z = n.node('ShaderNodeSeparateXYZ', inputs={0: P}).outputs['Z']
+    big = n.noise(P, 1 / 3200.0, 3, 0.5).outputs['Fac']                       # where the bank is high, low or absent
+    topz = n.math('ADD', top, n.math('MULTIPLY', n.math('SUBTRACT', big, 0.5), 520.0))
+    Ps = n.node('ShaderNodeMapping', vector_type='POINT', inputs={'Vector': P, 'Scale': (1 / 950.0, 1 / 950.0, 1 / 380.0)}).outputs[0]
+    warp = n.noise(Ps, 0.8, 3, 0.5).outputs['Color']
+    Pw = n.node('ShaderNodeVectorMath', operation='ADD', inputs={0: Ps, 1: n.node('ShaderNodeVectorMath', operation='SCALE',
+                inputs={0: warp, 'Scale': 0.7}).outputs[0]}).outputs[0]
+    f1 = n.noise(Pw, 1.0, 9, 0.60, lac=2.1).outputs['Fac']                    # billows down to about 10 m
+    f2 = n.noise(P, 1 / 140.0, 5, 0.62).outputs['Fac']
+    f = n.math('ADD', n.math('MULTIPLY', f1, 0.84), n.math('MULTIPLY', f2, 0.16))
+    depth = n.math('DIVIDE', n.math('SUBTRACT', topz, z), 260.0)              # 0 at the top, 1 = 260 m below it
+    depth = n.math('MINIMUM', n.math('MAXIMUM', depth, -0.7), 1.3)
+    th = n.math('SUBTRACT', 0.56, n.math('MULTIPLY', depth, 0.42))
+    dens = n.math('MULTIPLY', n.smooth(f, th, n.math('ADD', th, 0.10)), density)
+    vol = n.node('ShaderNodeVolumePrincipled', inputs={'Color': (0.96, 0.97, 0.98, 1), 'Density': dens, 'Anisotropy': 0.45})
+    n.link(vol.outputs[0], out.inputs['Volume'])
+    return m
+
+
+def sea(name='CL_sea', top=-900.0, x=(-9500.0, 1200.0), y=(-10500.0, 2500.0), thick=900.0):
+    C.remove_object(name)
+    zc = top + 450.0 - thick / 2
+    bpy.ops.mesh.primitive_cube_add(size=1.0, location=((x[0] + x[1]) / 2, (y[0] + y[1]) / 2, zc))
+    o = bpy.context.object
+    o.name = name
+    o.scale = (x[1] - x[0], y[1] - y[0], thick)
+    C.link(o, C.coll('MC_clouds'))
+    o.data.materials.append(sea_material(top=top))
+    o.display_type = 'BOUNDS'
+    return o
+
+
 def build(which=None):
     sc = bpy.context.scene
-    for o in [o for o in bpy.data.objects if o.name.startswith('CL_')]:
+    for o in [o for o in bpy.data.objects if o.name.startswith('CL_') and (not which or o.name in which)]:
         C.remove_object(o.name)
     for name, loc, size, rz, kw in WISPS:
         if which and name not in which:
             continue
         box(name, loc, size, rz, **kw)
-    sc.cycles.volume_bounces = 6
+    if not which or 'CL_sea' in which:
+        sea()
+    sc.cycles.volume_bounces = 10
     sc.cycles.volume_step_rate = 1.0
     sc.cycles.volume_max_steps = 256
     return len(WISPS)

@@ -12,7 +12,9 @@ _C, _S = math.cos(ROT), math.sin(ROT)
 
 Z_T = 0.0            # terrace paving level = top of the building's own base slab
 PARAPET = 0.42       # dry-stone parapet above the terrace
-WALL_T = 0.55        # wall thickness
+WALL_T = 0.62        # wall thickness (the Mossy Stone Wall scan is 0.64 m thick and 0.99 m high)
+WALL_DROP = 0.50     # outer ground below the terrace at the wall foot
+RUT_OFFSET, RUT_WIDTH, RUT_DEPTH = 0.78, 0.24, 0.05      # wheel ruts of the track (m)
 
 # building (as modelled, never changed): shell u -6.90..3.30, v -9.54..9.66; base slab u -5.0..8.1, v -8.39..8.66
 SHELL = (-6.901, -9.543, 3.298, 9.658)
@@ -164,7 +166,8 @@ class Site:
         return best, zt
 
     def height(self, x, y):
-        """Ground height and masks at world points: returns (z, m_track, m_terrace, sdf_terrace)."""
+        """Ground height and masks at world points: returns (z, m_track, m_terrace, sdf_terrace, track_d) where
+        track_d is the distance to the track's centre line in metres (9 = far)."""
         x = np.asarray(x, float)
         y = np.asarray(y, float)
         z = np.asarray(self.nat(x, y), float).copy()
@@ -173,27 +176,33 @@ class Site:
         m_track = np.zeros(z.shape, np.float32)
         m_terr = np.zeros(z.shape, np.float32)
         sdf = np.full(z.shape, 99.0, np.float32)
+        trd = np.full(z.shape, 9.0, np.float32)
         if not near.any():
-            return z, m_track, m_terr, sdf
+            return z, m_track, m_terr, sdf, trd
         un, vn, zn = u[near], v[near], z[near]
         d = terrace_sdf(un, vn)
         sdf[near] = np.clip(d, -99, 99)
-        # 1. the knoll: ground meets the wall foot 0.85 m below the terrace and eases into the natural slope
+        # 1. the knoll: ground meets the wall foot WALL_DROP below the terrace and eases into the natural slope
         L = 26.0
         w = np.clip(d / L, 0, 1)
         w = w * w * (3 - 2 * w)
-        z_edge = Z_T - 0.85 + 0.25 * np.sin(un * 0.31) * np.cos(vn * 0.27)
+        z_edge = Z_T - WALL_DROP + 0.22 * np.sin(un * 0.31) * np.cos(vn * 0.27)
         z1 = z_edge * (1 - w) + zn * w
-        # 2. the track
+        # 2. the track: a worn two-rut gravel track
         dc, zt = self.track_field(un, vn)
         half = TRACK_W / 2
         wt = 1.0 - np.clip((dc - half) / 3.2, 0, 1)
         wt = wt * wt * (3 - 2 * wt)
-        crown = 0.05 * np.clip(1 - (dc / half) ** 2, 0, 1)          # slight crown of a worn gravel track
-        z2 = z1 * (1 - wt) + (zt + crown) * wt
-        # 3. under the paving and the slab
-        z2 = np.where(d < 0, Z_T - 0.30, z2)
+        crown = 0.03 * np.clip(1 - (dc / half) ** 2, 0, 1)
+        wob = 0.10 * np.sin(un * 0.23 + vn * 0.19) + 0.06 * np.sin(vn * 0.61)        # the ruts wander a little
+        ruts = RUT_DEPTH * np.exp(-((dc - RUT_OFFSET - wob) / RUT_WIDTH) ** 2) * (0.75 + 0.25 * np.sin(vn * 0.43 + un * 0.37))
+        z2 = z1 * (1 - wt) + (zt + crown - ruts) * wt
+        # 3. the terrace: compacted gravel, level with the top of the building's slab, barely uneven
+        # (25 mm of gravel over the building's base slab, so the slab's top never shows through)
+        z_ter = Z_T + 0.025 + 0.010 * np.sin(un * 1.3 + 0.7) * np.cos(vn * 0.9) + 0.005 * np.sin(un * 3.1 + vn * 2.3)
+        z2 = np.where(d < 0, z_ter, z2)
         z[near] = z2
         m_track[near] = np.clip(1.0 - (dc - half + 0.25) / 0.5, 0, 1) * (d > 0.2)
         m_terr[near] = (d < 0)
-        return z, m_track, m_terr, sdf
+        trd[near] = np.clip(dc, 0, 9)
+        return z, m_track, m_terr, sdf, trd

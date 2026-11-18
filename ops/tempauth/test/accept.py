@@ -58,7 +58,12 @@ def tool(url, name, **a):
     return r["result"]["isError"], r["result"]["content"][0]["text"]
 
 
+SLOW = os.environ.get("ACCEPT_SLOW") == "1"   # 助手 1.0.0 的巡查有竞态：命令之间停一下
+
+
 def run_wait(url, command, shell="cmd", timeout=600, **kw):
+    if SLOW:
+        time.sleep(1.5)
     err, text = tool(url, "run_command", command=command, shell=shell, timeout_seconds=timeout, **kw)
     while "get_command_result" in text and ("仍在运行" in text or "等待" in text):
         tid = text.split("任务 ")[1].split("，")[0].split("）")[0]
@@ -68,6 +73,8 @@ def run_wait(url, command, shell="cmd", timeout=600, **kw):
 
 def hrun(gid, command, shell="cmd", timeout=60, cwd=None):
     """经助手直接运行（不过执行前检查），返回 (退出码, 状态, 输出)。"""
+    if SLOW:
+        time.sleep(1.5)
     q = {"op": "run", "grant": gid, "command": command, "shell": shell, "timeout": timeout, "online": False}
     if cwd:
         q["cwd"] = cwd
@@ -89,6 +96,9 @@ def main():
     t0 = time.time()
     for d in (A, B, C):
         d.mkdir(parents=True, exist_ok=True)
+    for g in adm("GET", "grants?status=all")["grants"]:   # 上一次没跑完留下的
+        if g["name"].startswith("验收") and g["state"] == "active":
+            adm("POST", f"grants/{g['id']}/revoke")
     st = H.call({"op": "status"})
     rec("助手", "服务就绪", st.get("ready"), f"{st.get('version')} {st.get('error') or ''}")
     v = H.call({"op": "verify"})
@@ -221,7 +231,8 @@ def main():
     H.call({"op": "release", "grant": idb})
     acl = subprocess.run(["icacls", str(B)], capture_output=True, text=True, errors="replace").stdout
     grp = subprocess.run(["net", "localgroup", "AITemp-" + idb], capture_output=True, text=True, errors="replace").returncode
-    rec("撤权", "释放后组和文件夹权限都删掉", "AITemp-" not in acl and grp != 0, acl.splitlines()[1:3])
+    mid = subprocess.run(["icacls", str(ROOT)], capture_output=True, text=True, errors="replace").stdout
+    rec("撤权", "释放后组和文件夹权限（含中间目录）都删掉", ("AITemp-" + idb) not in acl + mid and grp != 0, acl.splitlines()[:2])
 
     lines = [f"# 临时授权验收报告", "", f"{time.strftime('%Y-%m-%d %H:%M')}，用时 {int(time.time() - t0)} 秒；"
              f"{len(RESULTS)} 项，未通过 {sum(1 for r in RESULTS if not r[2])} 项。", "",

@@ -58,7 +58,7 @@ public class HelperError : Exception
 
 public static class Helper
 {
-    public const string Version = "1.0.0";
+    public const string Version = "1.0.1";
     public static string ClientAccount = "blender";
     const string User = "aitemp";
     const string PipeName = "aitemp-helper";
@@ -371,13 +371,14 @@ public static class Helper
             // 文件夹变了：先把旧文件夹上的权限撤掉
             var gsidOld = GroupSid(group);
             foreach (string f in groups[group].Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries))
-                if (!folders.Contains(f)) try { RemoveAce(f, gsidOld); } catch (Exception e) { Log("remove old ace: " + e.Message); }
+                if (!folders.Contains(f)) try { RemoveAce(f, gsidOld); foreach (string a in Ancestors(f)) AncestorAce(a, gsidOld, false); } catch (Exception e) { Log("remove old ace: " + e.Message); }
             var gi = new N.LOCALGROUP_INFO_1002 { comment = comment };
             int parm; N.NetLocalGroupSetInfo(null, group, 1002, ref gi, out parm);
         }
         var gsid = GroupSid(group);
         foreach (string f in folders)
         {
+            foreach (string a in Ancestors(f)) AncestorAce(a, gsid, true);
             AddAce(f, gsid);
             foreach (string sub in new[] { "tmp", "pip-cache", "pyuser", "npm-cache", "npm-global", "uv-cache" })
                 Directory.CreateDirectory(Path.Combine(f, ".aitemp", sub));
@@ -417,6 +418,34 @@ public static class Helper
         di.SetAccessControl(ds);
     }
 
+    /// <summary>授权文件夹和 D 盘顶层目录之间的各级目录（不含两端）。</summary>
+    static List<string> Ancestors(string folder)
+    {
+        var res = new List<string>();
+        string root = Path.GetPathRoot(folder);
+        string[] parts = folder.Substring(root.Length).Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 2; i < parts.Length; i++) res.Add(root + string.Join("\\", parts, 0, i));
+        return res;
+    }
+
+    /// <summary>中间各级目录给授权组只加“读属性”、不继承：git 建目录时会逐级 stat 整条路径，读不到属性就失败
+    /// （2026-11-18 验收发现）。看不到目录里有什么。用 SetFileSecurity 写，不遍历子目录。</summary>
+    static void AncestorAce(string dir, SecurityIdentifier sid, bool add)
+    {
+        if (!Directory.Exists(dir)) return;
+        var ds = new DirectoryInfo(dir).GetAccessControl(AccessControlSections.Access);
+        if (add)
+        {
+            foreach (FileSystemAccessRule r in ds.GetAccessRules(true, false, typeof(SecurityIdentifier)))
+                if (r.IdentityReference.Equals(sid) && r.AccessControlType == AccessControlType.Allow) return;
+            ds.AddAccessRule(new FileSystemAccessRule(sid, FileSystemRights.ReadAttributes | FileSystemRights.Synchronize,
+                InheritanceFlags.None, PropagationFlags.None, AccessControlType.Allow));
+        }
+        else ds.PurgeAccessRules(sid);
+        if (!N.SetFileSecurityW(dir, 4 /*DACL_SECURITY_INFORMATION*/, ds.GetSecurityDescriptorBinaryForm()))
+            throw new HelperError("acl", "改 " + dir + " 的权限失败：" + Marshal.GetLastWin32Error());
+    }
+
     static void RemoveAce(string folder, SecurityIdentifier sid)
     {
         if (!Directory.Exists(folder)) return;
@@ -446,6 +475,7 @@ public static class Helper
             foreach (string f in all)
             {
                 try { if (gsid != null) RemoveAce(f, gsid); } catch (Exception e) { errors.Add(f + "：" + e.Message); }
+                if (gsid != null) foreach (string a in Ancestors(f)) try { AncestorAce(a, gsid, false); } catch (Exception e) { errors.Add(a + "：" + e.Message); }
                 try { CleanDir(Path.Combine(f, ".aitemp", "tmp")); } catch { }
             }
             int rc = N.NetLocalGroupDel(null, group);
@@ -847,6 +877,12 @@ public static class Helper
         string action = Str(q, "action");
         string path = Path.GetFullPath(Str(q, "path"));
         if (g.FolderOf(path) == null) throw new HelperError("path", "路径不在授权文件夹里：" + path);
+        // 先以 SYSTEM 解析真实路径（或最近一级已存在的上级），经联接指到授权文件夹外就拒绝。
+        // 模拟 aitemp 之后打不开授权外的目标，解析不出来，会被当成空文件夹（2026-11-18 验收发现）。
+        string probe = path;
+        while (probe != null && !Directory.Exists(probe) && !File.Exists(probe)) probe = Path.GetDirectoryName(probe);
+        string realp = probe == null ? null : RealPath(probe);
+        if (realp == null || g.FolderOf(realp) == null) throw new HelperError("path", "经链接指到了授权文件夹外：" + (realp ?? path));
         IntPtr token = g.Token();
         using (WindowsIdentity.Impersonate(token))
         {
@@ -990,8 +1026,10 @@ public static class Helper
     {
         if (Sid == null) return 0;
         int killed = 0;
-        IntPtr cur;
-        lock (runLock) cur = current != null && current.State == "running" ? current.JobHandle : IntPtr.Zero;
+        // 整个巡查都持有 runLock：否则新命令正在创建（还没放进作业）时会被当成漏网进程结束掉（2026-11-18 验收发现）
+        lock (runLock)
+        {
+        IntPtr cur = current != null && current.State == "running" ? current.JobHandle : IntPtr.Zero;
         foreach (Process p in Process.GetProcesses())
         {
             if (p.Id <= 4) continue;
@@ -1009,6 +1047,7 @@ public static class Helper
                 Log("sweep killed " + pname + " pid=" + p.Id);
             }
             finally { N.CloseHandle(h); }
+        }
         }
         return killed;
     }
@@ -1278,6 +1317,7 @@ static class N
     public static extern IntPtr CreateDesktopW(string name, string device, IntPtr devmode, uint flags, uint access, ref SECURITY_ATTRIBUTES sa);
 
     [DllImport("kernel32.dll", SetLastError = true)] public static extern bool CloseHandle(IntPtr h);
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)] public static extern bool SetFileSecurityW(string path, uint info, byte[] sd);
     [DllImport("kernel32.dll")] public static extern IntPtr LocalFree(IntPtr p);
     [DllImport("kernel32.dll", SetLastError = true)] public static extern bool CreatePipe(out IntPtr rd, out IntPtr wr, ref SECURITY_ATTRIBUTES sa, int size);
     [DllImport("kernel32.dll", SetLastError = true)] public static extern bool SetHandleInformation(IntPtr h, uint mask, uint flags);

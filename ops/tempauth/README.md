@@ -84,3 +84,15 @@
 - 浏览器结果：快照文件读出后放进结果（最多 60 KB）、截图只留图片、PDF 作为嵌入资源；去掉 filename 参数；Playwright 自己生成的文件处理后删除，网页下载的文件保留。
 - 带浏览器的授权次数用完后仍是 active（浏览器不计次），命令和写文件返回 limit_reached。
 - 验收：accept.py 42/42、browser_accept.py 27/27，经 tmcp 从云端实测通过。本地测试：`gateway.py --demo` 加 scratchpad 里的 v2test.py 思路（每个结果按 outputSchema 校验）。
+
+## 网关 2.2：浏览器读内容和跑基准（2026-11-18）
+- 来源：对方 Claude 按 BrowseComp、GAIA、Mind2Web、WebArena 等基准实测提的建议；规范见《MCP 控制台需求》6.7。原则：只在碰到这台电脑的文件、本机服务或主人登录凭据的地方设限。
+- 读内容：网关自己的 `browser_get_text`（页面里跑 DOM→markdown，默认只取 main/article；PDF 经 `page.context().request` 下载，用 pypdf 抽字）；快照全文存 `LAST_SNAP`，操作结果默认截 2 万字，`browser_snapshot` 的 offset 翻页不重抓。
+- 开放：`browser_evaluate`、vision（坐标、滚轮）、devtools/network/storage/testing/tracing 的工具；不提供 `browser_run_code_unsafe`（Node 里跑，能读写文件）、storage_state 系列、get_config 等。网关自加 `browser_navigate_forward`、`browser_reload`、`browser_read_download`、`browser_reset`，navigate 加 `wait_until`。
+- 上传：`files`（base64）或授权文件夹里的路径（以 aitemp 身份经助手读出），写到输出目录下 `uploads\<随机>`，传完删除。
+- 本机/局域网白名单：grants 表 `allow_hosts`；Playwright 的 `--proxy-bypass` 加这些 host:port（其余端口仍走代理），`--blocked-origins` 去掉对应主机；控制台签发框新增输入框。
+- 会话：PublicHandler 在 initialize 时发 `Mcp-Session-Id`，`BROWSERS` 按（授权, 会话）分；每条授权最多 4 个，空闲 15 分钟关（ticker）；DELETE 结束会话。登录请求记住会话，写入那个会话的浏览器。
+- 打码：保存或执行中登录的网站，Cookie 工具不给值；网络记录的 Cookie、Set-Cookie、Authorization 头一律打码。
+- 其他：UA 换成同版本普通 Edge（去掉 HeadlessChrome，版本号取 Edge 安装目录）；`Downloaded file … to "…"` 事件和控制台日志（`console-….log#L2-L3`）解析进结果；Playwright 自己的文件在浏览器关闭或结果被替换时删除；助手回 busy 时网关重试 15 秒。
+- 安装包带 `pypdf-7.1.1` 的 wheel（stage.py 下载到 `.wheels/`，不进仓库），install.ps1 解到 `tempauth\vendor`。
+- 验收：browser_accept.py 49/49（含 18099 本机测试页、上传下载、arxiv PDF、维基百科分页、httpbin 打码、trace、重置、两个会话、登录流程），accept.py 42/42；经 tmcp 从云端实测：会话编号能过隧道，arxiv PDF 24 页 4.7 秒，出口在美国洛杉矶（Google 显示中文只因为浏览器语言）。

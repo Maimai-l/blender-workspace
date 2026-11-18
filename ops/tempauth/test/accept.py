@@ -5,6 +5,7 @@
 经三条路径测：网关的管理接口（签发、吊销、确认），网关的 MCP 接口（对方 AI 看到的样子），授权助手的命名管道
 （绕过执行前检查，直接测沙盒账号本身的边界）。报告写到 D:\\Projects\\aitemp-test\\accept-report.md。
 """
+import calendar
 import json
 import os
 import subprocess
@@ -52,10 +53,19 @@ def mcp(url, method, params=None):
 
 
 def tool(url, name, **a):
+    """返回 (isError, structuredContent)。网关 2.0 起结果都是结构化的（《MCP 控制台需求》第 6 节）。"""
     r = mcp(url, "tools/call", {"name": name, "arguments": a})
     if "result" not in r:
-        return True, json.dumps(r)
-    return r["result"]["isError"], r["result"]["content"][0]["text"]
+        return True, {"error": {"code": "transport", "message": json.dumps(r)}}
+    return r["result"]["isError"], r["result"].get("structuredContent") or {}
+
+
+def code_of(sc):
+    return (sc.get("error") or {}).get("code")
+
+
+def text_of(sc):
+    return (sc.get("output") or {}).get("text", "") if "output" in sc else json.dumps(sc, ensure_ascii=False)
 
 
 SLOW = os.environ.get("ACCEPT_SLOW") == "1"   # 助手 1.0.0 的巡查有竞态：命令之间停一下
@@ -64,11 +74,10 @@ SLOW = os.environ.get("ACCEPT_SLOW") == "1"   # 助手 1.0.0 的巡查有竞态�
 def run_wait(url, command, shell="cmd", timeout=600, **kw):
     if SLOW:
         time.sleep(1.5)
-    err, text = tool(url, "run_command", command=command, shell=shell, timeout_seconds=timeout, **kw)
-    while "get_command_result" in text and ("仍在运行" in text or "等待" in text):
-        tid = text.split("任务 ")[1].split("，")[0].split("）")[0]
-        err, text = tool(url, "get_command_result", task_id=tid, wait_seconds=60)
-    return err, text
+    err, sc = tool(url, "run_command", command=command, shell=shell, timeout_seconds=timeout, **kw)
+    while sc.get("next"):
+        err, sc = tool(url, sc["next"]["tool"], **sc["next"]["arguments"])
+    return err, text_of(sc)
 
 
 def hrun(gid, command, shell="cmd", timeout=60, cwd=None):
@@ -112,7 +121,14 @@ def main():
     UA, UB, UC = ga["url"], gb["url"], gc["url"]
     ida, idb, idc = ga["grant"]["id"], gb["grant"]["id"], gc["grant"]["id"]
     init = mcp(UA, "initialize", {"protocolVersion": "2025-06-18"})
-    rec("MCP", "initialize + tools/list", "result" in init and len(mcp(UA, "tools/list")["result"]["tools"]) == 7)
+    tl = mcp(UA, "tools/list")["result"]["tools"]
+    rec("MCP", "initialize + tools/list（7 个工具，都有 outputSchema）", "result" in init and len(tl) == 7 and all("outputSchema" in t for t in tl))
+    err, sc = tool(UA, "grant_info")
+    rec("MCP", "grant_info 按能力分组，时间是 UTC", not err and sc["folders"]["calls_limit"] == 100 and "browser" not in sc
+        and sc["expires_at"].endswith("Z"), sc)
+    err, sc = tool(UA, "run_command", command="exit 3")
+    rec("MCP", "退出码非 0：status failed、isError", err and sc.get("status") == "failed" and sc.get("exit_code") == 3
+        and sc.get("finished_at", "").endswith("Z") and isinstance(sc.get("duration_ms"), int), sc)
 
     # ---- 程序（经 MCP）
     err, out = run_wait(UA, "whoami")
@@ -156,23 +172,25 @@ def main():
     hw = "hw-%d" % time.time()          # 每次一个新目录：上次留下的 hw 会让 clone 失败
     err, out = run_wait(UB, "git clone --depth 1 https://github.com/octocat/Hello-World.git " + hw, timeout=180)
     rec("装包", "联网：git clone", not err and (B / hw / "README").exists(), out[-200:])
-    err, out = run_wait(UA, "python -m pip install six")
-    rec("装包", "断网：pip install 被执行前检查拦下", err and "拦截" in out, out)
+    err, sc = tool(UA, "run_command", command="python -m pip install six")
+    rec("装包", "断网：pip install 被执行前检查拦下", err and code_of(sc) == "rule_blocked" and sc["error"]["details"]["rule"] == "network", sc)
     code, _, out = hrun(ida, ".venv\\Scripts\\python -m pip install --retries 0 --timeout 5 six", timeout=120)
     rec("装包", "断网：绕过检查直接装也失败", code != 0, out[-200:])
 
     # ---- 文件工具
-    err, out = tool(UA, "write_file", path="sub/hello.txt", content="你好，aitemp")
-    rec("文件", "write_file", not err, out)
-    err, out = tool(UA, "read_file", path="sub/hello.txt")
-    rec("文件", "read_file", not err and out == "你好，aitemp", out)
-    err, out = tool(UA, "list_directory", depth=2)
-    rec("文件", "list_directory", not err and "sub\\hello.txt" in out, out[:200])
-    err, out = tool(UA, "read_file", path=r"C:\ProgramData\BlenderMCP\agent.token")
-    rec("文件", "read_file 授权外被拦", err and "拦截" in out, out)
+    err, sc = tool(UA, "write_file", path="sub/hello.txt", content="你好，aitemp")
+    rec("文件", "write_file", not err and sc.get("written_bytes") == len("你好，aitemp".encode()), sc)
+    err, sc = tool(UA, "read_file", path="sub/hello.txt")
+    rec("文件", "read_file", not err and sc.get("content") == "你好，aitemp" and sc.get("eof") is True, sc)
+    err, sc = tool(UA, "list_directory", depth=2)
+    hit = [e for e in sc.get("entries", []) if e["path"] == "sub\\hello.txt"]
+    rec("文件", "list_directory（修改时间是 UTC）", not err and hit and hit[0]["modified_at"].endswith("Z")
+        and abs(time.time() - calendar.timegm(time.strptime(hit[0]["modified_at"], "%Y-%m-%dT%H:%M:%SZ"))) < 600, hit)
+    err, sc = tool(UA, "read_file", path=r"C:\ProgramData\BlenderMCP\agent.token")
+    rec("文件", "read_file 授权外被拦", err and code_of(sc) in ("protected_path", "out_of_scope"), sc)
     code, _, out = hrun(ida, f'mklink /J lnk "{B}"')
-    err, out2 = tool(UA, "list_directory", path="lnk")
-    rec("文件", "经联接指到授权外被拒绝", err, out2)
+    err, sc = tool(UA, "list_directory", path="lnk")
+    rec("文件", "经联接指到授权外被拒绝", err and code_of(sc) in ("out_of_scope", "access_denied"), sc)
 
     # ---- 超时、后台进程
     t1 = time.time()
@@ -193,12 +211,13 @@ def main():
     r = adm("POST", f"grants/{ida}/revoke")
     th.join(30)
     rec("吊销", "吊销接口 1 秒内返回", r.get("ok") and time.time() - t1 < 1.5, f"{r.get('ms')} ms")
-    rec("吊销", "正在跑的命令被中止", "中止" in res.get("r", (0, ""))[1], res.get("r"))
-    err, out = tool(UA, "list_directory")
-    rec("吊销", "吊销后再调用被拒绝", err and "收回" in out, out)
+    rsc = res.get("r", (0, {}))[1]
+    rec("吊销", "正在跑的命令被中止", rsc.get("status") == "cancelled" and rsc.get("reason") == "grant_revoked", rsc)
+    err, sc = tool(UA, "list_directory")
+    rec("吊销", "吊销后再调用被拒绝", err and code_of(sc) == "grant_revoked", sc)
     r = adm("POST", f"grants/{ida}/restore")
-    err, out = tool(UA, "list_directory")
-    rec("吊销", "恢复后能用", r.get("ok") and not err, out[:80])
+    err, sc = tool(UA, "list_directory")
+    rec("吊销", "恢复后能用", r.get("ok") and not err, str(sc)[:80])
 
     # ---- 执行前确认
     res = {}
@@ -210,7 +229,10 @@ def main():
     if mine:
         adm("POST", "approvals/" + mine[0]["id"], {"allow": True})
     th.join(90)
-    rec("确认", "允许后执行", bool(mine) and "approved-ok" in res.get("r", (0, ""))[1], res.get("r"))
+    rsc = res.get("r", (0, {}))[1]
+    while rsc.get("next"):
+        rsc = tool(UC, rsc["next"]["tool"], **rsc["next"]["arguments"])[1]
+    rec("确认", "允许后执行", bool(mine) and rsc.get("status") == "succeeded" and "approved-ok" in text_of(rsc), rsc)
     th = threading.Thread(target=lambda: res.update(r=tool(UC, "run_command", command="echo should-not-run")))
     th.start()
     time.sleep(2)
@@ -218,7 +240,8 @@ def main():
     if mine:
         adm("POST", "approvals/" + mine[0]["id"], {"allow": False})
     th.join(90)
-    rec("确认", "拒绝后不执行", bool(mine) and "主人拒绝" in res.get("r", (0, ""))[1], res.get("r"))
+    rsc = res.get("r", (0, {}))[1]
+    rec("确认", "拒绝后不执行", bool(mine) and rsc.get("status") == "denied" and rsc.get("reason") == "owner_denied", rsc)
 
     # ---- 记录
     logs = adm("GET", "logs?limit=500")["logs"]

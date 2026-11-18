@@ -22,6 +22,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -37,7 +38,7 @@ DATA = Path(os.environ.get("TMCP_DATA", str(Path.home() / "TempAuth")))
 ADMIN_TOKEN_FILE = Path(os.environ.get("TMCP_ADMIN_TOKEN_FILE",
                                        r"C:\ProgramData\BlenderMCP\tempauth.token" if IS_WIN else str(DATA / "tempauth.token")))
 PIPE = r"\\.\pipe\aitemp-helper"
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 
 WAIT_BUDGET = 75          # Cloudflare 约 100 秒断开；一次调用最多等这么久
 OUTPUT_KEEP = 64 * 1024   # 执行记录里只存输出的前 64 KB
@@ -147,6 +148,9 @@ RULES = [
 ]
 RULE_RE = {k: [re.compile(x) for x in pats] for k, _, _, pats in RULES}
 RULE_NAME = {k: n for k, n, _, _ in RULES}
+RULE_EN = {"path": "path outside the granted folders", "protected": "protected location", "tasks": "scheduled tasks and services",
+           "registry": "registry", "account": "accounts and permissions", "system": "system and firewall",
+           "encoding": "encoded or obfuscated command", "network": "network access is not allowed for this grant"}
 
 
 def check_path_text(grant, text, cwd):
@@ -425,8 +429,8 @@ def grant_state(g, t=None):
     t = t or now()
     if g["revoked_at"]:
         return "revoked"
-    if g["lim"] >= 0 and g["used"] >= g["lim"]:
-        return "used"
+    if g["lim"] >= 0 and g["used"] >= g["lim"] and not g["browser"]:
+        return "used"                 # 带浏览器的授权：浏览器不计次，次数用完仍然有效，只是命令和写文件不能再用
     if g["expires"] <= t:
         return "expired"
     return "active"
@@ -566,20 +570,24 @@ def approval_view(t):
             "shell": t["shell"], "cwd": t["cwd"], "at": t["created"], "time": hms(t["created"])}
 
 
-def finish(t, state, note="", exit_code=None, output="", seconds=0.0, result=None):
-    t.update(state=state, note=note, exit=exit_code, output=output, seconds=seconds)
+def finish(t, state, note="", exit_code=None, output="", seconds=0.0, result=None, reason=None):
+    t.update(state=state, note=note, exit=exit_code, output=output, seconds=seconds, finished=now())
+    if reason:
+        t["reason"] = reason
     if t["log"]:
         update_log(t["log"], result=result or state, note=note, exit=exit_code, output=output, seconds=seconds)
     t["done"].set()
 
 
 def take_count(gid):
-    """原子地占一次次数；授权不可用或次数用完时返回原因。"""
+    """原子地占一次次数；授权不可用或次数用完时返回状态（revoked、expired、used），否则 None。"""
     with STORE.lock:
         g = get_grant(gid)
         st = grant_state(g)
+        if st == "active" and g["lim"] >= 0 and g["used"] >= g["lim"]:
+            st = "used"                    # 带浏览器的授权次数用完后仍是 active（浏览器不计次），命令照样不能再跑
         if st != "active":
-            return {"revoked": "授权已被收回", "expired": "授权已到期", "used": "次数已用完"}[st]
+            return st
         STORE.x("UPDATE grants SET used=used+1 WHERE id=?", (gid,))
     publish_grant(gid)
     return None
@@ -591,10 +599,10 @@ def refund(gid):
 
 
 def enqueue(t):
-    reason = take_count(t["grant"])
-    if reason:
-        t["log"] = t["log"] or add_log(t["grant"], "run", t["command"], "denied", reason, cwd=t["cwd"], shell=t["shell"], task=t["id"])
-        finish(t, "denied", reason, result="denied")
+    st = take_count(t["grant"])
+    if st:
+        t["log"] = t["log"] or add_log(t["grant"], "run", t["command"], "denied", STATE_ZH[st], cwd=t["cwd"], shell=t["shell"], task=t["id"])
+        finish(t, "cancelled", STATE_ZH[st], result="denied", reason=STATE_ERROR[st][0])
         return
     t["state"] = "queued"
     if not t["log"]:
@@ -612,7 +620,8 @@ def worker():
         g = get_grant(t["grant"])
         if grant_state(g) in ("revoked", "expired"):   # 用完的照样执行：这条已经占了次数
             refund(t["grant"])
-            finish(t, "cancelled", "授权已失效，没有执行", result="denied")
+            finish(t, "cancelled", "授权已失效，没有执行", result="denied",
+                   reason="grant_revoked" if grant_state(g) == "revoked" else "grant_expired")
             continue
         CURRENT["task"] = t
         t["state"], t["started"] = "running", now()
@@ -630,15 +639,19 @@ def worker():
             if p["state"] == "done":
                 finish(t, "done", f"退出码 {p['exit']}", p["exit"], p.get("output", ""), p.get("seconds", 0), result="ok")
             elif p["state"] == "timeout":
-                finish(t, "timeout", f"超过 {t['timeout']} 秒，已结束", p["exit"], p.get("output", ""), p.get("seconds", 0), result="timeout")
+                finish(t, "timeout", f"超过 {t['timeout']} 秒，已结束", p["exit"], p.get("output", ""), p.get("seconds", 0), result="timeout",
+                       reason="timeout")
             else:
                 why = {"revoked": "授权被收回，已中止", "expired": "授权到期，已中止", "cancelled": "对方取消",
                        "stopped": "助手停止"}.get(reason, "已中止")
-                finish(t, "killed", why, p["exit"], p.get("output", ""), p.get("seconds", 0), result="cancelled")
+                finish(t, "killed", why, p["exit"], p.get("output", ""), p.get("seconds", 0), result="cancelled",
+                       reason={"revoked": "grant_revoked", "expired": "grant_expired", "cancelled": "cancelled_by_caller",
+                               "stopped": "service_stopped"}.get(reason, "cancelled_by_caller"))
         except (HelperDown, HelperError, OSError) as e:
             if not t["job"]:
                 refund(t["grant"])
-            finish(t, "error", f"没能执行：{e}", result="error")
+            finish(t, "error", f"没能执行：{e}", result="error", reason="service_unavailable")
+            t["reason_msg"] = f"The command could not be started: {e}"
         finally:
             CURRENT["task"] = None
 
@@ -647,59 +660,39 @@ def wait_task(t, budget):
     t["done"].wait(max(0.0, budget))
 
 
-def task_text(t):
-    st = t["state"]
-    if st == "approval":
-        return (f"等待电脑主人确认（任务 {t['id']}）。主人允许后命令会自动执行；稍后用 get_command_result 查结果。", False)
-    if st in ("queued", "running"):
-        return (f"命令仍在运行（任务 {t['id']}，已运行 {int(now() - (t['started'] or now()))} 秒）。"
-                f"用 get_command_result 取结果。\n--- 目前的输出 ---\n{tail_text(t['output'])}", False)
-    if st == "done":
-        return (f"退出码 {t['exit']}，用时 {t['seconds']} 秒\n{t['output']}", t["exit"] != 0)
-    if st == "timeout":
-        return (f"超时，已结束（{t['note']}）\n{t['output']}", True)
-    if st == "killed":
-        return (f"已中止：{t['note']}\n{t['output']}", True)
-    if st == "denied":
-        return (f"没有执行：{t['note']}", True)
-    if st == "cancelled":
-        return (f"没有执行：{t['note']}", True)
-    return (f"出错：{t['note']}", True)
-
-
-def tail_text(s, n=8000):
-    return s if len(s) <= n else "…\n" + s[-n:]
-
-
 # ====================================================================== 授权：签发、吊销、恢复、到期
 def make_prompt(g, url):
+    """签发后复制给对方的提示词（中文，主人粘到对话里）。按能力分组：次数、联网、执行前确认只属于文件夹一组。"""
     folders = json.loads(g["folders"])
-    if not folders:
-        return make_browser_prompt(g, url)
-    lim = "不限" if g["lim"] < 0 else f"{g['lim']} 次"
-    exp = utc(g["expires"])
+    caps = "在我电脑（Windows）的指定文件夹里执行命令、读写文件" if folders else ""
+    if g["browser"]:
+        caps += ("，并" if caps else "") + "使用一个浏览器"
     lines = [
-        "我给你开了一个临时 MCP 连接，可以在我电脑（Windows）的指定文件夹里执行命令、读写文件"
-        + ("，并使用一个浏览器。" if g["browser"] else "。"),
+        f"我给你开了一个临时 MCP 连接，可以{caps}。",
         f"连接地址：{url}",
         "把它添加为自定义连接器（远程 MCP 服务，不需要登录）。地址里带着令牌，请不要转给别人。",
         "",
-        "这次授权的边界：",
-        f"- 用途：{g['name']}",
-        "- 文件夹：" + "、".join(folders) + "（只能在这里面读写；命令默认在第一个文件夹里执行）",
-        f"- 到期：{exp}（UTC），之后地址失效",
-        f"- 次数：{lim}（执行命令和写文件计次；读文件、列目录、被拦截或被拒绝的调用不计）",
-        "- 联网：" + ("允许，经代理出网，pip、npm、git 都能用" if g["net"] else "不允许，下载和安装都会失败"),
-        "- 执行前确认：" + ("需要，每条命令要我在电脑上点允许，可能要等一会" if g["confirm"] else "不需要"),
-        "- 会被拦截：访问授权文件夹以外的位置、计划任务和服务、注册表、账号和权限、系统和防火墙设置、编码混淆的命令"
-        + ("" if g["net"] else "、下载安装"),
-        "",
-        "环境：命令默认用 cmd，也可以选 powershell 或 bash（Git Bash）。Python 是只读的 conda base，"
-        "要装包请先在文件夹里建虚拟环境：python -m venv .venv，再用 .venv\\Scripts\\python -m pip install …。"
-        "Node 和 npm、git、Blender（blender -b）都能用。命令最长等 75 秒返回，没跑完会给任务编号，用 get_command_result 取结果。",
+        f"用途：{g['name']}",
+        f"到期：{utc(g['expires'])}（UTC），之后地址失效",
     ]
+    if folders:
+        lim = "不限" if g["lim"] < 0 else f"{g['lim']} 次"
+        lines += [
+            "",
+            "文件夹：",
+            "- 位置：" + "、".join(folders) + "（只能在这里面读写；命令默认在第一个文件夹里执行）",
+            f"- 次数：{lim}（只计执行命令和写文件；读文件、列目录、被拦截或被拒绝的调用不计）",
+            "- 命令联网：" + ("允许，经代理出网，pip、npm、git 都能用" if g["net"] else "不允许，下载和安装都会失败"),
+            "- 执行前确认：" + ("需要，每条命令要我在电脑上点允许，可能要等一会" if g["confirm"] else "不需要"),
+            "- 会被拦截：访问授权文件夹以外的位置、计划任务和服务、注册表、账号和权限、系统和防火墙设置、编码混淆的命令"
+            + ("" if g["net"] else "、下载安装"),
+            "- 环境：命令默认用 cmd，也可以选 powershell 或 bash（Git Bash）。Python 是只读的 conda base，"
+            "要装包请先在文件夹里建虚拟环境：python -m venv .venv，再用 .venv\\Scripts\\python -m pip install …。"
+            "Node 和 npm、git、Blender（blender -b）都能用。命令最长等 75 秒返回，没跑完会给任务编号，按结果里的 next 继续取。",
+        ]
     if g["browser"]:
         lines += ["", *browser_prompt_lines(g)]
+    lines += ["", "工具返回结构化 JSON：时间都是 UTC，出错时有 error.code。用 grant_info 可以随时查看本次授权。"]
     return "\n".join(lines)
 
 
@@ -707,25 +700,11 @@ def browser_prompt_lines(g):
     logins = json.loads(g["logins"] or "[]")
     return [
         "浏览器：",
-        "- 允许，经代理访问外网；浏览器操作不计次数，不需要我确认",
+        "- 经代理访问外网；浏览器操作不计次数，不需要我确认（上面的次数和联网设置只管命令）",
         "- 已带登录：" + ("、".join(logins) if logins else "无"),
-        "- 不能打开本机或局域网地址、本地文件，不能上传本地文件",
+        "- 不能打开本机或局域网地址、本地文件，不能上传本地文件；快照、截图、PDF 直接在结果里返回",
         "- 需要登录其他网站，或遇到验证码、邮件验证时，调用 request_login，由我在电脑上登录；不要向我索要密码或验证码",
     ]
-
-
-def make_browser_prompt(g, url):
-    exp = utc(g["expires"])
-    return "\n".join([
-        "我给你开了一个临时 MCP 连接，可以使用我电脑上的一个浏览器。",
-        f"连接地址：{url}",
-        "把它添加为自定义连接器（远程 MCP 服务，不需要登录）。地址里带着令牌，请不要转给别人。",
-        "",
-        f"用途：{g['name']}",
-        f"到期：{exp}（UTC），之后地址失效",
-        "",
-        *browser_prompt_lines(g),
-    ])
 
 
 def issue(body):
@@ -863,7 +842,7 @@ def ticker():
                     cancel_tasks(g["id"], "授权已到期")
                 if st in ("expired", "revoked"):
                     close_browser(g["id"])
-                    cancel_logins(g["id"], "授权已失效")
+                    cancel_logins(g["id"], "授权已失效", "grant_revoked" if st == "revoked" else "grant_expired")
                 if st == "used":
                     cancel_tasks(g["id"], "次数已用完", ("approval",))
                 with TASK_LOCK:
@@ -905,42 +884,79 @@ def reconcile():
 
 # ====================================================================== MCP 工具
 TOOL_NAMES = {"run_command", "get_command_result", "cancel_command", "read_file", "write_file", "list_directory"}
+
+
+def _o(**props):
+    """outputSchema：不列 required，失败时的 {"error": …} 也能通过校验。"""
+    props["error"] = ERROR_SCHEMA
+    return {"type": "object", "properties": props}
+
+
+S, I, B, N = {"type": "string"}, {"type": "integer"}, {"type": "boolean"}, {"type": ["integer", "null"]}
+T = {"type": "string", "description": "UTC, ISO 8601"}
+ERROR_SCHEMA = {"type": "object", "properties": {"code": S, "message": S, "retryable": B, "details": {"type": "object"}}}
+NEXT_SCHEMA = {"type": "object", "properties": {"tool": S, "arguments": {"type": "object"}}}
+TASK_SCHEMA = _o(task_id=S, status={"type": "string", "enum": ["pending_approval", "queued", "running", "succeeded", "failed",
+                                                                  "timed_out", "cancelled", "denied"]},
+                 command=S, shell=S, cwd=S, created_at=T, started_at=T, finished_at=T, duration_ms=I, exit_code=N,
+                 reason=S, message=S, next=NEXT_SCHEMA,
+                 output={"type": "object", "properties": {"text": S, "truncated": B, "omitted_bytes": I}})
+TASK_NOTE = (" Returns a command object: task_id, status (pending_approval | queued | running | succeeded | failed | timed_out | "
+             "cancelled | denied), exit_code, duration_ms, output {text, truncated}, and next (the call to make) while unfinished. "
+             "Times are UTC.")
 TOOLS = [
     {"name": "run_command",
      "description": "Run a shell command as the sandbox user, inside the granted folder on the owner's Windows PC. "
-                    "Waits up to 75 s; if the command is still running (or waiting for the owner's approval) you get a task id - "
-                    "call get_command_result with it. Counts against the grant's call limit.",
+                    "Waits up to 75 s; if the command is still running or waiting for the owner's approval, call the tool in "
+                    "`next`. Counts against the grant's call limit." + TASK_NOTE,
      "inputSchema": {"type": "object", "properties": {
          "command": {"type": "string", "description": "The command line."},
          "shell": {"type": "string", "enum": ["cmd", "powershell", "bash"], "description": "Default cmd. bash is Git Bash."},
          "cwd": {"type": "string", "description": "Working directory: a path inside the granted folder, absolute or relative to it. Default: the granted folder."},
          "timeout_seconds": {"type": "integer", "description": "Kill the command after this many seconds (default 600, max 3600)."}},
-         "required": ["command"]}},
+         "required": ["command"]},
+     "outputSchema": TASK_SCHEMA},
     {"name": "get_command_result",
-     "description": "Get the output of a command started with run_command. Waits up to wait_seconds (default 60, max 75) for it to finish.",
+     "description": "Get a command started with run_command. Waits up to wait_seconds (default 60, max 75) for it to finish." + TASK_NOTE,
      "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}, "wait_seconds": {"type": "integer"}},
-                     "required": ["task_id"]}},
-    {"name": "cancel_command", "description": "Stop a running or queued command.",
-     "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"]}},
+                     "required": ["task_id"]},
+     "outputSchema": TASK_SCHEMA},
+    {"name": "cancel_command", "description": "Stop a running or queued command." + TASK_NOTE,
+     "inputSchema": {"type": "object", "properties": {"task_id": {"type": "string"}}, "required": ["task_id"]},
+     "outputSchema": TASK_SCHEMA},
     {"name": "read_file",
      "description": "Read a file inside the granted folder. Text is returned as UTF-8 (default); use encoding=base64 for binary files. "
-                    "Reads at most 1 MB per call; use offset to continue.",
+                    "Reads at most 1 MB per call. Returns content, total_bytes, eof and next_offset (pass it as offset to continue).",
      "inputSchema": {"type": "object", "properties": {
          "path": {"type": "string", "description": "Absolute, or relative to the granted folder."},
          "offset": {"type": "integer", "description": "Byte offset (default 0)."},
          "length": {"type": "integer", "description": "Bytes to read (default 262144, max 1048576)."},
-         "encoding": {"type": "string", "enum": ["text", "base64"]}}, "required": ["path"]}},
+         "encoding": {"type": "string", "enum": ["text", "base64"]}}, "required": ["path"]},
+     "outputSchema": _o(path=S, encoding=S, content=S, offset=I, length_bytes=I, total_bytes=I, eof=B, next_offset=I)},
     {"name": "write_file",
-     "description": "Create or overwrite a file inside the granted folder (parent folders are created). Counts against the call limit.",
+     "description": "Create or overwrite a file inside the granted folder (parent folders are created). Counts against the call limit. "
+                    "Returns path and written_bytes.",
      "inputSchema": {"type": "object", "properties": {
          "path": {"type": "string"}, "content": {"type": "string"},
          "encoding": {"type": "string", "enum": ["text", "base64"], "description": "text = UTF-8 (default)."},
-         "append": {"type": "boolean"}}, "required": ["path", "content"]}},
+         "append": {"type": "boolean"}}, "required": ["path", "content"]},
+     "outputSchema": _o(path=S, written_bytes=I, append=B)},
     {"name": "list_directory",
-     "description": "List a folder inside the granted folder (default: the granted folder). depth 1-3.",
-     "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "depth": {"type": "integer"}}}},
-    {"name": "grant_info", "description": "Show this grant's folder, expiry, remaining calls, network and approval settings.",
-     "inputSchema": {"type": "object", "properties": {}}},
+     "description": "List a folder inside the granted folder (default: the granted folder), depth 1-3. Returns entries with "
+                    "path (relative), type (file | dir | link), size_bytes and modified_at (UTC); at most 1000 entries.",
+     "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}, "depth": {"type": "integer"}}},
+     "outputSchema": _o(path=S, type=S, depth=I, truncated=B, entries={"type": "array", "items": {"type": "object", "properties": {
+         "path": S, "type": S, "size_bytes": I, "modified_at": T}}})},
+    {"name": "grant_info",
+     "description": "Show this grant: expiry (UTC), and for each capability it includes only the settings that apply to it. "
+                    "folders: paths, calls_used/calls_limit (run_command and write_file only), command_network, confirm_commands. "
+                    "browser: proxy network access, not counted, saved logins.",
+     "inputSchema": {"type": "object", "properties": {}},
+     "outputSchema": _o(name=S, state=S, now=T, expires_at=T, remaining_seconds=I,
+                        folders={"type": "object", "properties": {"paths": {"type": "array", "items": S}, "calls_used": I,
+                                                                  "calls_limit": N, "counted": {"type": "array", "items": S},
+                                                                  "command_network": B, "confirm_commands": B}},
+                        browser={"type": "object", "properties": {"network": S, "counted": B, "logins": {"type": "array", "items": S}}})},
 ]
 OP_OF = {"run_command": "run", "write_file": "write", "read_file": "read", "list_directory": "list"}
 
@@ -972,6 +988,108 @@ def text_result(s, err=False):
     return {"content": [{"type": "text", "text": s}], "isError": bool(err)}
 
 
+# ---------------------------------------------------------------------- 对外结果（规范：《MCP 控制台需求》第 6 节）
+# 成功：structuredContent 是结果对象；失败：{"error": {code, message, retryable, details?}}。content 里放同一份 JSON。
+# 时刻 UTC ISO 8601，时长 *_ms，大小 *_bytes。message 用英文。
+def result(obj, is_error=False, extra=None):
+    return {"content": [{"type": "text", "text": json.dumps(obj, ensure_ascii=False)}] + (extra or []),
+            "structuredContent": obj, "isError": bool(is_error)}
+
+
+def error(code, message, retryable=False, **details):
+    e = {"code": code, "message": message, "retryable": retryable}
+    if details:
+        e["details"] = details
+    return result({"error": e}, True)
+
+
+STATE_ERROR = {"revoked": ("grant_revoked", "This grant has been revoked by the owner."),
+               "expired": ("grant_expired", "This grant has expired."),
+               "used": ("limit_reached", "The call limit for commands and file writes has been reached.")}
+STATE_ZH = {"revoked": "授权已被收回", "expired": "授权已到期", "used": "次数已用完"}
+
+
+def state_error(g, st):
+    code, msg = STATE_ERROR[st]
+    d = {"expired_at": utc(g["expires"])} if st == "expired" else ({"limit": g["lim"]} if st == "used" else {})
+    return error(code, msg, **d)
+
+
+HELPER_ERROR = {"path": ("out_of_scope", "Path is outside the granted folders."),
+                "not_found": ("not_found", "No such file or folder."),
+                "denied": ("access_denied", "The sandbox account has no access to this path.")}
+
+
+def helper_error(e, path):
+    if isinstance(e, HelperDown) or e.code in ("unknown_grant", "busy", "account", "logon", "desktop", "group"):
+        return error("service_unavailable", "The helper service is not available right now: " + str(e), True)
+    code, msg = HELPER_ERROR.get(e.code, ("io_error", "File operation failed."))
+    return error(code, msg if code != "io_error" else f"{msg} {e}", path=path)
+
+
+def local_to_utc(s):
+    """助手给的是本机时间 yyyy-MM-dd HH:mm:ss（不带时区）；网关在同一台电脑上，按本机时区换成 UTC。"""
+    if not s:
+        return None
+    try:
+        return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except ValueError:
+        return s
+
+
+OMIT_RE = re.compile(r"\n…（中间省略 (\d+) 字节）…\n")
+
+
+def output_obj(text, tail=0):
+    """命令输出：助手只留头尾各 96 KB，把它的中文省略标记换成中性的标记，并给出 truncated、omitted_bytes。"""
+    text = text or ""
+    omitted = 0
+    m = OMIT_RE.search(text)
+    if m:
+        omitted = int(m.group(1))
+        text = text.replace(m.group(0), f"\n[... {omitted} bytes omitted ...]\n")
+    if tail and len(text) > tail:
+        omitted += len(text[:-tail].encode("utf-8"))
+        text = text[-tail:]
+    o = {"text": text, "truncated": bool(omitted)}
+    if omitted:
+        o["omitted_bytes"] = omitted
+    return o
+
+
+TASK_STATUS = {"approval": "pending_approval", "queued": "queued", "running": "running", "timeout": "timed_out",
+               "killed": "cancelled", "cancelled": "cancelled", "denied": "denied"}
+TASK_REASON_MSG = {"owner_denied": "The owner denied this command.", "cancelled_by_caller": "Cancelled by the caller.",
+                   "grant_revoked": "The grant was revoked.", "grant_expired": "The grant expired.",
+                   "limit_reached": "The call limit was reached before the command could run.",
+                   "service_stopped": "The helper service stopped.", "service_unavailable": "The command could not be started.",
+                   "timeout": "The command ran longer than its timeout and was killed."}
+
+
+def task_result(t):
+    st = t["state"]
+    status = TASK_STATUS.get(st) or ("succeeded" if st == "done" and t["exit"] == 0 else "failed")
+    final = status not in ("pending_approval", "queued", "running")
+    o = {"task_id": t["id"], "status": status, "command": t["command"], "shell": t["shell"], "cwd": t["cwd"],
+         "created_at": utc(t["created"])}
+    if t.get("started"):
+        o["started_at"] = utc(t["started"])
+    if final:
+        o["finished_at"] = utc(t.get("finished") or now())
+        if t.get("started"):
+            o["duration_ms"] = int(round((t.get("seconds") or ((t.get("finished") or now()) - t["started"])) * 1000))
+    if st in ("done", "timeout", "killed"):
+        o["exit_code"] = t["exit"]
+    if t.get("reason"):
+        o["reason"] = t["reason"]
+        o["message"] = t.get("reason_msg") or TASK_REASON_MSG.get(t["reason"], "")
+    if t.get("started") or t.get("output"):
+        o["output"] = output_obj(t.get("output", ""), 0 if final else 8000)
+    if not final:
+        o["next"] = {"tool": "get_command_result", "arguments": {"task_id": t["id"]}}
+    return result(o, final and status != "succeeded")
+
+
 def tools_for(g):
     out = []
     if json.loads(g["folders"]):
@@ -983,45 +1101,35 @@ def tools_for(g):
 
 
 def call_tool(g, name, args):
-    """返回 MCP tools/call 的 result。每次调用一条执行记录。"""
+    """返回 MCP tools/call 的 result。每次调用一条执行记录（控制台看的说明仍用中文）。"""
     gid = g["id"]
     st = grant_state(g)
     if name.startswith("browser_") or name in ("request_login", "check_login"):
         if not g["browser"]:
-            return text_result("这次授权不包含浏览器。", True)
-        if st != "active" and name != "check_login":
-            why = {"revoked": "授权已被主人收回", "expired": "授权已到期", "used": "次数已用完"}[st]
-            add_log(gid, WEB_OPS.get(name, name), str(args.get("url") or ""), "denied", why)
-            return text_result(why + "，这个地址不能再用了。", True)
+            return error("capability_missing", "This grant does not include a browser.", capability="browser")
+        if st in ("revoked", "expired") and name != "check_login":
+            add_log(gid, WEB_OPS.get(name, name), str(args.get("url") or ""), "denied", STATE_ZH[st])
+            return state_error(g, st)
         if name == "request_login":
             return tool_request_login(g, args)
         if name == "check_login":
             return tool_check_login(g, args)
         return call_browser(g, name, args)
-    if name in TOOL_NAMES and not json.loads(g["folders"]):
-        return text_result("这次授权不包含文件夹。", True)
-    op = OP_OF.get(name)
     if name == "grant_info":
-        v = grant_view(g)
-        lim = "不限" if v["limit"] < 0 else f"{v['used']}/{v['limit']}"
-        lines = [f"用途：{v['name']}", f"状态：{v['state']}",
-                 f"到期：{v['expires_utc']}（UTC，剩 {v['remaining'] // 60} 分钟）"]
-        if v["folders"]:
-            lines += [f"文件夹：{'、'.join(v['folders'])}", f"已用次数：{lim}", f"联网：{'允许' if v['net'] else '不允许'}",
-                      f"执行前确认：{'需要' if v['confirm'] else '不需要'}"]
-        if v["browser"]:
-            lines += ["浏览器：允许", "已带登录：" + ("、".join(v["logins"]) or "无")]
-        lines.append(f"当前时间：{utc(now())}（UTC）")
-        return text_result("\n".join(lines))
+        return result(grant_info(g))
+    if name not in TOOL_NAMES:
+        return error("tool_unavailable", f"No such tool: {name}.", tool=name)
+    if not json.loads(g["folders"]):
+        return error("capability_missing", "This grant does not include folders.", capability="folders")
     if name in ("get_command_result", "cancel_command"):
         with TASK_LOCK:
             t = TASKS.get(str(args.get("task_id", "")))
         if not t or t["grant"] != gid:
-            return text_result("没有这个任务编号", True)
+            return error("not_found", "No such task.", id=str(args.get("task_id", "")))
         if name == "cancel_command":
             if t["state"] in ("approval", "queued"):
                 was = t["state"] == "approval"
-                t["state"], t["note"] = "cancelled", "对方取消"
+                t.update(state="cancelled", note="对方取消", reason="cancelled_by_caller", finished=now())
                 if t["log"]:
                     update_log(t["log"], result="cancelled", note="对方取消")
                 t["done"].set()
@@ -1030,38 +1138,38 @@ def call_tool(g, name, args):
             elif t["state"] == "running" and t["job"]:
                 HELPER.call({"op": "kill", "job": t["job"], "reason": "cancelled"})
                 wait_task(t, 10)
-            s, err = task_text(t)
-            return text_result(s, err)
+            return task_result(t)
         wait_task(t, min(max(int(args.get("wait_seconds") or 60), 0), WAIT_BUDGET))
-        s, err = task_text(t)
-        return text_result(s, err)
-    if not op:
-        return text_result("没有这个工具：" + name, True)
+        return task_result(t)
+    op = OP_OF[name]
     target = str(args.get("command") if op == "run" else args.get("path") or ".")
     if st != "active":
-        why = {"revoked": "授权已被主人收回", "expired": "授权已到期", "used": "次数已用完"}[st]
-        add_log(gid, op, target, "denied", why)
-        return text_result(why + "，这个地址不能再用了。", True)
+        add_log(gid, op, target, "denied", STATE_ZH[st])
+        return state_error(g, st)
 
     if op == "run":
         command = str(args.get("command") or "").strip()
         shell = args.get("shell") or "cmd"
         if shell not in ("cmd", "powershell", "bash"):
-            return text_result("shell 只能是 cmd、powershell 或 bash", True)
+            return error("invalid_argument", "shell must be cmd, powershell or bash.", field="shell")
         if not command:
-            return text_result("命令是空的", True)
+            return error("invalid_argument", "command is empty.", field="command")
         cwd = resolve(g, args.get("cwd"))
         pp = path_problem(g, cwd)
         if pp:
             add_log(gid, "run", command, "blocked", f"{RULE_NAME[pp[0]]}：工作目录 {cwd}", cwd=cwd, shell=shell)
             publish_counts()
-            return text_result(f"已拦截（{RULE_NAME[pp[0]]}）：工作目录必须在授权文件夹里。", True)
+            return error("protected_path" if pp[0] == "protected" else "out_of_scope",
+                         "The working directory must be inside the granted folders.", path=cwd)
         hit = check_command(gdict(g), command, cwd)
         if hit:
             add_log(gid, "run", command, "blocked", f"{RULE_NAME[hit[0]]}" + (f"：{hit[1]}" if hit[0] in ("path", "protected") else ""),
                     cwd=cwd, shell=shell)
             publish_counts()
-            return text_result(f"已拦截（执行前检查：{RULE_NAME[hit[0]]}），不计次数。", True)
+            if hit[0] in ("path", "protected"):
+                return error("protected_path" if hit[0] == "protected" else "out_of_scope",
+                             "The command refers to a path outside the granted folders. Not counted.", path=str(hit[1]))
+            return error("rule_blocked", f"Blocked by the pre-run check ({RULE_EN.get(hit[0], hit[0])}). Not counted.", rule=hit[0])
         timeout = max(5, min(int(args.get("timeout_seconds") or 600), 3600))
         t = new_task(g, command, shell, cwd, timeout)
         t0 = now()
@@ -1073,20 +1181,19 @@ def call_tool(g, name, args):
             publish_counts()
             ev.wait(WAIT_BUDGET)
             if t["state"] == "approval":
-                s, err = task_text(t)
-                return text_result(s, err)
+                return task_result(t)
         else:
             enqueue(t)
         wait_task(t, WAIT_BUDGET - (now() - t0))
-        s, err = task_text(t)
-        return text_result(s, err)
+        return task_result(t)
 
     path = resolve(g, args.get("path"))
     pp = path_problem(g, path)
     if pp:
         add_log(gid, op, path, "blocked", f"{RULE_NAME[pp[0]]}" + (f"：{pp[1]}" if pp[0] == "protected" else ""))
         publish_counts()
-        return text_result(f"已拦截（{RULE_NAME[pp[0]]}）：只能访问授权的文件夹。", True)
+        return error("protected_path" if pp[0] == "protected" else "out_of_scope",
+                     "Only the granted folders can be accessed.", path=path)
     t0 = now()
     try:
         if op == "list":
@@ -1094,55 +1201,90 @@ def call_tool(g, name, args):
             r = helper_for(g, {"op": "fs", "grant": gid, "action": "list", "path": path, "depth": depth})
             if "file" in r:
                 f = r["file"]
-                text = f"{f['p']}  {f['s']} 字节  {f['m']}"
-                n = 1
+                o = {"path": path, "type": "file", "depth": 0, "entries": [
+                    {"path": f["p"], "type": "file", "size_bytes": f["s"], "modified_at": local_to_utc(f["m"])}], "truncated": False}
             else:
-                lines = [it["p"] + ("" if it.get("d") else f"  {it['s']}") for it in r["items"]]
-                n = len(lines)
-                text = "\n".join(lines) + ("\n…（超过 1000 项，没列完）" if r.get("more") else "") if lines else "（空文件夹）"
-            add_log(gid, "list", path, "ok", f"{n} 项", now() - t0)
-            return text_result(text)
+                entries = []
+                for it in r["items"]:
+                    if it.get("d"):
+                        entries.append({"path": it["p"].rstrip("\\/"), "type": "link" if it.get("link") else "dir"})
+                    else:
+                        entries.append({"path": it["p"], "type": "file", "size_bytes": it["s"], "modified_at": local_to_utc(it["m"])})
+                o = {"path": path, "type": "dir", "depth": depth, "entries": entries, "truncated": bool(r.get("more"))}
+            add_log(gid, "list", path, "ok", f"{len(o['entries'])} 项", now() - t0)
+            return result(o)
         if op == "read":
             import base64
+            offset = max(0, int(args.get("offset") or 0))
             length = max(1, min(int(args.get("length") or 262144), 1 << 20))
-            r = helper_for(g, {"op": "fs", "grant": gid, "action": "read", "path": path, "offset": int(args.get("offset") or 0), "length": length})
+            enc = "base64" if args.get("encoding") == "base64" else "text"
+            r = helper_for(g, {"op": "fs", "grant": gid, "action": "read", "path": path, "offset": offset, "length": length})
             data = base64.b64decode(r["data"])
+            eof = bool(r["eof"])
+            if enc == "base64":
+                content = r["data"]
+            else:
+                try:
+                    content = data.decode("utf-8")
+                except UnicodeDecodeError as e:
+                    # 只是切在了一个多字节字符中间：退回到这个字符之前，下次从这里接着读
+                    if not eof and e.reason == "unexpected end of data" and e.start >= len(data) - 3:
+                        data, eof = data[:e.start], False
+                        try:
+                            content = data.decode("utf-8")
+                        except UnicodeDecodeError:
+                            content = None
+                    else:
+                        content = None
+                if content is None:
+                    add_log(gid, "read", path, "error", "不是 UTF-8 文本", now() - t0)
+                    return error("not_text", "The file is not UTF-8 text. Read it with encoding=base64.", path=path)
+            o = {"path": path, "encoding": enc, "content": content, "offset": offset, "length_bytes": len(data),
+                 "total_bytes": r["size"], "eof": eof}
+            if not eof:
+                o["next_offset"] = offset + len(data)
             add_log(gid, "read", path, "ok", size_text(len(data)), now() - t0)
-            more = "" if r["eof"] else f"\n…（文件共 {r['size']} 字节，还没读完；用 offset={int(args.get('offset') or 0) + len(data)} 继续）"
-            if args.get("encoding") == "base64":
-                return text_result(r["data"] + more)
-            try:
-                return text_result(data.decode("utf-8") + more)
-            except UnicodeDecodeError:
-                return text_result("这个文件不是 UTF-8 文本。用 encoding=base64 读取，或用命令查看。", True)
+            return result(o)
         if op == "write":
             import base64
             content = args.get("content")
             if not isinstance(content, str):
-                return text_result("content 要是字符串", True)
+                return error("invalid_argument", "content must be a string.", field="content")
             data = content if args.get("encoding") == "base64" else base64.b64encode(content.encode("utf-8")).decode()
             if len(data) > 8 * 1024 * 1024:
-                return text_result("一次最多写 6 MB", True)
-            reason = take_count(gid)
-            if reason:
-                add_log(gid, "write", path, "denied", reason)
-                return text_result(reason, True)
+                return error("too_large", "At most 6 MB can be written per call.", limit_bytes=6 << 20)
+            st2 = take_count(gid)
+            if st2:
+                add_log(gid, "write", path, "denied", STATE_ZH[st2])
+                return state_error(get_grant(gid), st2)
             try:
                 r = helper_for(g, {"op": "fs", "grant": gid, "action": "write", "path": path, "data": data, "append": bool(args.get("append"))})
             except (HelperError, HelperDown):
                 refund(gid)
                 raise
             add_log(gid, "write", path, "ok", size_text(r["bytes"]), now() - t0)
-            return text_result(f"已写入 {r['bytes']} 字节：{path}")
+            return result({"path": path, "written_bytes": r["bytes"], "append": bool(args.get("append"))})
     except HelperError as e:
-        result = "blocked" if e.code in ("denied", "path") else "error"
-        add_log(gid, op, path, result, ("沙盒拒绝：" if e.code == "denied" else "") + str(e)[:200], now() - t0)
+        res = "blocked" if e.code in ("denied", "path") else "error"
+        add_log(gid, op, path, res, ("沙盒拒绝：" if e.code == "denied" else "") + str(e)[:200], now() - t0)
         publish_counts()
-        return text_result(str(e), True)
+        return helper_error(e, path)
     except HelperDown as e:
         add_log(gid, op, path, "error", str(e), now() - t0)
-        return text_result(str(e), True)
-    return text_result("没有这个工具", True)
+        return helper_error(e, path)
+    return error("tool_unavailable", f"No such tool: {name}.", tool=name)
+
+
+def grant_info(g):
+    v = grant_view(g)
+    o = {"name": v["name"], "state": v["state"], "now": utc(now()), "expires_at": v["expires_utc"],
+         "remaining_seconds": v["remaining"]}
+    if v["folders"]:
+        o["folders"] = {"paths": v["folders"], "calls_used": v["used"], "calls_limit": None if v["limit"] < 0 else v["limit"],
+                        "counted": ["run_command", "write_file"], "command_network": v["net"], "confirm_commands": v["confirm"]}
+    if v["browser"]:
+        o["browser"] = {"network": "proxy", "counted": False, "logins": v["logins"]}
+    return o
 
 
 APPROVED = {}
@@ -1161,7 +1303,7 @@ def decide(tid, allow):
     if allow:
         enqueue(t)
     else:
-        t["state"], t["note"] = "denied", "主人拒绝"
+        t.update(state="denied", note="主人拒绝", reason="owner_denied", finished=now())
         update_log(t["log"], result="denied", note="")
         t["done"].set()
     ev = APPROVED.pop(tid, None)
@@ -1190,6 +1332,7 @@ WEB_OPS = {
     "browser_close": "关闭页面", "browser_resize": "调整窗口", "browser_pdf_save": "保存 PDF",
     "request_login": "登录", "check_login": "登录",
 }
+LOGIN_NAMES = ("request_login", "check_login")
 NO_WINDOW = 0x08000000 if IS_WIN else 0
 NEW_GROUP = 0x00000200 if IS_WIN else 0
 
@@ -1323,29 +1466,51 @@ def browser_tools(g):
             browser_for(g)
         except Exception as e:
             print("browser_tools:", e, file=sys.stderr)
-    return [TOOL_SCHEMAS[n] for n in WEB_OPS if n in TOOL_SCHEMAS]
+    out = []
+    for n in WEB_OPS:
+        t = TOOL_SCHEMAS.get(n)
+        if not t:
+            continue
+        t = json.loads(json.dumps(t))
+        sch = t.get("inputSchema") or {}
+        # filename 是存到电脑上的文件名，对远程调用方没用（结果里会直接带上内容）
+        (sch.get("properties") or {}).pop("filename", None)
+        if "filename" in (sch.get("required") or []):
+            sch["required"] = [x for x in sch["required"] if x != "filename"]
+        out.append(t)
+    return out
+
+
+URL_WHY = {"invalid": ("网址无效", "The URL is not valid."), "scheme": ("仅支持 http、https 网址", "Only http and https URLs are allowed."),
+           "loopback": ("本机地址", "Addresses on this PC are blocked."), "private": ("本机或局域网地址", "Local and LAN addresses are blocked.")}
 
 
 def url_problem(url):
-    """本机、局域网和本地文件拦下；返回原因或 None。"""
+    """本机、局域网和本地文件拦下；返回原因代码（见 URL_WHY）或 None。"""
     try:
         u = urlsplit(url.strip())
     except ValueError:
-        return "网址无效"
+        return "invalid"
     if u.scheme not in ("http", "https", ""):
-        return "仅支持 http、https 网址"
+        return "scheme"
     host = (u.hostname or "").strip("[]").lower()
     if not host and u.scheme:
-        return "网址无效"
+        return "invalid"
     if host in ("localhost", "localhost.localdomain") or host.endswith(".localhost") or host.endswith(".local"):
-        return "本机地址"
+        return "loopback"
     try:
         ip = ipaddress.ip_address(host)
-        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_unspecified or ip.is_reserved:
-            return "本机或局域网地址"
+        if ip.is_loopback or ip.is_unspecified:
+            return "loopback"
+        if ip.is_private or ip.is_link_local or ip.is_reserved:
+            return "private"
     except ValueError:
         pass
     return None
+
+
+def url_error(url, why):
+    return error("url_blocked", URL_WHY[why][1], url=url, reason=why)
 
 
 def web_target(name, args):
@@ -1366,32 +1531,114 @@ def web_target(name, args):
     return ""
 
 
+SNAPSHOT_CAP = 60 * 1024
+PDF_CAP = 10 << 20
+PW_FILE = re.compile(r"^(page|console|network|snapshot|find)-.*\.(yml|yaml|md|txt|log|png|jpe?g|webp|pdf)$", re.I)
+LOCAL_LINK = re.compile(r"\[([^\]]*)\]\((?!https?:|about:|data:)([^)\s]+)\)")
+
+
+def local_file(g, href):
+    """Playwright 结果里的相对链接（相对输出目录）或绝对路径，只认输出目录里的文件。"""
+    outdir = grant_outdir(g).resolve()
+    try:
+        f = (Path(href) if os.path.isabs(href) else outdir / href).resolve()
+    except (OSError, ValueError):
+        return None
+    if f == outdir or outdir not in f.parents or not f.is_file():
+        return None
+    return f
+
+
+def browser_content(g, name, r):
+    """把 Playwright 的结果改成对方能用的：快照放进结果、截图只留图片、PDF 作为嵌入资源，其余本地链接换成说明。"""
+    folders = json.loads(g["folders"])
+    extra, remove = [], []
+
+    def fix(m):
+        label, href = m.group(1), m.group(2)
+        f = local_file(g, href)
+        low = href.lower()
+        if f is None:
+            return label
+        own = bool(PW_FILE.match(f.name))               # Playwright 自己生成的快照、截图、日志；其余是网页下载的文件
+        if own and low.endswith((".png", ".jpg", ".jpeg", ".webp")):
+            remove.append(f)
+            return ""                                   # 图片已经作为 image 内容块返回
+        if own and low.endswith((".yml", ".yaml", ".md", ".txt", ".log")):
+            raw = f.read_bytes()
+            remove.append(f)
+            text = raw[:SNAPSHOT_CAP].decode("utf-8", "ignore")
+            more = ""
+            if len(raw) > SNAPSHOT_CAP:
+                more = (f"\n[truncated: showing {SNAPSHOT_CAP} of {len(raw)} bytes; narrow it with browser_snapshot target/depth "
+                        "or search with browser_find]")
+            fence = "yaml" if low.endswith((".yml", ".yaml")) else ""
+            return f"\n```{fence}\n{text.rstrip()}\n```{more}"
+        if low.endswith(".pdf") and name == "browser_pdf_save":
+            import base64
+            size = f.stat().st_size
+            remove.append(f)
+            if size > PDF_CAP:
+                return f"{label}: PDF is {size} bytes, over the {PDF_CAP} byte limit for attaching"
+            extra.append({"type": "resource", "resource": {"uri": "tempauth://output/" + f.name, "mimeType": "application/pdf",
+                                                           "blob": base64.b64encode(f.read_bytes()).decode()}})
+            return f"{label}: attached as a PDF resource ({size} bytes)"
+        size = f.stat().st_size
+        if folders:                                     # 下载在授权文件夹的 downloads 里：给完整路径，对方用 read_file 读
+            return f"{label}: {f} ({size} bytes; read it with read_file)"
+        return f"{label}: {f.name} ({size} bytes; saved on the PC, not readable through a browser-only grant)"
+
+    content = []
+    for c in r.get("content", []):
+        if c.get("type") != "text":
+            content.append(c)
+            continue
+        text = re.sub(r"(?m)^- (?=\n```)", "", LOCAL_LINK.sub(fix, c.get("text", "")))
+        lines = [ln for ln in text.split("\n") if ln.strip() not in ("-", "- :", "")] if text else []
+        # 删掉因此变空的小节标题
+        out = []
+        for i, ln in enumerate(lines):
+            if ln.startswith("### ") and (i + 1 == len(lines) or lines[i + 1].startswith("### ")):
+                continue
+            out.append(ln)
+        if out:
+            content.append({"type": "text", "text": "\n".join(out)})
+    for f in remove:
+        try:
+            f.unlink()
+        except OSError:
+            pass
+    return content + extra
+
+
 def call_browser(g, name, args):
     gid = g["id"]
-    if name not in WEB_OPS:
-        return text_result("这个浏览器工具不提供：" + name, True)
+    if name not in WEB_OPS or name in LOGIN_NAMES:
+        return error("tool_unavailable", f"This browser tool is not provided: {name}.", tool=name)
+    args = {k: v for k, v in (args or {}).items() if k != "filename"}
     op, target, t0 = WEB_OPS[name], web_target(name, args), now()
     if name == "browser_navigate":
         why = url_problem(str(args.get("url", "")))
         if why:
-            add_log(gid, op, target, "blocked", why)
+            add_log(gid, op, target, "blocked", URL_WHY[why][0])
             publish_counts()
-            return text_result(f"已拦截：{why}。", True)
+            return url_error(str(args.get("url", "")), why)
     try:
         b = browser_for(g)
         r = b.call("tools/call", {"name": name, "arguments": args}, WAIT_BUDGET)
     except Exception as e:
         add_log(gid, op, target, "error", str(e)[:200], now() - t0)
         if isinstance(e, TimeoutError):
-            return text_result("浏览器在 75 秒内没有完成这一步，页面可能还在加载；稍后用 browser_snapshot 查看。", True)
-        return text_result("浏览器出错：" + str(e), True)
-    err = bool(r.get("isError"))
-    note = ""
-    if err:
-        texts = [c.get("text", "") for c in r.get("content", []) if c.get("type") == "text"]
-        note = (texts[0] if texts else "")[:200]
-    add_log(gid, op, target, "error" if err else "ok", note, now() - t0)
-    return r
+            return error("browser_error", "The browser did not finish this step within 75 s; the page may still be loading. "
+                                          "Check it with browser_snapshot.", True)
+        return error("service_unavailable", f"The browser is not available: {e}", True)
+    texts = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
+    if r.get("isError") or texts.lstrip().startswith("### Error"):
+        msg = re.sub(r"^\s*### Error\s*\n?", "", texts).strip()
+        add_log(gid, op, target, "error", msg[:200], now() - t0)
+        return error("browser_error", msg[:4000] or "The browser reported an error.")
+    add_log(gid, op, target, "ok", "", now() - t0)
+    return {"content": browser_content(g, name, r), "isError": False}
 
 
 # ---------------------------------------------------------------------- 保存的登录（按网站域名）
@@ -1501,11 +1748,11 @@ def save_login(body):
             g = get_grant(g["id"])
             publish_grant(g["id"])
         try:
-            if not DEMO:
-                inject_state(g, picked)
+            r["page"] = None if DEMO else inject_state(g, picked)
         except Exception as e:
             return {"ok": False, "msg": "写入浏览器失败：" + str(e)}, 500
-        finish_login(r, "logged_in", "已保存" if body.get("save", True) else "未保存")
+        r["saved"] = bool(body.get("save", True))
+        finish_login(r, "logged_in", "已保存" if r["saved"] else "未保存")
     return {"ok": True, "domains": domains}, 200
 
 
@@ -1518,11 +1765,19 @@ def run_code_arg():
 def inject_state(g, state):
     b = browser_for(g)
     code = ("async (page) => { const s = %s; if (s.cookies.length) await page.context().addCookies(s.cookies); "
-            "try { await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }); } catch (e) {} return page.url(); }"
+            "try { await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }); } catch (e) {} "
+            "let t = ''; try { t = await page.title(); } catch (e) {} "
+            "return 'JSON:' + JSON.stringify({ url: page.url(), title: t }); }"
             % json.dumps(state))
     r = b.call("tools/call", {"name": "browser_run_code_unsafe", "arguments": {run_code_arg(): code}}, 60)
+    text = " ".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
     if r.get("isError"):
-        raise RuntimeError(" ".join(c.get("text", "") for c in r.get("content", []))[:200])
+        raise RuntimeError(text[:200])
+    m = re.search(r'"(JSON:(?:[^"\\]|\\.)*)"', text, re.S)        # 结果是 JSON 字符串字面量
+    try:
+        return json.loads(json.loads('"' + m.group(1) + '"')[5:]) if m else None
+    except ValueError:
+        return None
 
 
 def current_url(g):
@@ -1544,16 +1799,23 @@ LOGIN_TOOLS = [
      "description": "Ask the PC owner to sign in to a website for this browser. Use it when a page asks for a login, a "
                     "verification code or an email link. Do not ask for or type passwords or codes yourself. The owner signs "
                     "in in a window on their own desktop; the login is then added to this browser and the page is reloaded. "
-                    "Waits up to 75 s. Returns status: logged_in | pending (with request_id; call check_login) | declined | cancelled.",
+                    "Waits up to 75 s. Returns a login request object: request_id, status (pending | in_progress | logged_in | "
+                    "declined | cancelled), page {url, title} after logged_in, and next (the call to make) while unfinished. "
+                    "After declined you may ask again later.",
      "inputSchema": {"type": "object", "properties": {
          "url": {"type": "string", "description": "The login page. Default: the current page."},
          "reason": {"type": "string", "description": "One sentence shown to the owner, e.g. why the login is needed."}},
          "required": ["reason"]}},
-    {"name": "check_login", "description": "Wait for a login request started with request_login.",
+    {"name": "check_login", "description": "Wait for a login request started with request_login. Returns the same login request object.",
      "inputSchema": {"type": "object", "properties": {
          "request_id": {"type": "string"},
          "wait_seconds": {"type": "integer", "description": "Default 60, max 75."}}, "required": ["request_id"]}},
 ]
+
+for _t in LOGIN_TOOLS:
+    _t["outputSchema"] = _o(request_id=S, status={"type": "string", "enum": ["pending", "in_progress", "logged_in", "declined", "cancelled"]},
+                            domain=S, url=S, created_at=T, finished_at=T, saved=B, reason=S, message=S, next=NEXT_SCHEMA,
+                            page={"type": "object", "properties": {"url": S, "title": S}})
 
 
 def login_view(r):
@@ -1562,15 +1824,29 @@ def login_view(r):
             "reason": r["reason"], "state": r["state"], "at": r["created"], "time": hms(r["created"])}
 
 
+LOGIN_MSG = {"pending": "Waiting for the owner. Call check_login to keep waiting.",
+             "in_progress": "The owner is signing in. Call check_login to keep waiting.",
+             "logged_in": "Signed in. The login is in this browser and the page was reloaded; continue where you left off.",
+             "declined": "The owner declined. Tell the user this step needs a login; you may ask again later.",
+             "cancelled": "The request was cancelled."}
+
+
 def login_result(r):
-    st = r["state"]
-    if st in ("pending", "active"):
-        return text_result(json.dumps({"status": "pending", "request_id": r["id"],
-                                       "message": "等待电脑主人登录；用 check_login 继续等待。"}, ensure_ascii=False))
-    msg = {"logged_in": "已登录，浏览器已带上登录状态并刷新了页面，继续原来的步骤。",
-           "declined": "电脑主人拒绝了这次登录。告诉用户这一步需要登录。",
-           "cancelled": "登录请求已取消（主人取消、超时或授权失效）。"}[st]
-    return text_result(json.dumps({"status": st, "request_id": r["id"], "message": msg}, ensure_ascii=False), st != "logged_in")
+    status = {"pending": "pending", "active": "in_progress"}.get(r["state"], r["state"])
+    final = status not in ("pending", "in_progress")
+    o = {"request_id": r["id"], "status": status, "domain": r["domain"], "url": r["url"], "created_at": utc(r["created"]),
+         "message": LOGIN_MSG[status]}
+    if final:
+        o["finished_at"] = utc(r.get("finished") or now())
+    if status == "logged_in":
+        o["saved"] = bool(r.get("saved"))
+        if r.get("page"):
+            o["page"] = r["page"]
+    if status == "cancelled" and r.get("reason"):
+        o["reason"] = r["reason"]
+    if not final:
+        o["next"] = {"tool": "check_login", "arguments": {"request_id": r["id"]}}
+    return result(o, status in ("declined", "cancelled"))
 
 
 def tool_request_login(g, args):
@@ -1581,11 +1857,11 @@ def tool_request_login(g, args):
         except Exception:
             url = ""
     if not url:
-        return text_result("没有给登录页地址，当前也没有打开的页面。", True)
+        return error("invalid_argument", "No url was given and no page is open.", field="url")
     why = url_problem(url)
     if why:
-        add_log(g["id"], "登录", url, "blocked", why)
-        return text_result(f"已拦截：{why}。", True)
+        add_log(g["id"], "登录", url, "blocked", URL_WHY[why][0])
+        return url_error(url, why)
     r = {"id": "l" + uuid.uuid4().hex[:10], "grant": g["id"], "url": url, "domain": site_of(urlsplit(url).hostname or ""),
          "reason": str(args.get("reason") or "")[:200], "state": "pending", "created": now(), "done": threading.Event()}
     r["log"] = add_log(g["id"], "登录", r["domain"], "pending", r["reason"][:100])
@@ -1601,16 +1877,16 @@ def tool_check_login(g, args):
     with LOGIN_LOCK:
         r = LOGINREQ.get(str(args.get("request_id", "")))
     if not r or r["grant"] != g["id"]:
-        return text_result("没有这个登录请求", True)
+        return error("not_found", "No such login request.", id=str(args.get("request_id", "")))
     r["done"].wait(min(max(int(args.get("wait_seconds") or 60), 0), WAIT_BUDGET))
     return login_result(r)
 
 
-def finish_login(r, state, note=""):
+def finish_login(r, state, note="", reason=None):
     with LOGIN_LOCK:
         if r["state"] not in ("pending", "active"):
             return
-        r["state"] = state
+        r.update(state=state, finished=now(), reason=reason)
     update_log(r["log"], result={"logged_in": "done", "declined": "denied", "cancelled": "cancelled"}[state],
                note=note, seconds=now() - r["created"])
     r["done"].set()
@@ -1629,38 +1905,40 @@ def login_action(rid, action):
     elif action == "decline":
         finish_login(r, "declined")
     elif action == "cancel":
-        finish_login(r, "cancelled", "")
+        finish_login(r, "cancelled", "", "owner_cancelled")
     else:
         return {"ok": False, "msg": "不支持的操作"}, 400
     return {"ok": True, "request": login_view(r)}, 200
 
 
-def cancel_logins(gid, why):
+def cancel_logins(gid, why, reason="grant_revoked"):
     with LOGIN_LOCK:
         rs = [r for r in LOGINREQ.values() if r["grant"] == gid and r["state"] in ("pending", "active")]
     for r in rs:
-        finish_login(r, "cancelled", why)
+        finish_login(r, "cancelled", why, reason)
 
 
 def expire_logins():
     with LOGIN_LOCK:
         rs = [r for r in LOGINREQ.values() if r["state"] in ("pending", "active") and now() - r["created"] > LOGIN_TIMEOUT]
     for r in rs:
-        finish_login(r, "cancelled", "等待超过 10 分钟")
+        finish_login(r, "cancelled", "等待超过 10 分钟", "timed_out")
 
 
 def mcp_instructions(g):
     v = grant_view(g)
-    text = f"这是电脑主人给你的临时授权（{v['name']}），{v['expires_utc']}（UTC）到期。"
+    text = f"这是电脑主人给你的临时授权（{v['name']}），{v['expires_utc']}（UTC）到期。工具返回结构化 JSON，时间都是 UTC，出错时看 error.code。"
     if v["folders"]:
-        text += (f"只能在 {'、'.join(v['folders'])} 里执行命令和读写文件。Windows；命令默认 cmd，可选 powershell、bash。"
-                 "Python 是只读的 conda，装包先建 venv。" + ("命令可以联网（经代理）。" if v["net"] else "命令不能联网。")
-                 + ("每条命令要主人确认。" if v["confirm"] else ""))
+        text += (f"文件夹：只能在 {'、'.join(v['folders'])} 里执行命令和读写文件；Windows，命令默认 cmd，可选 powershell、bash；"
+                 "Python 是只读的 conda，装包先建 venv；"
+                 + (f"执行命令和写文件共 {v['limit']} 次；" if v["limit"] >= 0 else "次数不限；")
+                 + ("命令可以联网（经代理）" if v["net"] else "命令不能联网")
+                 + ("；每条命令要主人确认" if v["confirm"] else "") + "。")
     if v["browser"]:
-        text += ("本授权包含浏览器，经代理访问外网，不能打开本机或局域网地址、本地文件。"
+        text += ("浏览器：经代理访问外网，不计次数，不需确认；不能打开本机或局域网地址、本地文件。"
                  "遇到登录页、验证码或邮件验证时，调用 request_login，由电脑主人在自己的窗口中完成登录；不要索要或输入密码、验证码。"
-                 "返回 logged_in 后，浏览器已带上登录状态并回到原页面。"
-                 + ("本次授权已带上以下网站的登录状态：" + "、".join(v["logins"]) + "。" if v["logins"] else ""))
+                 "返回 logged_in 后，浏览器已带上登录状态并刷新了页面。"
+                 + ("已带上以下网站的登录：" + "、".join(v["logins"]) + "。" if v["logins"] else ""))
     return text
 
 
@@ -1680,7 +1958,8 @@ def handle_rpc(g, msg):
         try:
             res = call_tool(get_grant(g["id"]), params.get("name", ""), params.get("arguments") or {})
         except Exception as e:
-            res = text_result(f"网关出错：{type(e).__name__}: {e}", True)
+            print("tools/call:", traceback.format_exc(), file=sys.stderr)
+            res = error("internal_error", f"Gateway error: {type(e).__name__}: {e}", True)
     elif method in ("resources/list", "prompts/list"):
         res = {method.split("/")[0]: []}
     else:

@@ -12,6 +12,7 @@
   bmcp.maimaiqiu.work → 127.0.0.1:8080 mcp-proxy → blender-mcp.exe (stdio) → Blender 插件 127.0.0.1:9876 → blender.exe
   umcp.maimaiqiu.work → 127.0.0.1:8082 mcp-proxy → mcp-for-unity.exe (stdio) → Unity 编辑器桥接 6400/6401
   xmcp.maimaiqiu.work → 127.0.0.1:8084 mcp-proxy --requestTimeout 90000 → claude.exe mcp serve (2.1.311)
+  wmcp.maimaiqiu.work → 127.0.0.1:8088 mcp-proxy --requestTimeout 90000 → Playwright MCP 0.0.85 → 无界面 Edge → Clash 浏览器专用入口 127.0.0.1:7899（proxy: GLOBAL，不受 Clash 全局模式影响）
 ```
 
 | 组件 | 位置 | 运行账号 | 说明 |
@@ -27,6 +28,8 @@
 - exec 启动时会去掉 `CLAUDE*`、`ANTHROPIC*` 和代理变量，所以 exec 里的命令上不了外网。
 - blender 账号对 `C:\Program Files\BlenderMCP\` 没有写权限。要改 `agent.py`、`panel.py` 或换服务版本，就做成安装包，请用户在主账号的管理员 PowerShell 7 里运行。
 - 同一台电脑上的其他服务：`0.0.0.0:17860` 是用户自己的 FireRedASR2S 转写台，开着局域网共享，属正常；`7897` 是 Clash Verge；Tailscale 也在运行。
+
+- 2026-11-18 起控制台是 v2（`ops/console/`：连接状态页、Clash 联动、浏览器线路），装法和测试见那里的 README。临时授权（tmcp → 8086）还没部署。
 
 ## 2. 健康检查
 

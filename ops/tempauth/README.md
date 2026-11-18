@@ -14,3 +14,9 @@
 - 用户已经清楚 D 盘默认给 Authenticated Users 修改权、agent.token 对 Users 可读这些现状，不用再提醒，直接在设计里处理。
 - `test/aitemp_test.ps1`（管理员 PowerShell 7 运行，`-Undo` 撤销）+ `test/runner.py`（以 aitemp 身份运行）：建账号、按 5.2 加权限（D 盘顶层：程序目录拒绝写入，其余拒绝读写；D:\ 根目录文件拒绝；受保护位置显式拒绝）、按 5.4 加防火墙规则（本机端口除 7899 外拦截；断网规则），再分断网和联网两轮检查文件、程序、装包、本机端口、联网、账号、吊销，报告写到 `D:\Projects\aitemp-test\report.md`。
 - aitemp 的密码不落盘：测试包每次随机重设；以后由助手服务启动时重设并只留在内存里。
+
+### 第一次测试（2026-11-18 15:19，60 项未通过 26 项）的结论和改动
+- 程序目录拒绝 `W` 会连程序都跑不了：icacls 的 `W` 含 SYNCHRONIZE（和 READ_CONTROL），打开和执行文件都要 SYNCHRONIZE。改为只拒绝 `WD,AD,WEA,WA,D,DC`。
+- Windows 防火墙的按账号规则管不到本机回环（127.0.0.1 上的转写台、agent、Clash 都连得上，断网时还能经 7899 上网）。改用 WFP：`test/wfp.cs`（Add-Type 加载）在 ALE_AUTH_CONNECT_V4/V6 层按 aitemp 的 SID 拦 127.0.0.0/8 和 ::1，联网时再加一条更高权重的放行 127.0.0.1:7899；过滤器持久，自带 provider 和 sublayer，`Remove()` 只删自己加的。结构体布局已用 VS 的 cl 按 SDK 头文件算过，和 C# 一致（FWPM_FILTER0 200 字节）。
+- 外网直连一律拦（防火墙规则 AITemp-Direct），联网只能经 Clash 7899。
+- 火绒对 svchost 弹窗：测试包里以别的账号启动程序（Secondary Logon 服务）、改防火墙（mpssvc）、加 WFP 过滤器（BFE）都在 svchost 里执行，火绒会提示，属于预期。

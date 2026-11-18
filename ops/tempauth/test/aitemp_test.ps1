@@ -1,7 +1,7 @@
 # 临时授权：沙盒账号与权限方案测试包（《MCP 控制台需求》5.7）
 # 在主账号的「管理员 PowerShell 7」里运行：
 #   pwsh -ExecutionPolicy Bypass -File D:\Projects\mcp-console-stage\tempauth-test\aitemp_test.ps1
-# 撤掉这次的全部改动（账号、权限、防火墙规则）：同一条命令后面加 -Undo
+# 撤掉这次的全部改动（账号、权限、防火墙规则、WFP 过滤器）：同一条命令后面加 -Undo
 #
 # 做的事：建隐藏的标准用户 aitemp（禁止远程桌面和网络登录，密码每次随机、不落盘）→ 按 5.2 加文件权限
 # → 按 5.4 加防火墙规则 → 建测试用的授权文件夹 D:\Projects\aitemp-test → 以 aitemp 身份分「断网」「联网」两轮跑检查
@@ -14,7 +14,8 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $grant = 'D:\Projects\aitemp-test'
 $user = 'aitemp'
 $py = (Get-ChildItem 'C:\Program Files\BlenderMCP\python' -Recurse -Filter python.exe | Select-Object -First 1).FullName
-$runnerHash = '83EE7955D04611B6C5635C526545F24EC8D033B08A6F43D106EB3BBA413523C6'
+$wfpHash = '7EC83AD429CDFBBE653F504270C2D503231F96611690690B2CD064DFD7ABC3E6'
+$runnerHash = 'D9806FFCDEF95A24345929F8FC6A1F843906E323F2E92AF1ECB3C0D3E9B9085C'
 $programDirs = @('Program Files', 'Program Files (x86)', 'ProgramData')
 $skipDirs = @('$RECYCLE.BIN', 'System Volume Information')
 $protected = @('D:\Projects\maa-cli', 'D:\Projects\skland', 'C:\ProgramData\BlenderMCP')
@@ -39,10 +40,14 @@ function UserRights([string]$sid, [bool]$add) {
     Remove-Item $inf, $db -ErrorAction SilentlyContinue
 }
 
+if ((Get-FileHash (Join-Path $here 'wfp.cs') -Algorithm SHA256).Hash -ne $wfpHash) { throw 'wfp.cs 和预期不一致，已停止。' }
+Add-Type -Path (Join-Path $here 'wfp.cs')
+
 if ($Undo) {
     if (-not (Get-LocalUser $user -ErrorAction SilentlyContinue)) { Write-Host '没有 aitemp 账号，不用撤销。'; return }
     $sid = Sid
     Get-NetFirewallRule -Name 'AITemp-*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    Write-Host ('WFP：' + [AitempWfp]::Remove())
     $dirs = @(Get-ChildItem D:\ -Directory -Force | Where-Object { $_.Name -notin $skipDirs } | ForEach-Object FullName) + 'D:\', 'C:\' + $protected + $profiles + $grant
     foreach ($d in $dirs) { if (Test-Path $d) { & icacls.exe $d /remove "*$sid" 2>&1 | Out-Null } }
     UserRights $sid $false
@@ -74,11 +79,15 @@ Set-ItemProperty $hideKey -Name $user -Value 0 -Type DWord
 UserRights $sid $true
 Note "- 登录界面已隐藏，已禁止远程桌面和网络登录（SID $sid）"
 
-Write-Host '2/6 文件权限（第一次会遍历大目录，可能要几分钟）……'
+Write-Host '2/6 文件权限（会遍历大目录，可能要几分钟）……'
+# 先清掉上一次给 aitemp 加的规则，再按现在的方案重加
+$targets = @(Get-ChildItem D:\ -Directory -Force | Where-Object { $_.Name -notin $skipDirs } | ForEach-Object FullName) + 'D:\', 'C:\' + $protected + $profiles
+foreach ($d in $targets) { if (Test-Path $d) { & icacls.exe $d /remove "*$sid" 2>&1 | Out-Null } }
 foreach ($d in Get-ChildItem D:\ -Directory -Force | Where-Object { $_.Name -notin $skipDirs }) {
     $s = Get-Date
     try {
-        if ($d.Name -in $programDirs) { Set-AitempAcl @($d.FullName, '/deny', "*${sid}:(OI)(CI)(W,D,DC)"); $kind = '程序：拒绝写入' }
+        # 只拒绝写入和删除这几项具体权限；不能用 W，它包含 SYNCHRONIZE，会连程序都运行不了（2026-11-18 第一次测试）
+        if ($d.Name -in $programDirs) { Set-AitempAcl @($d.FullName, '/deny', "*${sid}:(OI)(CI)(WD,AD,WEA,WA,D,DC)"); $kind = '程序：拒绝写入' }
         else { Set-AitempAcl @($d.FullName, '/deny', "*${sid}:(OI)(CI)F"); $kind = '数据：拒绝读写' }
     } catch { $kind = "**没设上**：$($_.Exception.Message)" }
     Note ("- {0}  {1}  {2:N1}s" -f $d.FullName, $kind, ((Get-Date) - $s).TotalSeconds)
@@ -89,11 +98,12 @@ foreach ($p in $protected) { if (Test-Path $p) { Set-AitempAcl @($p, '/deny', "*
 foreach ($p in $profiles) { if (Test-Path $p) { Set-AitempAcl @($p, '/deny', "*${sid}:F") } }
 Note '- D:\ 根目录的文件拒绝读写、根目录不能新建；C:\ 根目录不能新建；受保护位置和两个账号的用户目录拒绝'
 
-Write-Host '3/6 防火墙规则……'
+Write-Host '3/6 联网规则……'
+# 外网：防火墙按账号拦掉 aitemp 的全部直连出站，只能经 Clash 7899 出去
+# 本机回环：防火墙管不到（第一次测试证实），用 WFP 过滤器拦；联网时只放行 127.0.0.1:7899
 Get-NetFirewallRule -Name 'AITemp-*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-$sddl = "D:(A;;CC;;;$sid)"
-New-NetFirewallRule -Name 'AITemp-Loopback' -DisplayName 'AITemp：本机端口（7899 除外）' -Direction Outbound -Action Block -LocalUser $sddl -Protocol TCP -RemoteAddress '127.0.0.0/8' -RemotePort '1-7898', '7900-65535' | Out-Null
-New-NetFirewallRule -Name 'AITemp-Offline' -DisplayName 'AITemp：断网' -Direction Outbound -Action Block -LocalUser $sddl | Out-Null
+New-NetFirewallRule -Name 'AITemp-Direct' -DisplayName 'AITemp：不许直连外网' -Direction Outbound -Action Block -LocalUser "D:(A;;CC;;;$sid)" | Out-Null
+Note ('- WFP：' + [AitempWfp]::Apply($sid, $false))
 
 Write-Host '4/6 测试用的授权文件夹……'
 if (Test-Path $grant) { Remove-Item $grant -Recurse -Force }
@@ -106,16 +116,18 @@ Write-Host '5/6 以 aitemp 身份跑检查……'
 Start-Service seclogon -ErrorAction SilentlyContinue
 $cred = [pscredential]::new("$env:COMPUTERNAME\$user", $sec)
 $agentPid = (Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'panel\\agent\.py' } | Select-Object -First 1).ProcessId
+$dummy = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 47123); $dummy.Start(16)
 $listen = (Get-NetTCPConnection -State Listen -LocalAddress 127.0.0.1 -ErrorAction SilentlyContinue | ForEach-Object LocalPort | Sort-Object -Unique) -join ', '
-Note "- 本机正在监听的端口：$listen"
+Note "- 本机正在监听的端口（含测试用的 47123）：$listen"
 foreach ($phase in 'offline', 'online') {
-    if ($phase -eq 'online') { Disable-NetFirewallRule -Name 'AITemp-Offline' } else { Enable-NetFirewallRule -Name 'AITemp-Offline' }
+    Note ("- {0}：WFP {1}" -f $phase, [AitempWfp]::Apply($sid, $phase -eq 'online'))
     $s = Get-Date
     $p = Start-Process -FilePath $py -ArgumentList (Join-Path $grant 'runner.py'), $phase, $report, "$agentPid" -Credential $cred -WorkingDirectory $grant -LoadUserProfile -WindowStyle Hidden -PassThru
     if (-not $p.WaitForExit(1200000)) { $p.Kill($true); Note "- $phase 一轮超过 20 分钟，已结束" }
     Note ("- {0} 一轮用时 {1:N0}s" -f $phase, ((Get-Date) - $s).TotalSeconds)
 }
-Enable-NetFirewallRule -Name 'AITemp-Offline'
+$dummy.Stop()
+Note ('- 测完恢复为断网：WFP ' + [AitempWfp]::Apply($sid, $false))
 
 Write-Host '6/6 撤销授权后再查……'
 Set-AitempAcl @($grant, '/remove:g', "*$sid")

@@ -129,7 +129,7 @@ def tcp(host, port):
         return "connected"
 
 
-for port, label in ((9876, "Blender 插件"), (17860, "转写台"), (8765, "控制台"), (8766, "agent"), (7897, "Clash 主端口"),
+for port, label in ((47123, "测试用监听"), (9876, "Blender 插件"), (17860, "转写台"), (8765, "控制台"), (8766, "agent"), (7897, "Clash 主端口"),
                     (8084, "命令执行"), (8088, "浏览器")):
     ok, d = attempt(lambda port=port: tcp("127.0.0.1", port))
     # a port nobody listens on looks like "deny" too; the admin script records which ports were listening
@@ -137,7 +137,7 @@ for port, label in ((9876, "Blender 插件"), (17860, "转写台"), (8765, "控�
 ok, d = attempt(lambda: tcp("127.0.0.1", 7899))
 record("本机端口", "连 127.0.0.1:7899（Clash 浏览器入口）", "allow" if ONLINE else "deny", ok, d)
 ok, d = attempt(lambda: tcp("1.1.1.1", 443))
-record("联网", "直连外网 1.1.1.1:443", "allow" if ONLINE else "deny", ok, d)
+record("联网", "直连外网 1.1.1.1:443（只许经 Clash）", "deny", ok, d)
 
 
 def via_proxy(url):

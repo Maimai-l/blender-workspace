@@ -13,6 +13,7 @@
 """
 import json
 import os
+import re
 import queue
 import secrets
 import shutil
@@ -117,7 +118,7 @@ class RealEnv:
         try:
             token = AGENT_TOKEN_FILE.read_text(encoding="utf-8").strip()
         except OSError:
-            return {"ok": False, "offline": True, "msg": "blender 账号的代理没运行（找不到令牌）"}
+            return {"ok": False, "offline": True, "msg": "blender 账号的代理未运行（缺少令牌）"}
         req = urllib.request.Request(f"http://127.0.0.1:{AGENT_PORT}{path}", method=method,
                                      data=b"" if method == "POST" else None,
                                      headers={"X-Agent-Token": token, "Host": f"127.0.0.1:{AGENT_PORT}"})
@@ -127,7 +128,7 @@ class RealEnv:
         except urllib.error.HTTPError as e:
             return {"ok": False, "offline": e.code == 401, "msg": f"代理拒绝了请求（{e.code}），可能需要重启代理"}
         except Exception:
-            return {"ok": False, "offline": True, "msg": "blender 账号的代理没运行"}
+            return {"ok": False, "offline": True, "msg": "blender 账号的代理未运行"}
 
     def probe(self, host):
         req = urllib.request.Request(f"https://{host}/mcp", data=b"{}", method="POST",
@@ -150,7 +151,7 @@ class RealEnv:
 
     def tunnel_start(self):
         if self.tunnel_running(self.processes()):
-            return {"ok": True, "msg": "外网访问已经开启"}
+            return {"ok": True, "msg": "外网访问已开启"}
         if not Path(CLOUDFLARED).exists():
             return {"ok": False, "msg": f"找不到 cloudflared：{CLOUDFLARED}"}
         if not TUNNEL_CRED.exists():
@@ -594,7 +595,7 @@ def gw(method, path, body=None, timeout=150):
     try:
         tok = GW_TOKEN_FILE.read_text(encoding="utf-8").strip()
     except OSError:
-        return {"ok": False, "msg": "临时授权网关没有运行"}, 503
+        return {"ok": False, "msg": "临时授权网关未运行"}, 503
     data = json.dumps(body or {}, ensure_ascii=False).encode() if method == "POST" else None
     req = urllib.request.Request(f"http://127.0.0.1:{GW_PORT}{path}", data=data, method=method,
                                  headers={"X-Tempauth-Token": tok, "Content-Type": "application/json"})
@@ -607,7 +608,7 @@ def gw(method, path, body=None, timeout=150):
         except ValueError:
             return {"ok": False, "msg": f"网关返回 {e.code}"}, e.code
     except (urllib.error.URLError, OSError, ValueError):
-        return {"ok": False, "msg": "临时授权网关没有运行"}, 503
+        return {"ok": False, "msg": "临时授权网关未运行"}, 503
 
 
 def gw_state():
@@ -655,6 +656,220 @@ def gw_relay():
             kick()
         time.sleep(3)
 
+
+
+# ======================================================================== 浏览器登录窗口（主账号桌面上的可见 Edge）
+# 用和网关同一个 Playwright MCP，以有界面模式运行；配置只在内存里。用户在窗口里登录，点“完成”或“保存登录”后，
+# 取出所选网站的 Cookie 和 localStorage 交给网关：保存为“浏览器登录”，有登录请求时写入那条授权的浏览器。
+PLAYWRIGHT_CLI = Path(os.environ.get("TMCP_PLAYWRIGHT", r"C:\Program Files\BlenderMCP\node\node_modules\@playwright\mcp\cli.js"))
+NODE = os.environ.get("TMCP_NODE", r"D:\Program Files\node.EXE")
+SLD2 = {"com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn", "ac.cn", "co.uk", "org.uk", "ac.uk", "co.jp", "ne.jp", "or.jp",
+        "com.hk", "com.tw", "com.au", "net.au", "co.kr", "com.sg", "com.br", "co.in"}
+
+
+def site_of(host):
+    host = (host or "").lstrip(".").lower().strip("[]")
+    parts = host.split(".")
+    if len(parts) <= 2 or host.replace(".", "").isdigit():
+        return host
+    return ".".join(parts[-3:]) if ".".join(parts[-2:]) in SLD2 else ".".join(parts[-2:])
+
+
+class StdioMCP:
+    def __init__(self, args, cwd=None):
+        self.p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=cwd,
+                                  creationflags=NEW_GROUP)
+        self.lock, self.pending, self.next_id = threading.Lock(), {}, 1
+        threading.Thread(target=self._read, daemon=True).start()
+        self.call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                 "clientInfo": {"name": "bmcp-console", "version": "2"}}, 60)
+        self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def _send(self, msg):
+        with self.lock:
+            self.p.stdin.write((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
+            self.p.stdin.flush()
+
+    def _read(self):
+        for line in self.p.stdout:
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if "method" in msg and "id" in msg:
+                try:
+                    self._send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": "not supported"}})
+                except OSError:
+                    pass
+                continue
+            q = self.pending.pop(msg.get("id"), None)
+            if q:
+                q.put(msg)
+        for q in list(self.pending.values()):
+            q.put({"error": {"message": "登录窗口已关闭"}})
+
+    def call(self, method, params, timeout=60):
+        with self.lock:
+            mid = self.next_id
+            self.next_id += 1
+        q = queue.Queue()
+        self.pending[mid] = q
+        self._send({"jsonrpc": "2.0", "id": mid, "method": method, "params": params})
+        r = q.get(timeout=timeout)
+        if "error" in r:
+            raise RuntimeError(r["error"].get("message", "出错"))
+        return r["result"]
+
+    def code(self, js, timeout=30):
+        """在页面上下文里跑一段 Playwright 代码，返回它打印的 JSON（以 JSON: 开头的那一段）。"""
+        r = self.call("tools/call", {"name": "browser_run_code_unsafe", "arguments": {"code": js}}, timeout)
+        text = " ".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
+        if r.get("isError"):
+            raise RuntimeError(text[:200])
+        m = re.search(r'"(JSON:(?:[^"\\]|\\.)*)"', text, re.S)      # 结果是 JSON 字符串字面量
+        raw = json.loads('"' + m.group(1)[0:] + '"') if m else None
+        if raw is None:
+            m = re.search(r"JSON:(\{.*\})", text, re.S)
+            if not m:
+                raise RuntimeError("读不到结果")
+            raw = "JSON:" + m.group(1)
+        return json.loads(raw[5:])
+
+    def alive(self):
+        return self.p.poll() is None
+
+    def close(self):
+        if self.p.poll() is None:
+            subprocess.run(["taskkill", "/PID", str(self.p.pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+
+
+LOGINWIN = {"mcp": None, "url": "", "request": None, "sites": {}, "titles": {}, "state": "idle", "domain": "", "lock": threading.Lock()}
+
+PROBE_JS = ("async (page) => { const ctx = page.context(); const cs = await ctx.cookies(); const ts = [];"
+            " for (const p of ctx.pages()) { try { ts.push([p.url(), await p.title()]); } catch (e) {} }"
+            " return 'JSON:' + JSON.stringify({ d: cs.map(c => c.domain), t: ts }); }")
+STATE_JS = "async (page) => 'JSON:' + JSON.stringify(await page.context().storageState())"
+
+
+def loginwin_view():
+    w = LOGINWIN
+    sites = [{"domain": d, "title": w["titles"].get(d, ""), "default": d == w["domain"]} for d in sorted(w["sites"])]
+    return {"state": w["state"], "url": w["url"], "request": w["request"], "domain": w["domain"], "sites": sites}
+
+
+def loginwin_poll(mcp):
+    while LOGINWIN["mcp"] is mcp:
+        try:
+            r = mcp.code(PROBE_JS, 15)
+            sites = {site_of(d) for d in r.get("d", []) if d}
+            for url, title in r.get("t", []):
+                host = urllib.parse.urlsplit(url).hostname
+                if host and title:
+                    LOGINWIN["titles"].setdefault(site_of(host), title)
+            if sites != set(LOGINWIN["sites"]):
+                LOGINWIN["sites"] = {d: True for d in sites}
+                HUB.publish("loginwin.changed", loginwin_view())
+        except Exception:
+            if not mcp.alive() and LOGINWIN["mcp"] is mcp:
+                loginwin_end("closed")
+                return
+        time.sleep(2)
+
+
+def loginwin_end(state):
+    w = LOGINWIN
+    mcp, w["mcp"] = w["mcp"], None
+    if mcp:
+        mcp.close()
+    w.update(state=state, sites={}, titles={})
+    HUB.publish("loginwin.changed", loginwin_view())
+    w.update(state="idle", url="", request=None, domain="")
+
+
+class DemoWin:
+    """--demo 用：假装打开了登录窗口，记录到目标网站和一个第三方登录网站。"""
+    def __init__(self, url):
+        host = urllib.parse.urlsplit(url).hostname or "example.com"
+        self.host, self.on = host, True
+
+    def code(self, js, timeout=30):
+        if js is STATE_JS:
+            return {"cookies": [{"name": "sid", "value": "demo", "domain": "." + site_of(self.host), "path": "/",
+                                 "expires": -1, "httpOnly": True, "secure": True, "sameSite": "Lax"}], "origins": []}
+        return {"d": ["." + site_of(self.host), "accounts.example-sso.com"], "t": [[f"https://{self.host}/", "登录"]]}
+
+    def alive(self):
+        return self.on
+
+    def close(self):
+        self.on = False
+
+
+def loginwin_open(body):
+    if not IS_WIN and not DEMO:
+        return {"ok": False, "msg": "仅支持在 Windows 上打开登录窗口"}, 400
+    url = str(body.get("url") or "").strip()
+    if not re.match(r"^https?://", url):
+        url = "https://" + url if url else ""
+    if not url:
+        return {"ok": False, "msg": "请填写登录页地址"}, 400
+    with LOGINWIN["lock"]:
+        if LOGINWIN["mcp"] and LOGINWIN["mcp"].alive():
+            return {"ok": False, "msg": "登录窗口已打开"}, 409
+        rid = body.get("request") or None
+        if rid:
+            d, code = gw("POST", f"/admin/logins/requests/{rid}", {"action": "start"}, timeout=20)
+            if code != 200:
+                return d, code
+        outdir = DATA / "login-window"
+        outdir.mkdir(parents=True, exist_ok=True)
+        try:
+            mcp = DemoWin(url) if DEMO else StdioMCP([NODE, str(PLAYWRIGHT_CLI), "--browser", "msedge", "--isolated", "--output-dir", str(outdir),
+                            "--ignore-roots", "--codegen", "none", "--no-webmcp", "--idle-timeout", "0"], cwd=str(outdir))
+        except Exception as e:
+            return {"ok": False, "msg": f"无法打开登录窗口：{e}"}, 500
+        LOGINWIN.update(mcp=mcp, url=url, request=rid, sites={}, titles={}, state="open",
+                        domain=site_of(urllib.parse.urlsplit(url).hostname or ""))
+    if not DEMO:
+        threading.Thread(target=lambda: _loginwin_nav(mcp, url), daemon=True).start()
+    threading.Thread(target=loginwin_poll, args=(mcp,), daemon=True).start()
+    HUB.publish("loginwin.changed", loginwin_view())
+    return {"ok": True, "window": loginwin_view()}, 200
+
+
+def _loginwin_nav(mcp, url):
+    try:
+        mcp.call("tools/call", {"name": "browser_navigate", "arguments": {"url": url}}, 60)
+    except Exception as e:
+        print("loginwin navigate:", e, file=sys.stderr)
+
+
+def loginwin_finish(body):
+    w = LOGINWIN
+    mcp = w["mcp"]
+    if not mcp or not mcp.alive():
+        return {"ok": False, "msg": "登录窗口已关闭"}, 409
+    domains = [d for d in (body.get("domains") or []) if d in w["sites"]]
+    if not domains:
+        return {"ok": False, "msg": "请选择要保存的网站"}, 400
+    try:
+        state = mcp.code(STATE_JS, 30)
+    except Exception as e:
+        return {"ok": False, "msg": f"无法读取登录信息：{e}"}, 500
+    d, code = gw("POST", "/admin/logins/save", {"state": state, "domains": domains, "request": w["request"],
+                                                 "titles": {k: w["titles"].get(k, "") for k in domains},
+                                                 "save": bool(body.get("save", True))}, timeout=90)
+    if code == 200:
+        loginwin_end("done")
+    return d, code
+
+
+def loginwin_cancel():
+    w = LOGINWIN
+    if w["request"]:
+        gw("POST", f"/admin/logins/requests/{w['request']}", {"action": "cancel"}, timeout=20)
+    loginwin_end("cancelled")
+    return {"ok": True}, 200
 
 PICKING = {"on": False}
 
@@ -732,9 +947,9 @@ def _ps(script, timeout):
 def pick_folder(body):
     """点拖放区：在主账号桌面上弹出资源管理器样式的选择框（R4.1.2），可多选。"""
     if not IS_WIN:
-        return {"ok": False, "msg": "只能在 Windows 上弹出选择框"}, 400
+        return {"ok": False, "msg": "仅支持在 Windows 上打开选择窗口"}, 400
     if PICKING["on"]:
-        return {"ok": False, "msg": "选择框已经打开了，请在任务栏里找一下"}, 409
+        return {"ok": False, "msg": "选择窗口已打开，请在任务栏中查看"}, 409
     start = str(body.get("start") or r"D:\Projects").replace("'", "''")
     script = ("$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
               "Add-Type -AssemblyName System.Windows.Forms;"
@@ -747,13 +962,13 @@ def pick_folder(body):
     try:
         out, err = _ps(script, 900)
     except subprocess.TimeoutExpired:
-        return {"ok": False, "msg": "选择框超时"}, 408
+        return {"ok": False, "msg": "选择窗口超时"}, 408
     finally:
         PICKING["on"] = False
     try:
         paths = json.loads(out or "[]")
     except ValueError:
-        return {"ok": False, "msg": "选择框出错：" + (err or out)[:200]}, 500
+        return {"ok": False, "msg": "选择窗口出错：" + (err or out)[:200]}, 500
     if isinstance(paths, str):
         paths = [paths]
     return {"ok": True, "paths": [p for p in paths if p]}, 200
@@ -837,7 +1052,7 @@ def kick():
 def background(key, target, fn, label, undo=None):
     """异步动作：先登记中间态，做完推送 action.done，再刷新状态。"""
     if BUSY.get(key):
-        return {"ok": False, "msg": "上一个操作还没完成"}, 409
+        return {"ok": False, "msg": "上一个操作尚未完成"}, 409
     BUSY[key] = target
     kick()
 
@@ -855,7 +1070,7 @@ def background(key, target, fn, label, undo=None):
             time.sleep(60)
             if BUSY.get(key) == "launching":
                 BUSY.pop(key, None)
-                HUB.publish("action.done", {"key": key, "ok": False, "msg": "应用 60 秒内没有连上，请到电脑上看一下"})
+                HUB.publish("action.done", {"key": key, "ok": False, "msg": "应用 60 秒内未连接，请在电脑上检查"})
                 kick()
 
     threading.Thread(target=work, daemon=True).start()
@@ -874,7 +1089,7 @@ def act_tunnel(body):
 def act_service(rid, body):
     on = bool(body.get("on"))
     if rid == "grant" and not GRANT_DEPLOYED:
-        return {"ok": False, "msg": "临时授权服务还没部署"}, 409
+        return {"ok": False, "msg": "临时授权尚未部署"}, 409
     verb = "start" if on else "stop"
     undo = None if on else {"path": f"/api/routes/{rid}/service", "body": {"on": True}}
     return background("service:" + rid, "starting" if on else "stopping",
@@ -883,7 +1098,7 @@ def act_service(rid, body):
 
 def act_app(rid):
     if rid not in ("blender", "unity"):
-        return {"ok": False, "msg": "这条线路没有可以打开的应用"}, 400
+        return {"ok": False, "msg": "该线路没有可打开的应用"}, 400
     return background("app:" + rid, "launching", lambda: ENV.agent(f"/app/{rid}/start", "POST"), "正在打开")
 
 
@@ -964,7 +1179,7 @@ def act_proxy(body):
     """开启：找到 Clash 的代理端口，确认能上网（不行就换最快的节点再试），再让 blender 账号走它。"""
     on = bool(body.get("on"))
     if BUSY.get("proxy"):
-        return {"ok": False, "msg": "上一个操作还没完成"}, 409
+        return {"ok": False, "msg": "上一个操作尚未完成"}, 409
     BUSY["proxy"] = "starting" if on else "stopping"
     kick()
     try:
@@ -973,17 +1188,17 @@ def act_proxy(body):
             return {"ok": bool(res.get("ok")), "msg": res.get("msg", "")}, 200
         refresh_clash()
         if not CLASH["running"]:
-            return {"ok": False, "msg": "Clash 没在运行，请先打开 Clash Verge"}, 200
+            return {"ok": False, "msg": "Clash 未运行，请先打开 Clash Verge"}, 200
         port = CLASH.get("port") or 7897
         if CLASH.get("mode") == "direct":
             res = ENV.agent(f"/net/clash/{port}", "POST")
-            return {"ok": bool(res.get("ok")), "msg": "已经走 Clash，但 Clash 现在是直连模式，实际不经过节点；"
+            return {"ok": bool(res.get("ok")), "msg": "已经由 Clash 转发，但 Clash 处于直连模式，实际不经过节点；"
                     "要翻墙请在 Clash 里切到规则模式"}, 200
         switched = None
         if not ENV.proxy_works(port):
             switched = clash_best()
             if not switched or not ENV.proxy_works(port):
-                return {"ok": False, "msg": "Clash 的节点都连不上外网"}, 200
+                return {"ok": False, "msg": "Clash 的节点均无法连接外网"}, 200
         res = ENV.agent(f"/net/clash/{port}", "POST")
         msg = res.get("msg", "")
         if switched:
@@ -998,11 +1213,11 @@ def act_clash_best():
     if not CLASH.get("running"):
         refresh_clash()
     if not CLASH.get("running"):
-        return {"ok": False, "msg": "Clash 没在运行"}, 200
+        return {"ok": False, "msg": "Clash 未运行"}, 200
     node = clash_best()
     kick()
     return ({"ok": True, "node": node, "delay": CLASH.get("delay"), "msg": f"已换到 {node}"} if node
-            else {"ok": False, "msg": "没有能连上的节点"}), 200
+            else {"ok": False, "msg": "没有可连接的节点"}), 200
 
 
 NOT_YET = ({"ok": False, "msg": "临时授权尚未部署"}, 501)
@@ -1033,9 +1248,17 @@ def route(method, path, body, query=""):
         return act_app(parts[1])
     if len(parts) == 3 and parts[0] == "routes" and parts[1] in BY_ID and parts[2] == "log" and method == "GET":
         return ENV.agent(f"/log/{parts[1]}"), 200
-    if parts and parts[0] in ("grants", "approvals", "logs", "rules", "fs", "sandbox"):
+    if parts and parts[0] in ("grants", "approvals", "logs", "rules", "fs", "sandbox", "logins"):
         if not GRANT_DEPLOYED:
             return NOT_YET
+        if key == "logins/window" and method == "GET":
+            return {"ok": True, "window": loginwin_view()}, 200
+        if key == "logins/window" and method == "POST":
+            return loginwin_open(body)
+        if key == "logins/window/finish" and method == "POST":
+            return loginwin_finish(body)
+        if key == "logins/window/cancel" and method == "POST":
+            return loginwin_cancel()
         if key == "fs/pick" and method == "POST":
             return pick_folder(body)
         if key == "fs/resolve" and method == "POST":

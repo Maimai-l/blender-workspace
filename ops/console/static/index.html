@@ -32,7 +32,7 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
       <p class="mc-hero"><b id="hero-n">–</b><span id="hero-d">/4</span></p>
       <div class="mc-act">
         <button class="pill" type="button" id="btn-check"><span class="lbl">检测</span><svg class="ic"><use href="#i-refresh"></use></svg></button>
-        <div class="mc-meta"><span class="mc-k">上次检测</span><span class="mc-m" id="check-at">还没检测</span></div>
+        <div class="mc-meta"><span class="mc-k">上次检测</span><span class="mc-m" id="check-at">未检测</span></div>
       </div>
     </section>
     <section class="mc-side">
@@ -57,7 +57,10 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
       </div>
     </section>
     <section class="mc-side">
-      <p class="mc-en">Blocked Today</p>
+      <p class="mc-en">Browser Logins</p>
+      <div class="mc-side-row"><span class="mc-k">保存的登录</span><span class="mc-v mc-n" id="logins-n">0</span><button class="pill pill--sm pill--muted" type="button" id="btn-logins"><span class="lbl">管理</span></button></div>
+      <p class="mc-m" id="logins-meta" style="text-transform: none"></p>
+      <p class="mc-en" style="margin-top: 16px">Blocked Today</p>
       <div class="mc-side-row"><span class="mc-k">今日拦截</span><span class="mc-v mc-n" id="blocked-n">0</span></div>
       <p class="mc-m">沙盒账号 AITEMP</p>
       <p class="mc-m" id="helper-meta"></p>
@@ -71,7 +74,7 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
       <div class="mc-grants" id="grant-list"></div>
       <div class="mc-loghead"><span class="mc-en">Log</span><span class="mc-zh">执行记录</span><span class="mc-logfilter" id="log-filter" hidden></span></div>
       <div class="mc-log" id="log">
-        <div class="mc-lrow mc-lhead"><span class="h">时间</span><span class="h">操作</span><span class="h">命令或路径</span><span class="h">结果</span><span class="h">说明</span><span class="h d">用时</span></div>
+        <div class="mc-lrow mc-lhead"><span class="h">时间</span><span class="h">操作</span><span class="h">内容</span><span class="h">结果</span><span class="h">说明</span><span class="h d">用时</span></div>
         <div class="mc-lbody" id="log-body"></div>
       </div>
     </section>
@@ -88,33 +91,50 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
   <div class="dlg-head"><h4 id="dlg-issue-h">签发临时授权</h4><button class="cbtn" type="button" data-close aria-label="关闭"><svg class="ic"><use href="#i-close"></use></svg></button></div>
   <div class="dlg-body" id="issue-form">
     <div class="mc-f">
-      <span class="field-label">文件夹<span class="req">必填</span></span>
+      <span class="field-label">授权内容<span class="req">至少选一项</span></span>
+      <div class="mc-caps">
+        <label class="mc-cap" id="cap-folder"><input type="checkbox" id="issue-cap-folder" checked><span><b>文件夹</b><i>执行命令、读写文件</i></span></label>
+        <label class="mc-cap" id="cap-browser"><input type="checkbox" id="issue-cap-browser"><span><b>浏览器</b><i>打开网页、点击、输入、截图</i></span></label>
+      </div>
+    </div>
+    <div class="mc-sec" id="sec-folder">
+      <p class="mc-sec-h">文件夹</p>
       <div class="mc-drop" id="issue-drop" role="button" tabindex="0" aria-label="拖入文件夹，或点击选择">
         <svg class="ic ic--lg" aria-hidden="true"><use href="#i-upload"></use></svg>
-        <p class="mc-drop-t" id="issue-drop-t">把文件夹拖到这里，或<b>点击选择</b></p>
-        <p class="mc-drop-s">可以一次选多个；也可以按 Ctrl+V 粘贴路径</p>
+        <p class="mc-drop-t" id="issue-drop-t">拖入文件夹，或<b>点击选择</b></p>
+        <p class="mc-drop-s">支持多选；Ctrl+V 粘贴路径</p>
       </div>
       <ul class="mc-picked" id="issue-folders"></ul>
-      <p class="mc-hint">只能读写这些文件夹。受保护位置、系统和程序目录、盘符和顶层目录不能选。</p>
+      <p class="mc-hint">不可选择：受保护位置、系统和程序目录、盘符、D 盘顶层目录。</p>
     </div>
-    <div class="mc-f">
-      <label class="field-label" for="issue-name">用途</label>
-      <div class="input input--sm"><input id="issue-name" type="text" maxlength="60" placeholder="留空就用文件夹名" autocomplete="off"></div>
+    <div class="mc-sec" id="sec-browser" hidden>
+      <p class="mc-sec-h">浏览器</p>
+      <span class="field-label">登录状态</span>
+      <div class="mc-logins" id="issue-logins"></div>
+      <p class="mc-warn-s" id="issue-login-warn" hidden>授权期间，对方可使用所选网站的登录状态进行操作。</p>
     </div>
-    <div class="mc-f"><span class="field-label">有效期</span>
-      <div class="mc-frow"><div class="seg" role="group" aria-label="有效期" id="issue-minutes"><button type="button" data-v="30">30 分钟</button><button type="button" data-v="60">1 小时</button><button type="button" data-v="240">4 小时</button><button type="button" data-v="1440">1 天</button></div></div></div>
-    <div class="mc-f">
-      <div class="mc-f"><span class="field-label">可执行次数</span>
+    <div class="mc-sec">
+      <p class="mc-sec-h">范围</p>
+      <div class="mc-f">
+        <label class="field-label" for="issue-name">用途</label>
+        <div class="input input--sm"><input id="issue-name" type="text" maxlength="60" placeholder="默认使用文件夹名" autocomplete="off"></div>
+      </div>
+      <div class="mc-f"><span class="field-label">有效期</span>
+        <div class="mc-frow"><div class="seg" role="group" aria-label="有效期" id="issue-minutes"><button type="button" data-v="30">30 分钟</button><button type="button" data-v="60">1 小时</button><button type="button" data-v="240">4 小时</button><button type="button" data-v="1440">1 天</button></div></div></div>
+      <div class="mc-f" id="cmd-limit"><span class="field-label">可执行次数</span>
         <div class="mc-frow"><div class="seg" role="group" aria-label="可执行次数" id="issue-limit"><button type="button" data-v="5">5</button><button type="button" data-v="20">20</button><button type="button" data-v="50">50</button><button type="button" data-v="-1">不限</button><button type="button" data-v="custom">自定义</button></div>
-        <div class="input input--sm mc-num" id="issue-custom-box" hidden><input id="issue-custom" type="text" inputmode="numeric" value="10"><span class="unit">次</span></div></div></div>
+        <div class="input input--sm mc-num" id="issue-custom-box" hidden><input id="issue-custom" type="text" inputmode="numeric" value="10"><span class="unit">次</span></div></div>
+        <p class="mc-hint">计入命令和写文件；读取、列目录、被拦截和被拒绝的调用不计入，浏览器操作不计入。</p></div>
+      <div class="mc-f2" id="cmd-opts">
+        <div class="mc-f"><span class="field-label">命令联网</span>
+          <div class="seg" role="group" aria-label="命令联网" id="issue-net"><button type="button" data-v="0">不允许</button><button type="button" data-v="1">允许</button></div>
+          <p class="mc-hint">经 Clash 出网</p></div>
+        <div class="mc-f"><span class="field-label">执行前确认</span>
+          <div class="seg" role="group" aria-label="执行前确认" id="issue-confirm"><button type="button" data-v="0">不需要</button><button type="button" data-v="1">需要</button></div>
+          <p class="mc-hint">仅用于命令</p></div>
+      </div>
+      <dl class="mc-dl" id="web-only" hidden><dt>次数</dt><dd>不限</dd><dt>执行前确认</dt><dd>无</dd><dt>出网</dt><dd>Clash 7899</dd><dt>拦截</dt><dd>本机和局域网地址、file:// 本地文件、上传本地文件</dd><dt>下载</dt><dd>临时目录，授权结束后删除</dd></dl>
     </div>
-    <div class="mc-f2">
-      <div class="mc-f"><span class="field-label">联网</span>
-        <div class="seg" role="group" aria-label="联网" id="issue-net"><button type="button" data-v="0">不允许</button><button type="button" data-v="1">允许</button></div></div>
-      <div class="mc-f"><span class="field-label">执行前确认</span>
-        <div class="seg" role="group" aria-label="执行前确认" id="issue-confirm"><button type="button" data-v="0">不需要</button><button type="button" data-v="1">需要</button></div></div>
-    </div>
-    <p class="mc-hint">只有执行命令和写文件计次；读取、列目录、被拦截和被拒绝的调用不计。允许联网时经 Clash 出网。</p>
   </div>
   <div class="dlg-body" id="issue-done" hidden></div>
   <div class="dlg-foot" id="issue-foot">
@@ -132,13 +152,51 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
 <dialog class="dialog dialog--md mc-dlg" id="dlg-rules" aria-labelledby="dlg-rules-h">
   <div class="dlg-head"><h4 id="dlg-rules-h">执行前检查规则</h4><button class="cbtn" type="button" data-close aria-label="关闭"><svg class="ic"><use href="#i-close"></use></svg></button></div>
   <div class="dlg-body">
-    <p>规则只作提醒和记录：真正的边界是沙盒账号 aitemp 自己的权限，规则漏掉的写法也碰不到授权文件夹以外的东西。命中规则的调用会被拦截，不计次数。今天拦截 <b class="mc-n" id="rules-blocked">0</b> 次。</p>
+    <p>执行前检查用于提醒和记录，访问边界由沙盒账号 aitemp 的权限决定。命中规则的调用被拦截，不计次数。今日拦截 <b class="mc-n" id="rules-blocked">0</b> 次。</p>
     <dl class="mc-rules" id="rules-list"></dl>
     <div class="mc-verify" id="verify-out" hidden></div>
   </div>
   <div class="dlg-foot">
     <button class="btn btn--secondary btn--sm" type="button" id="btn-verify"><span class="lbl">检查沙盒权限</span></button>
-    <button class="btn btn--accent btn--sm" type="button" data-close><span class="lbl">知道了</span></button>
+    <button class="btn btn--accent btn--sm" type="button" data-close><span class="lbl">关闭</span></button>
+  </div>
+</dialog>
+
+<!-- 浏览器登录 -->
+<dialog class="dialog dialog--md mc-dlg" id="dlg-logins" aria-labelledby="dlg-logins-h">
+  <div class="dlg-head"><h4 id="dlg-logins-h">浏览器登录</h4><button class="cbtn" type="button" data-close aria-label="关闭"><svg class="ic"><use href="#i-close"></use></svg></button></div>
+  <div class="dlg-body">
+    <p>已保存的网站登录状态，签发浏览器授权时可选。仅保存在本机。</p>
+    <ul class="mc-lg" id="logins-list"></ul>
+    <p class="mc-hint">网站名称取自网页标题。授权执行中完成的登录也保存在此处。</p>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn btn--ghost btn--sm" type="button" data-close><span class="lbl">关闭</span></button>
+    <button class="btn btn--accent btn--sm" type="button" id="btn-login-new"><span class="lbl">新建登录</span></button>
+  </div>
+</dialog>
+
+<!-- 新建登录 -->
+<dialog class="dialog dialog--md mc-dlg" id="dlg-loginnew" aria-labelledby="dlg-loginnew-h">
+  <div class="dlg-head"><h4 id="dlg-loginnew-h">新建登录</h4><button class="cbtn" type="button" id="loginnew-x" aria-label="关闭"><svg class="ic"><use href="#i-close"></use></svg></button></div>
+  <div class="dlg-body">
+    <div class="mc-f">
+      <label class="field-label" for="loginnew-url">登录页地址</label>
+      <div class="mc-frow">
+        <div class="input input--sm" style="flex: 1"><input id="loginnew-url" type="text" placeholder="https://" autocomplete="off" spellcheck="false"></div>
+        <button class="btn btn--secondary btn--sm" type="button" id="loginnew-open"><span class="lbl">打开</span></button>
+      </div>
+    </div>
+    <p class="mc-live" id="loginnew-state" hidden><i></i><span>登录窗口已打开。在窗口中完成登录后，点击“保存登录”。</span></p>
+    <div class="mc-f" id="loginnew-sites-box" hidden>
+      <span class="field-label">已记录的网站</span>
+      <ul class="mc-rec" id="loginnew-sites"></ul>
+      <p class="mc-hint">按域名保存。同一网站再次保存时替换原有登录。</p>
+    </div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn btn--ghost btn--sm" type="button" id="loginnew-cancel"><span class="lbl">放弃</span></button>
+    <button class="btn btn--accent btn--sm" type="button" id="loginnew-save" disabled><span class="lbl">保存登录</span></button>
   </div>
 </dialog>
 <script src="/static/ds/components/bundle.js"></script>

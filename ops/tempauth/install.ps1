@@ -12,7 +12,7 @@
 #  6 给隧道加 tmcp.maimaiqiu.work 的域名记录
 # 装完：双击桌面上的「Blender MCP 控制台」，在“连接状态”页把外网访问关闭再开启一次（让隧道加载新域名），然后告诉 Claude。
 # 只更新授权助手（改了 AitempHelper.cs 时）：同一条命令后面加 -HelperOnly，只做第 1、3 步。
-# 只更新控制台页面和 panel.py、agent.py：加 -ConsoleOnly，只做第 1、5 步。
+# 只更新网关和控制台（gateway.py、panel.py、agent.py、页面文件）：加 -ConsoleOnly，只做第 1、4、5 步。
 #Requires -RunAsAdministrator
 param([switch]$HelperOnly, [switch]$ConsoleOnly)
 $ErrorActionPreference = 'Stop'
@@ -137,10 +137,8 @@ if ((Get-Content $log -Tail 5 -ErrorAction SilentlyContinue) -match 'start faile
 }
 if ($HelperOnly) { Write-Host ''; Write-Host '完成：授权助手已更新并重启。告诉 Claude 即可。'; return }
 
-if (-not $ConsoleOnly) {
 Write-Host '4/6 安装临时授权网关……'
 Copy-Item (Join-Path $src 'gateway\gateway.py') (Join-Path $dst 'gateway.py') -Force
-}
 
 Write-Host '5/6 更新控制台……'
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match 'BlenderMCP\\panel\\panel\.py' } |
@@ -152,7 +150,7 @@ Copy-Item (Join-Path $src 'console\console.py') (Join-Path $panel 'panel.py') -F
 Copy-Item (Join-Path $src 'console\agent.py') (Join-Path $panel 'agent.py') -Force
 foreach ($f in 'index.html', 'app.js', 'app.css', 'grants.js') { Copy-Item (Join-Path $src "console\static\$f") (Join-Path $panel "static\$f") -Force }
 Write-Host "    旧版备份在 $bak"
-if ($ConsoleOnly) { Write-Host ''; Write-Host '完成：双击桌面上的「Blender MCP 控制台」打开新版，然后告诉 Claude。'; return }
+if ($ConsoleOnly) { Write-Host ''; Write-Host '完成：双击桌面上的「Blender MCP 控制台」打开新版，然后告诉 Claude（它会重启网关）。'; return }
 
 Write-Host '6/6 添加域名 tmcp.maimaiqiu.work……'
 $cf = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source

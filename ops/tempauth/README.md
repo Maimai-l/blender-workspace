@@ -61,3 +61,19 @@
 - 1.0.1 验收 40 项全部通过（不再需要命令间停顿），报告 `D:\Projects\aitemp-test\accept-report.md`。经 tmcp.maimaiqiu.work 从云端实测：initialize 1.8 秒，run_command 以 aitemp 执行，计次正确，错误令牌 404。
 - 另一处之前没想到的：Python 的 `open()` 以 GENERIC_READ|GENERIC_WRITE 打开命名管道，GENERIC_WRITE 含 FILE_APPEND_DATA，对管道就是 CreateNewInstance；管道权限只给 ReadWrite 时客户端打不开。已给 blender 加上。
 - 测试用的授权都已吊销；签发框的“上次选择”已清掉，不会默认选到测试文件夹。
+
+## 浏览器授权（网关 1.1.0，2026-11-18）
+设计稿：https://claude.ai/artifact/LcJk7ZdCP3XRGqsR6Vbth3 （9 张画板）。用户定下的规则：
+- 可以只授权浏览器；浏览器操作不计次数，不需要执行前确认。
+- 登录按网站域名（eTLD+1，`site_of`）区分，名称取网页标题，不手动命名。
+- 执行中需要登录时，对方调用 `request_login`，请求出现在控制台右下角浮层；执行中完成的登录默认保存；被拒绝后对方可以再次请求。
+
+实现：
+- 每条带浏览器的授权一个 Playwright MCP（`C:\Program Files\BlenderMCP\node\node_modules\@playwright\mcp\cli.js`，stdio），参数 `--isolated --headless --proxy-server http://127.0.0.1:7899 --proxy-bypass "<-loopback>"`：回环地址也交给代理，请求落在代理节点上，碰不到本机服务（实测 `localtest.me`、`127.0.0.1.nip.io` 都没打到本机探针）。另有网址检查（只许 http/https，拦本机和局域网地址）和工具白名单（不给上传本地文件、执行任意代码）。
+- 输出目录：有文件夹的授权放 `<第一个文件夹>\downloads`；仅浏览器的放 `TempAuth\browser\<编号>\output`，授权释放时删除。
+- 保存的登录：`TempAuth\logins\<域名>.json`（该域名的 cookies 和 localStorage）。签发时选中的登录合并成 storageState 交给浏览器启动，启动后立即删掉临时文件。
+- `request_login(url, reason)` 最多等 75 秒；没处理完返回 `pending` 和请求编号，对方用 `check_login` 继续等；结果 `logged_in`、`declined`、`cancelled`（主人取消、10 分钟未处理或授权失效）。登录写入用内部的 `browser_run_code_unsafe`（`addCookies` + 刷新），不对外提供。
+- 控制台（主账号）：“去登录”或“新建登录”用有界面的 Edge（同一个 Playwright MCP，`--browser msedge --isolated`）打开登录页，每 2 秒读一次 cookies 的域名作为“已记录的网站”；点“完成”时读 storageState，只把选中的域名交给网关 `POST /admin/logins/save`。
+- 管理接口新增：`GET logins`、`POST logins/<域名>/delete`、`POST logins/save`、`GET logins/requests`、`POST logins/requests/<编号>`（start、decline、cancel）。事件：`login.created/changed/resolved`、`logins.changed`；控制台自己发 `loginwin.changed`。
+- 测试：PC 上用备用端口 18086/18087 跑过真实浏览器（打开网页 1.2 秒、截图、本机/局域网/file:// 被拦、evaluate 被拒、完整登录流程、吊销 0.19 秒）。界面在 Linux 上用 `gateway.py --demo` + `console.py --demo`（演示用的登录窗口 `DemoWin`）和 Playwright 跑通：新建登录、仅浏览器签发、登录请求、去登录、完成（对方拿到 `logged_in`）、拒绝（`declined`）。
+- 安装：`install.ps1 -ConsoleOnly` 现在同时更新网关（第 1、4、5 步）；装完由维护会话结束旧网关进程，agent.py 重新拉起。

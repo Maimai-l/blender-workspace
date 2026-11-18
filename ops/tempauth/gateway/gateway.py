@@ -15,6 +15,7 @@ import os
 import queue
 import re
 import secrets
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -97,10 +98,10 @@ def folder_problem(p):
     if p.startswith("\\\\"):
         return "网络路径不能授权"
     if not re.match(r"^[A-Za-z]:\\", p):
-        return "要写完整路径，例如 D:\\Projects\\xxx"
+        return "请填写完整路径，例如 D:\\Projects\\xxx"
     rest = [x for x in p[3:].split("\\") if x]
     if len(rest) < 2:
-        return "盘符和顶层目录不能授权，请选它下面的文件夹"
+        return "盘符和顶层目录不能授权，请选择其下的文件夹"
     for s in PROTECTED:
         if under(p, s) or under(s, p):
             return "受保护位置"
@@ -733,7 +734,7 @@ def issue(body):
     saved = {x["domain"] for x in saved_logins()}
     missing = [d for d in logins if d not in saved]
     if missing:
-        return {"ok": False, "msg": "没有这些网站的登录：" + "、".join(missing)}, 400
+        return {"ok": False, "msg": "以下网站没有保存的登录：" + "、".join(missing)}, 400
     seen, reals = set(), []
     for f in folders:
         p = folder_problem(f) if IS_WIN else None
@@ -804,7 +805,7 @@ def cancel_tasks(gid, why, states=("approval", "queued")):
 def revoke(gid):
     g = get_grant(gid)
     if not g:
-        return {"ok": False, "msg": "没有这条授权"}, 404
+        return {"ok": False, "msg": "授权不存在"}, 404
     t0 = now()
     if not g["revoked_at"]:
         STORE.x("UPDATE grants SET revoked_at=? WHERE id=?", (t0, gid))
@@ -822,12 +823,12 @@ def revoke(gid):
 def restore(gid):
     g = get_grant(gid)
     if not g:
-        return {"ok": False, "msg": "没有这条授权"}, 404
+        return {"ok": False, "msg": "授权不存在"}, 404
     v = grant_view(g)
     if v["state"] != "revoked":
-        return {"ok": False, "msg": "这条授权没有被吊销"}, 400
+        return {"ok": False, "msg": "该授权未被吊销"}, 400
     if not v["restorable"]:
-        return {"ok": False, "msg": "已超过恢复时间（吊销后 10 分钟内、且没到期才能恢复）"}, 400
+        return {"ok": False, "msg": "已超过恢复期限：仅可在吊销后 10 分钟内且未到期时恢复"}, 400
     STORE.x("UPDATE grants SET revoked_at=NULL WHERE id=?", (gid,))
     publish_grant(gid)
     return {"ok": True, "grant": grant_view(get_grant(gid))}, 200
@@ -871,6 +872,8 @@ def ticker():
                         HELPER.call({"op": "release", "grant": g["id"], "folders": json.loads(g["folders"])})
                         STORE.x("UPDATE grants SET released=1 WHERE id=?", (g["id"],))
                         publish_grant(g["id"])
+                        # 仅浏览器的授权：截图、PDF 等输出放在 TempAuth\browser\<id>，授权结束后删掉
+                        shutil.rmtree(BROWSER_DIR / g["id"], ignore_errors=True)
                     except (HelperDown, HelperError, OSError) as e:
                         print("release:", e, file=sys.stderr)
             expire_logins()
@@ -1053,7 +1056,7 @@ def call_tool(g, name, args):
         if g["confirm"]:
             t["state"] = "approval"
             ev = APPROVED[t["id"]] = threading.Event()
-            t["log"] = add_log(gid, "run", command, "pending", "等待主人确认", cwd=cwd, shell=shell, task=t["id"])
+            t["log"] = add_log(gid, "run", command, "pending", "等待确认", cwd=cwd, shell=shell, task=t["id"])
             HUB.publish("approval.created", approval_view(t))
             publish_counts()
             ev.wait(WAIT_BUDGET)
@@ -1141,13 +1144,13 @@ def decide(tid, allow):
     with TASK_LOCK:
         t = TASKS.get(tid)
     if not t or t["state"] != "approval":
-        return {"ok": False, "msg": "这条已经处理过了"}, 409
+        return {"ok": False, "msg": "该请求已处理"}, 409
     HUB.publish("approval.resolved", {"id": tid, "decision": "allow" if allow else "deny"})
     if allow:
         enqueue(t)
     else:
         t["state"], t["note"] = "denied", "主人拒绝"
-        update_log(t["log"], result="denied", note="主人拒绝")
+        update_log(t["log"], result="denied", note="")
         t["done"].set()
     ev = APPROVED.pop(tid, None)
     if ev:
@@ -1316,12 +1319,12 @@ def url_problem(url):
     try:
         u = urlsplit(url.strip())
     except ValueError:
-        return "网址不对"
+        return "网址无效"
     if u.scheme not in ("http", "https", ""):
-        return "只能打开 http、https 网址"
+        return "仅支持 http、https 网址"
     host = (u.hostname or "").strip("[]").lower()
     if not host and u.scheme:
-        return "网址不对"
+        return "网址无效"
     if host in ("localhost", "localhost.localdomain") or host.endswith(".localhost") or host.endswith(".local"):
         return "本机地址"
     try:
@@ -1458,7 +1461,7 @@ def save_login(body):
     domains = [d for d in (body.get("domains") or []) if isinstance(d, str)]
     titles = body.get("titles") or {}
     if not domains:
-        return {"ok": False, "msg": "没有选中网站"}, 400
+        return {"ok": False, "msg": "未选择网站"}, 400
     LOGIN_DIR.mkdir(parents=True, exist_ok=True)
     picked = {"cookies": [], "origins": []}
     for d in domains:
@@ -1478,16 +1481,18 @@ def save_login(body):
         with LOGIN_LOCK:
             r = LOGINREQ.get(rid)
         if not r or r["state"] not in ("pending", "active"):
-            return {"ok": False, "msg": "这条登录请求已经结束"}, 409
+            return {"ok": False, "msg": "该登录请求已结束"}, 409
         g = get_grant(r["grant"])
         if body.get("save", True):          # 授权的浏览器重启时也带上
             have = json.loads(g["logins"] or "[]")
             STORE.x("UPDATE grants SET logins=? WHERE id=?", (json.dumps(sorted(set(have) | set(domains))), g["id"]))
             g = get_grant(g["id"])
+            publish_grant(g["id"])
         try:
-            inject_state(g, picked)
+            if not DEMO:
+                inject_state(g, picked)
         except Exception as e:
-            return {"ok": False, "msg": "写入授权的浏览器失败：" + str(e)}, 500
+            return {"ok": False, "msg": "写入浏览器失败：" + str(e)}, 500
         finish_login(r, "logged_in", "已保存" if body.get("save", True) else "未保存")
     return {"ok": True, "domains": domains}, 200
 
@@ -1595,7 +1600,7 @@ def finish_login(r, state, note=""):
             return
         r["state"] = state
     update_log(r["log"], result={"logged_in": "done", "declined": "denied", "cancelled": "cancelled"}[state],
-               note=note or {"declined": "主人拒绝", "cancelled": "已取消"}.get(state, ""), seconds=now() - r["created"])
+               note=note, seconds=now() - r["created"])
     r["done"].set()
     HUB.publish("login.resolved", {"id": r["id"], "state": state})
     publish_counts()
@@ -1605,14 +1610,14 @@ def login_action(rid, action):
     with LOGIN_LOCK:
         r = LOGINREQ.get(rid)
     if not r or r["state"] not in ("pending", "active"):
-        return {"ok": False, "msg": "这条登录请求已经结束"}, 409
+        return {"ok": False, "msg": "该登录请求已结束"}, 409
     if action == "start":
         r["state"] = "active"
         HUB.publish("login.changed", login_view(r))
     elif action == "decline":
         finish_login(r, "declined")
     elif action == "cancel":
-        finish_login(r, "cancelled", "主人取消")
+        finish_login(r, "cancelled", "")
     else:
         return {"ok": False, "msg": "不支持的操作"}, 400
     return {"ok": True, "request": login_view(r)}, 200
@@ -1688,7 +1693,7 @@ def fs_list(path):
             continue
         why = folder_problem(full) if IS_WIN else None
         dirs.append({"name": n, "path": full, "ok": why is None, "reason": why or "",
-                     "enter": why in (None, "盘符和顶层目录不能授权，请选它下面的文件夹")})
+                     "enter": why in (None, "盘符和顶层目录不能授权，请选择其下的文件夹")})
     parent = str(Path(p).parent) if Path(p).parent != Path(p) else ""
     return {"ok": True, "path": p, "parent": parent, "dirs": dirs[:500]}, 200
 
@@ -1740,7 +1745,7 @@ def admin_route(method, path, query, body):
     if len(parts) == 2 and parts[0] == "logs" and method == "GET":
         rows = STORE.q("SELECT * FROM logs WHERE id=?", (int(parts[1]),))
         if not rows:
-            return {"ok": False, "msg": "没有这条记录"}, 404
+            return {"ok": False, "msg": "记录不存在"}, 404
         return {"ok": True, "log": log_view(rows[0], True)}, 200
     if key == "rules" and method == "GET":
         return {"ok": True, "rules": [{"key": k, "name": n, "desc": d} for k, n, d, _ in RULES],

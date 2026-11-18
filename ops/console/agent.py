@@ -250,7 +250,7 @@ def pick_project():
 
 def unity_start():
     if process_running("Unity.exe"):
-        return {"ok": True, "msg": "Unity 已经开着"}
+        return {"ok": True, "msg": "Unity 已在运行"}
     env = app_env()
     project = pick_project()
     if project:
@@ -267,7 +267,7 @@ def unity_start():
                          stderr=subprocess.DEVNULL, env=env, creationflags=NEW_GROUP)
         why = "没有可直接打开的工程" if not project else f"没找到 {project.name} 对应版本的编辑器"
         return {"ok": True, "msg": f"{why}，已打开 Unity Hub"}
-    return {"ok": False, "msg": f"找不到 Unity Hub：{UNITY_HUB}"}
+    return {"ok": False, "msg": f"未找到 Unity Hub：{UNITY_HUB}"}
 
 
 # ---------- Blender ----------
@@ -279,12 +279,12 @@ def blender_status():
 
 def blender_start():
     if process_running(Path(BLENDER_EXE).name):
-        return {"ok": True, "msg": "Blender 已经开着"}
+        return {"ok": True, "msg": "Blender 已在运行"}
     if not Path(BLENDER_EXE).exists():
-        return {"ok": False, "msg": f"找不到 Blender：{BLENDER_EXE}"}
+        return {"ok": False, "msg": f"未找到 Blender：{BLENDER_EXE}"}
     subprocess.Popen([BLENDER_EXE], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.DEVNULL, env=app_env(), creationflags=NEW_GROUP)
-    return {"ok": True, "msg": "已打开 Blender，记得在侧栏点 Connect"}
+    return {"ok": True, "msg": "已打开 Blender，请在侧栏点击 Connect"}
 
 
 # ---------- 浏览器的出站：经 Clash ----------
@@ -313,9 +313,9 @@ def kill_browser_edge():
 def gateway_start():
     svc = SERVICES["grant"]
     if listening_pid(svc["port"]) is not None:
-        return {"ok": True, "msg": "临时授权网关已经在运行"}
+        return {"ok": True, "msg": "临时授权网关已在运行"}
     if not TEMPAUTH_GATEWAY.exists():
-        return {"ok": False, "msg": f"临时授权网关没有安装：{TEMPAUTH_GATEWAY}"}
+        return {"ok": False, "msg": f"临时授权网关未安装：{TEMPAUTH_GATEWAY}"}
     py = Path(sys.executable)
     if py.name.lower() == "pythonw.exe":
         py = py.with_name("python.exe")
@@ -330,7 +330,7 @@ def gateway_start():
         time.sleep(0.5)
         if listening_pid(svc["port"]) is not None:
             return {"ok": True, "msg": "临时授权网关已启动"}
-    return {"ok": False, "msg": "临时授权网关没在 10 秒内起来，看日志"}
+    return {"ok": False, "msg": "临时授权网关 10 秒内未启动，请查看日志"}
 
 
 def mcp_start(name):
@@ -338,18 +338,18 @@ def mcp_start(name):
         return gateway_start()
     svc = SERVICES[name]
     if listening_pid(svc["port"]) is not None:
-        return {"ok": True, "msg": f"{svc['label']} MCP 服务已经在运行"}
+        return {"ok": True, "msg": f"{svc['label']} MCP 服务已在运行"}
     try:
         s = read_secret(svc["secret"])
     except Exception as e:
-        return {"ok": False, "msg": f"读不到 {svc['label']} 的密钥文件：{e}"}
+        return {"ok": False, "msg": f"无法读取 {svc['label']} 的密钥文件：{e}"}
     exe = svc["exe"] or NODE
     needed = [(Path(NODE), "Node.js"), (PROXY_JS, "mcp-proxy"), (Path(exe), Path(exe).stem)]
     if name == "browser":
         needed.append((PLAYWRIGHT_CLI, "Playwright MCP"))
     for p, what in needed:
         if not p.exists():
-            return {"ok": False, "msg": f"找不到 {what}：{p}"}
+            return {"ok": False, "msg": f"未找到 {what}：{p}"}
     svc["log"].parent.mkdir(parents=True, exist_ok=True)
     cwd = svc.get("cwd")
     if cwd:
@@ -380,14 +380,14 @@ def mcp_start(name):
         time.sleep(0.5)
         if listening_pid(svc["port"]) is not None:
             return {"ok": True, "msg": f"{svc['label']} MCP 服务已启动"}
-    return {"ok": False, "msg": f"{svc['label']} MCP 服务没在 15 秒内起来，看日志"}
+    return {"ok": False, "msg": f"{svc['label']} MCP 服务 15 秒内未启动，请查看日志"}
 
 
 def mcp_stop(name):
     svc = SERVICES[name]
     pid = listening_pid(svc["port"])
     if pid is None:
-        return {"ok": True, "msg": f"{svc['label']} MCP 服务本来就没运行"}
+        return {"ok": True, "msg": f"{svc['label']} MCP 服务未运行"}
     if pid > 0:
         kill_tree(pid)
     image = svc.get("image", Path(svc["exe"]).name if svc["exe"] else None)
@@ -463,7 +463,7 @@ def net_status():
 def net_set(mode, port=None):
     if mode == "clash":
         if not (port and 0 < port < 65536):
-            return {"ok": False, "msg": "端口不对"}
+            return {"ok": False, "msg": "端口无效"}
         server = f"127.0.0.1:{port}"
         if IS_WIN:
             _reg_set(INET_KEY, "ProxyServer", server)

@@ -109,8 +109,8 @@
     }
     if (r.id === 'browser') {
       var ok = app.state === 'connected';
-      var meta = '出口' + (app.port ? ' CLASH :' + app.port : '') + (ok && app.delay ? ' · ' + app.delay + 'MS' : '');
-      var word = !app.installed ? '未部署' : !app.port ? '未经代理' : ok ? esc(app.node) : '直连，会被墙挡住';
+      var meta = '出口' + (app.port ? ' CLASH :' + app.port : '') + (ok && app.delay ? '，延迟 ' + app.delay + 'MS' : '');
+      var word = !app.installed ? '未部署' : !app.port ? '未经代理' : ok ? esc(app.node) : '直连，无法访问外网';
       var wcls = !app.installed ? ' is-off' : ok ? ' is-node' : ' is-err';
       h += '<div class="mc-st' + (ok ? '' : ' is-down') + '" data-next="none" style="grid-row:' + row + '" title="' + esc((app.chain || []).join(' ← ')) + '">' +
         '<p class="mc-m">' + meta + '</p><div class="mc-line"><span class="mc-v' + wcls + '">' + word + '</span></div></div>';
@@ -132,7 +132,7 @@
     var btn = $('btn-check');
     btn.setAttribute('aria-busy', String(!!s.check.running));
     btn.querySelector('.lbl').textContent = s.check.running ? '检测中' : '检测';
-    $('check-at').textContent = s.check.at || '还没检测';
+    $('check-at').textContent = s.check.at || '未检测';
 
     // 网络代理（Clash）
     var p = s.proxy, c = p.clash || {};
@@ -143,9 +143,9 @@
     pb.querySelector('.lbl').textContent = p.state === 'on' ? '关闭' : '开启';
     pb.className = 'pill pill--sm' + (p.state === 'on' ? ' pill--muted' : '');
     pb.setAttribute('aria-busy', String(p.state === 'starting' || p.state === 'stopping'));
-    $('proxy-meta').textContent = c.running ? 'CLASH :' + p.port + (c.mode ? ' · ' + c.mode : '') : 'CLASH 未运行';
-    $('proxy-node').textContent = !c.running ? '' : c.mode === 'direct' ? 'Clash 是直连模式，不经过节点' :
-      c.node ? '节点 ' + c.node + (c.delay ? ' · ' + c.delay + 'MS' : '') : '';
+    $('proxy-meta').textContent = c.running ? 'CLASH :' + p.port + (c.mode ? '，模式 ' + c.mode : '') : 'CLASH 未运行';
+    $('proxy-node').textContent = !c.running ? '' : c.mode === 'direct' ? 'Clash 处于直连模式，不经过节点' :
+      c.node ? '节点 ' + c.node + (c.delay ? '，延迟 ' + c.delay + 'MS' : '') : '';
 
     // 线路图
     var t = s.tunnel, on = t.state === 'on';
@@ -168,7 +168,7 @@
     emit('status', s);
     var off = $('agent-offline');
     off.hidden = s.agent.online;
-    off.textContent = s.agent.online ? '' : 'blender 账号的代理没在运行，服务和应用的状态读不到：' + (s.agent.msg || '') + '。登录一次 blender 账号即可。';
+    off.textContent = s.agent.online ? '' : 'blender 账号的代理未运行，无法读取服务和应用的状态：' + (s.agent.msg || '') + '。请登录一次 blender 账号。';
   }
 
   /* ---------------- 动作 ---------------- */
@@ -217,7 +217,8 @@
       if (!d.ok) return toast('error', d.msg || '操作失败');
       if (d.undo) toast('info', d.msg, '撤销', function () { api('POST', d.undo.path, d.undo.body).then(function (r) { after(r); }); });
     });
-    ['approval.created', 'approval.resolved', 'log.created', 'log.updated', 'grant.changed', 'counts'].forEach(function (ev) {
+    ['approval.created', 'approval.resolved', 'log.created', 'log.updated', 'grant.changed', 'counts',
+      'login.created', 'login.changed', 'login.resolved', 'logins.changed', 'loginwin.changed'].forEach(function (ev) {
       es.addEventListener(ev, function (e) { emit(ev, JSON.parse(e.data)); });
     });
     es.addEventListener('open', function () { emit('reconnect'); });

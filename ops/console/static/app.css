@@ -37,10 +37,10 @@ body{font:400 14px/1.6 var(--font-body);overflow:hidden}
 .mc-side-row .pill{margin-left:auto}
 
 /* 线路图 */
-.mc-board{position:absolute;left:416px;top:104px;width:832px;display:grid;grid-template-columns:168px 40px 232px 196px 196px;grid-template-rows:56px repeat(4,112px)}
+.mc-board{position:absolute;left:416px;top:104px;width:832px;display:grid;grid-template-columns:168px 40px 232px 196px 196px;grid-template-rows:56px repeat(5,96px)}
 .mc-colh{display:flex;flex-direction:column;justify-content:flex-start}
 .mc-colh .mc-k{line-height:16px}
-.mc-gate{grid-column:1;grid-row:2 / span 4;display:flex;flex-direction:column;padding:24px;background:var(--strip);color:var(--strip-fg)}
+.mc-gate{grid-column:1;grid-row:2 / span 5;display:flex;flex-direction:column;padding:24px;background:var(--strip);color:var(--strip-fg)}
 .mc-gate .mc-en,.mc-gate .mc-k{color:var(--strip-meta)}
 .mc-gate-state{margin-top:4px;font:700 28px/36px var(--font-bold)}
 .mc-gate-state.is-err{color:var(--color-error)}
@@ -77,3 +77,4 @@ body{font:400 14px/1.6 var(--font-body);overflow:hidden}
 .pill[aria-busy="true"]{opacity:.6;pointer-events:none}
 .mc-offline{position:absolute;left:416px;right:32px;bottom:32px;font:400 13px/20px var(--font-body);color:var(--color-error)}
 .mc-res b.mc-dim{color:var(--color-text-disabled)}
+.mc-st .mc-v.is-node{max-width:180px;overflow:hidden;text-overflow:ellipsis;font-size:14px}

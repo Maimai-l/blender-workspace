@@ -54,11 +54,13 @@ ROUTES = [
      "app": {"label": "Unity 编辑器", "port": 6400, "image": "Unity.exe"}},
     {"id": "exec", "name": "命令执行", "host": os.environ.get("XMCP_HOST", "xmcp.maimaiqiu.work"),
      "port": int(os.environ.get("XMCP_MCP_PORT", "8084")), "app": None},
+    {"id": "browser", "name": "浏览器", "host": os.environ.get("WMCP_HOST", "wmcp.maimaiqiu.work"),
+     "port": int(os.environ.get("WMCP_MCP_PORT", "8088")), "app": {"label": "出口", "port": None, "image": None}},
     {"id": "grant", "name": "临时授权", "host": os.environ.get("TMCP_HOST", "tmcp.maimaiqiu.work"),
      "port": int(os.environ.get("TMCP_MCP_PORT", "8086")), "app": {"label": "授权管理", "port": None, "image": None}},
 ]
 BY_ID = {r["id"]: r for r in ROUTES}
-BREAKS = {"tunnel": "外网访问", "domain": "外网域名", "service": "服务", "app": "应用"}
+BREAKS = {"tunnel": "外网访问", "domain": "外网域名", "service": "服务", "app": "应用", "exit": "出口"}
 
 NO_WINDOW = 0x08000000 if IS_WIN else 0
 NEW_GROUP = 0x00000200 if IS_WIN else 0
@@ -256,7 +258,7 @@ class DemoEnv:
 
     def __init__(self):
         self.tunnel = True
-        self.listen = {8080: 1, 8084: 2, 9876: 3, 8765: 4}
+        self.listen = {8080: 1, 8084: 2, 9876: 3, 8765: 4, 8088: 5}
         self.procs = {"blender.exe": [3]}
         self.net = {"mode": "clash", "port": 7897}
         self.node, self.mode = "香港 01", "rule"
@@ -272,7 +274,7 @@ class DemoEnv:
         parts = [p for p in path.split("/") if p]
         if parts == ["status"]:
             return {"ok": True, "net": dict(self.net), "unity": {"bridge_port": 6400, "reloading": False, "project": "Dungeon Escape"},
-                    "blender": {}, "exec": {}}
+                    "blender": {}, "exec": {}, "browser": {"clash_port": 7899, "installed": True}}
         if parts[0] == "mcp":
             port = BY_ID[parts[1]]["port"]
             time.sleep(1.5)
@@ -337,6 +339,8 @@ class DemoEnv:
         return {}
 
     def trace(self, port, host="www.gstatic.com"):
+        if port == 7899:
+            return ["日本 02", "GLOBAL"]
         return [self.node, "节点选择"] if self.mode != "direct" else ["DIRECT"]
 
     def proxy_works(self, port):
@@ -380,6 +384,7 @@ BUSY = {}             # "tunnel" / "service:<id>" / "app:<id>" / "proxy" → "st
 CHECK = {"at": None, "running": False, "routes": {}}
 CLASH = {"running": False, "mode": None, "group": None, "node": None, "delay": None, "at": None}
 LAST = {"snapshot": None}
+EXIT = {"port": None, "chain": [], "node": None, "delay": None, "at": None}   # 浏览器出口：经哪个 Clash 入口、实际走哪个节点
 WAKE = threading.Event()
 
 
@@ -480,6 +485,24 @@ def clash_best():
     return best[0]
 
 
+def refresh_exit(port, measure=False):
+    """浏览器出口：经 port 这个 Clash 入口发一条连接，读出实际走的节点。"""
+    if not port:
+        EXIT.update({"port": None, "chain": [], "node": None, "delay": None, "at": None})
+        return
+    try:
+        chain = ENV.trace(port) or []
+    except Exception:
+        chain = []
+    node = chain[0] if chain else None
+    info = {"port": port, "chain": chain, "node": node}
+    if measure and node and node != "DIRECT":
+        info["delay"], info["at"] = node_delay(node), time.strftime("%H:%M:%S")
+    elif EXIT.get("node") != node:
+        info["delay"], info["at"] = None, None
+    EXIT.update(info)
+
+
 def snapshot():
     listen, procs = ENV.listening(), ENV.processes()
     a = ENV.agent("/status")
@@ -505,6 +528,15 @@ def snapshot():
             state = "reloading" if running and au.get("reloading") else ("connected" if connected else ("open" if running else "closed"))
             app = {"label": r["app"]["label"], "port": bridge, "state": BUSY.get("app:unity") or state,
                    "project": au.get("project", "")}
+        elif r["id"] == "browser":
+            ab = a.get("browser") or {}
+            port = ab.get("clash_port")
+            if port != EXIT.get("port"):
+                refresh_exit(port)
+            node = EXIT.get("node")
+            state = "closed" if not port else ("direct" if node in (None, "DIRECT") else "connected")
+            app = {"label": "出口", "port": port, "state": state, "node": node, "delay": EXIT.get("delay"),
+                   "dedicated": port == 7899, "installed": bool(ab.get("installed"))}
         elif r["id"] == "grant":
             app = {"label": "授权管理", "port": None, "state": "connected" if GRANT_DEPLOYED else "closed",
                    "active": 0, "pending": 0, "deployed": GRANT_DEPLOYED}
@@ -512,14 +544,14 @@ def snapshot():
             if BUSY.get(k) == "launching" and app and app["state"] == "connected":
                 BUSY.pop(k, None)
         live_break = None
-        if r["id"] == "grant" and not GRANT_DEPLOYED:
+        if (r["id"] == "grant" and not GRANT_DEPLOYED) or (r["id"] == "browser" and not (app or {}).get("installed")):
             live_break = "undeployed"
         elif not tunnel_on:
             live_break = "tunnel"
         elif not svc_up:
             live_break = "service"
         elif app is not None and app["state"] != "connected":
-            live_break = "app"
+            live_break = "exit" if r["id"] == "browser" else "app"
         chk = CHECK["routes"].get(r["id"])
         routes.append({"id": r["id"], "name": r["name"], "host": r["host"], "service": svc, "app": app,
                        "live": {"ok": live_break is None, "break": live_break},
@@ -551,6 +583,8 @@ def poller():
         try:
             if n % 15 == 0:
                 refresh_clash(measure=(n % 60 == 0))
+                if EXIT.get("port"):
+                    refresh_exit(EXIT["port"], measure=(n % 60 == 0))
             with STATE_LOCK:
                 snap = snapshot()
                 mark_stale(snap)
@@ -645,6 +679,8 @@ def check_routes():
                 brk, msg = "service", "服务未运行"
             elif code != 401:
                 brk, msg = "service", f"服务返回 {code}，没带密钥却{'被放行' if code == 200 else '没被拒绝'}"
+            elif r["id"] == "browser" and r["app"]["state"] != "connected":
+                brk, msg = "exit", "浏览器出口不经过节点，外网网站会被墙挡住"
             elif r["app"] is not None and r["app"]["state"] != "connected":
                 brk, msg = "app", f"{r['app']['label']}未连接"
             else:
@@ -656,6 +692,8 @@ def check_routes():
         for t in threads:
             t.start()
         refresh_clash(measure=True)
+        if EXIT.get("port"):
+            refresh_exit(EXIT["port"], measure=True)
         for t in threads:
             t.join()
         CHECK["routes"] = results

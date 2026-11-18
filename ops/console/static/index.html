@@ -14,11 +14,9 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
 <div class="mc-fit"><div class="mc-screen" id="screen">
   <header class="mc-top">
     <div class="mc-brand"><i></i><span>MCP Console</span></div>
-    <div class="mtabs" role="tablist" aria-label="页面" data-qe tabindex="0">
-      <span class="key" aria-hidden="true">Q</span>
+    <div class="mtabs" role="tablist" aria-label="页面">
       <button class="mtab" type="button" role="tab" aria-selected="true" data-page="status"><svg class="ic"><use href="#i-bolt"></use></svg>连接状态</button>
       <button class="mtab" type="button" role="tab" aria-selected="false" data-page="grants"><svg class="ic"><use href="#i-inbox"></use></svg>临时授权<span class="badge" id="tab-badge" aria-label="有待确认" hidden></span></button>
-      <span class="key" aria-hidden="true">E</span>
     </div>
     <div class="mc-hud">
       <button class="mc-chip" type="button" data-go="grants">待确认<b id="hud-pending">0</b></button>

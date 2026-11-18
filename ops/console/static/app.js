@@ -61,7 +61,7 @@
     if (r.live.break === 'undeployed') return '<b class="mc-dim">未部署</b>';
     var c = r.check && !r.check.stale ? r.check : null;
     var ok = c ? c.ok : r.live.ok;
-    var where = c ? c.where : { tunnel: '外网访问', service: '服务', app: '应用', domain: '外网域名' }[r.live.break];
+    var where = c ? c.where : { tunnel: '外网访问', service: '服务', app: '应用', domain: '外网域名', exit: '出口' }[r.live.break];
     if (ok) return '<b>正常</b>' + (c ? '' : '');
     return '<b class="is-err">不通</b>断在' + esc(where || '');
   }
@@ -94,6 +94,15 @@
       h += '<div class="mc-st' + (deployed ? '' : ' is-down') + '" data-next="none" style="grid-row:' + row + '">' +
         '<p class="mc-m">生效 ' + (app.active || 0) + '，待确认 ' + (app.pending || 0) + '</p>' +
         '<div class="mc-line"><span class="mc-v">授权管理</span>' + pill('进入', 'data-go-grants') + '</div></div>';
+      return h;
+    }
+    if (r.id === 'browser') {
+      var ok = app.state === 'connected';
+      var meta = '出口' + (app.port ? ' CLASH :' + app.port : '') + (ok && app.delay ? ' · ' + app.delay + 'MS' : '');
+      var word = !app.installed ? '未部署' : !app.port ? '未经代理' : ok ? esc(app.node) : '直连，会被墙挡住';
+      var wcls = !app.installed ? ' is-off' : ok ? ' is-node' : ' is-err';
+      h += '<div class="mc-st' + (ok ? '' : ' is-down') + '" data-next="none" style="grid-row:' + row + '" title="' + esc((app.chain || []).join(' ← ')) + '">' +
+        '<p class="mc-m">' + meta + '</p><div class="mc-line"><span class="mc-v' + wcls + '">' + word + '</span></div></div>';
       return h;
     }
     var aw = APP_WORD[app.state] || app.state, acls = '', aact = '';

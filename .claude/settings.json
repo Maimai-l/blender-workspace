@@ -28,7 +28,8 @@
       "mcp__exec__CronCreate",
       "mcp__exec__CronDelete",
       "mcp__exec__CronList",
-      "mcp__exec__Workflow"
+      "mcp__exec__Workflow",
+      "mcp__browser__browser_run_code_unsafe"
     ]
   },
   "autoMode": {

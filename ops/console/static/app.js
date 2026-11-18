@@ -37,6 +37,10 @@
   fit();
 
   /* ---------------- 页面切换 ---------------- */
+  var HANDLERS = {};
+  function on(ev, fn) { (HANDLERS[ev] = HANDLERS[ev] || []).push(fn); }
+  function emit(ev, d) { (HANDLERS[ev] || []).forEach(function (fn) { try { fn(d); } catch (e) { console.error(e); } }); }
+
   function go(page) {
     document.querySelectorAll('.mtab').forEach(function (t) {
       var on = t.dataset.page === page;
@@ -44,6 +48,7 @@
     });
     $('page-status').hidden = page !== 'status';
     $('page-grants').hidden = page !== 'grants';
+    emit('page', page);
   }
   document.querySelectorAll('.mtab').forEach(function (t) { t.addEventListener('click', function () { go(t.dataset.page); }); });
   document.querySelectorAll('[data-go]').forEach(function (b) { b.addEventListener('click', function () { go(b.dataset.go); }); });
@@ -91,9 +96,13 @@
     // 下游应用
     if (!app) { h += '<div style="grid-row:' + row + '"></div>'; return h; }
     if (grant) {
-      h += '<div class="mc-st' + (deployed ? '' : ' is-down') + '" data-next="none" style="grid-row:' + row + '">' +
+      var gOk = app.state === 'connected';
+      var gWord = !deployed ? '未部署' : gOk ? '授权管理' : !svcUp || !app.gateway ? '网关未运行' : '助手未运行';
+      h += '<div class="mc-st' + (gOk ? '' : ' is-down') + '" data-next="none" style="grid-row:' + row + '"' +
+        (app.helper && app.helper.msg ? ' title="' + esc(app.helper.msg) + '"' : '') + '>' +
         '<p class="mc-m">生效 ' + (app.active || 0) + '，待确认 ' + (app.pending || 0) + '</p>' +
-        '<div class="mc-line"><span class="mc-v">授权管理</span>' + pill('进入', 'data-go-grants') + '</div></div>';
+        '<div class="mc-line"><span class="mc-v' + (gOk ? '' : deployed ? ' is-err' : ' is-off') + '">' + gWord + '</span>' +
+        (deployed ? pill('进入', 'data-go-grants') : '') + '</div></div>';
       return h;
     }
     if (r.id === 'browser') {
@@ -154,6 +163,7 @@
     $('hud-pending').textContent = s.grants.pending; $('hud-active').textContent = s.grants.active;
     $('grant-n').textContent = s.grants.active;
     $('tab-badge').hidden = !s.grants.pending;
+    emit('status', s);
     var off = $('agent-offline');
     off.hidden = s.agent.online;
     off.textContent = s.agent.online ? '' : 'blender 账号的代理没在运行，服务和应用的状态读不到：' + (s.agent.msg || '') + '。登录一次 blender 账号即可。';
@@ -205,8 +215,13 @@
       if (!d.ok) return toast('error', d.msg || '操作失败');
       if (d.undo) toast('info', d.msg, '撤销', function () { api('POST', d.undo.path, d.undo.body).then(function (r) { after(r); }); });
     });
+    ['approval.created', 'approval.resolved', 'log.created', 'log.updated', 'grant.changed', 'counts'].forEach(function (ev) {
+      es.addEventListener(ev, function (e) { emit(ev, JSON.parse(e.data)); });
+    });
+    es.addEventListener('open', function () { emit('reconnect'); });
   }
 
+  window.MC = { api: api, toast: toast, esc: esc, go: go, on: on, after: after, snap: function () { return snap; } };
   if (window.Endfield) Endfield.init(document);
   refresh().then(connect, connect);
 })();

@@ -1,4 +1,4 @@
-# 临时授权（设计中，2026-11-18）
+# 临时授权（2026-11-18 实现，待安装验收）
 
 给普通对话 AI 临时使用电脑的命令执行能力：按次数加时间限制，只能在用户勾选的 `D:\Projects\` 子文件夹里执行，执行前先过一遍检查规则。命令以隐藏的沙盒账号 `aitemp` 的身份运行，这个账号只对授权的文件夹有权限。界面加在现有 MCP 控制台上，作为“临时授权”页。
 
@@ -31,3 +31,23 @@
 - 本机回环、外网直连、文件、账号、吊销全部符合预期。
 - 唯一未通过的是测试本身的问题：`pip install --user tomli` 里的 tomli 已在 conda base，pip 什么也没装就返回成功，所以 `--user` 其实没测到。已改成装 conda base 没有的 cowsay，并检查它确实装在 `.aitemp\pyuser` 下；放进第二阶段的验收测试里一起跑。
 - 用时：给 `D:\ProgramData` 加拒绝写入要 55 秒（文件多），以后安装时做一次即可，签发授权不用重做；断网时 npm 要重试约 70 秒才放弃，已在环境变量里把 npm 重试改为 1 次、间隔 2～5 秒。
+
+## 第二阶段实现（2026-11-18）
+| 文件 | 作用 |
+|---|---|
+| `helper/AitempHelper.cs` + `wfp.cs` | 授权助手，Windows 服务 `AITempHelper`（SYSTEM）。C# 5，用 .NET Framework 自带的 csc 编译，安装包在电脑上现编。命名管道 `\\.\pipe\aitemp-helper`，只给 blender 账号读写。日志 `C:\ProgramData\BlenderMCP\aitemp-helper.log` |
+| `gateway/gateway.py` | 网关（blender 账号，标准库）。8086 对外 MCP（`/t/<令牌>/mcp`，7 个工具），8087 管理接口（令牌在 `C:\ProgramData\BlenderMCP\tempauth.token`）。数据 `C:\Users\blender\TempAuth\tempauth.db`。由 agent.py 随代理启动。`--demo` 用假助手，可在 Linux 上测 |
+| `install.ps1` + `stage.py` | 安装包：`python3 ops/tempauth/stage.py <目录>` 把文件和 SHA256 整理好，传到 `D:\Projects\mcp-console-stage\tempauth\`，用户在主账号管理员 PowerShell 7 运行 |
+| `test/accept.py` | 装好后在 blender 账号跑的验收测试，报告 `D:\Projects\aitemp-test\accept-report.md` |
+
+要点：
+- **每条授权一个本地组** `AITemp-<授权编号>`，授权文件夹上只加这个组的“修改”权限。运行前把 aitemp 临时加进组、`LogonUser` 拿令牌、立刻移出：令牌里的组在登录时就定了，所以同时有几条授权时，一条授权的命令碰不到另一条的文件夹。令牌按授权缓存。aitemp 自己的拒绝项始终有效。
+- 命令：`CreateProcessAsUser` 进单独的窗口站 `AITempWS\Default`（服务所在的窗口站 aitemp 进不去，控制台程序会初始化失败），作业对象（结束即杀子进程、8 GB 内存、低于正常优先级），一次一条；输出留头尾各 96 KB，每行先按 UTF-8、不行再按 GBK 解。shell 可选 cmd、powershell（-EncodedCommand，先切 UTF-8 输出）、bash（Git Bash）。
+- 读写文件、列目录：助手模拟 aitemp + 授权组的身份做，边界还是账号权限；另按真实路径（解析联接）核一遍在授权文件夹里。
+- 环境变量：TEMP、pip/npm/uv 缓存、`PYTHONUSERBASE`、npm 全局目录都指到 `<文件夹>\.aitemp\`；PATH 固定（conda、D:\Program Files、git、Blender、系统目录）；联网时 `HTTP(S)_PROXY=127.0.0.1:7899`；npm 重试 1 次。
+- 联网：WFP 按命令切换（一次一条，所以不会串）；命令结束恢复断网。
+- 巡查：每 20 秒和每条命令结束后，结束不在当前作业里的 aitemp 进程（防经计划任务、WMI 绕出作业）。
+- 自检：D 盘新出现的顶层目录自动按数据目录拒绝；以 aitemp 身份跑一段探测脚本（受保护位置、本机端口、外网）。
+- 网关：执行前检查只作提醒；一次调用最多等 75 秒（Cloudflare 约 100 秒断开），没跑完给任务编号；执行前确认同样等 75 秒，之后对方用 get_command_result 取结果。执行和写文件计次，助手没启动成功会退回次数。吊销：令牌失效 + 结束作业（实测接口 2 ms 返回）；10 分钟内可恢复，之后（或到期、用完）撤掉文件夹权限、删组。
+- 控制台：`/api/grants` 等转给网关的管理接口，网关事件转推到页面；`POST /api/fs/pick` 在主账号桌面弹出选择文件夹的对话框。浏览器拿不到从资源管理器拖进来的文件夹的完整路径，所以签发框支持粘贴路径、拖入文字路径、“浏览…”和页内浏览。
+- 网关演示测试（Linux，假助手）和界面截图测试（Playwright）都过了；真机要装好后跑 `test/accept.py`。

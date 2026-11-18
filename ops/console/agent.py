@@ -1,6 +1,6 @@
 """MCP 代理（运行在 blender 账号里）。
 
-只监听 127.0.0.1，替控制台启动/停止四条 MCP 服务（Blender、Unity、命令执行、浏览器）的 mcp-proxy、
+只监听 127.0.0.1，替控制台启动/停止 MCP 服务（Blender、Unity、命令执行、浏览器的 mcp-proxy，临时授权网关）、
 打开 Blender 和 Unity、返回状态和日志。
 每次启动生成新令牌，写到 C:\\ProgramData\\BlenderMCP\\agent.token，控制台凭它调用。
 只用 Python 标准库。
@@ -13,6 +13,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -97,6 +98,16 @@ SERVICES = {
         "cwd": BROWSER_RUN,
         "image": None,
     },
+}
+
+# 临时授权网关（ops/tempauth/gateway）：自己就是 HTTP 服务，不经 mcp-proxy；装好后随代理一起启动
+TEMPAUTH_GATEWAY = Path(os.environ.get("TMCP_GATEWAY", str(ROOT / "tempauth" / "gateway.py")))
+SERVICES["grant"] = {
+    "label": "临时授权",
+    "port": int(os.environ.get("TMCP_PORT", "8086")),
+    "secret": TEMPAUTH_GATEWAY,   # 只用来判断装没装
+    "log": HOME / "TempAuth" / "gateway.log",
+    "exe": None, "args": [], "image": None,
 }
 
 NO_TELEMETRY = {"DISABLE_TELEMETRY": "true", "UNITY_MCP_DISABLE_TELEMETRY": "true", "MCP_DISABLE_TELEMETRY": "true"}
@@ -299,7 +310,32 @@ def kill_browser_edge():
 
 # ---------- MCP 服务（mcp-proxy + stdio 服务端） ----------
 
+def gateway_start():
+    svc = SERVICES["grant"]
+    if listening_pid(svc["port"]) is not None:
+        return {"ok": True, "msg": "临时授权网关已经在运行"}
+    if not TEMPAUTH_GATEWAY.exists():
+        return {"ok": False, "msg": f"临时授权网关没有安装：{TEMPAUTH_GATEWAY}"}
+    py = Path(sys.executable)
+    if py.name.lower() == "pythonw.exe":
+        py = py.with_name("python.exe")
+    svc["log"].parent.mkdir(parents=True, exist_ok=True)
+    env = dict(os.environ, PYTHONUNBUFFERED="1")
+    for k in [k for k in env if k.upper() in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")]:
+        del env[k]
+    with open(svc["log"], "ab") as log:
+        subprocess.Popen([str(py), str(TEMPAUTH_GATEWAY)], stdout=log, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                         env=env, cwd=str(svc["log"].parent), creationflags=NO_WINDOW | NEW_GROUP)
+    for _ in range(20):
+        time.sleep(0.5)
+        if listening_pid(svc["port"]) is not None:
+            return {"ok": True, "msg": "临时授权网关已启动"}
+    return {"ok": False, "msg": "临时授权网关没在 10 秒内起来，看日志"}
+
+
 def mcp_start(name):
+    if name == "grant":
+        return gateway_start()
     svc = SERVICES[name]
     if listening_pid(svc["port"]) is not None:
         return {"ok": True, "msg": f"{svc['label']} MCP 服务已经在运行"}
@@ -551,6 +587,8 @@ def main():
         sys.exit(0)  # 已有一个代理在运行
     TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
     TOKEN_FILE.write_text(TOKEN, encoding="utf-8")
+    if TEMPAUTH_GATEWAY.exists():
+        threading.Thread(target=gateway_start, daemon=True).start()
     srv.serve_forever()
 
 

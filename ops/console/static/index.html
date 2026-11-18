@@ -45,39 +45,106 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
     <p class="mc-offline" id="agent-offline" hidden></p>
   </div>
 
-  <!-- P2 临时授权（第二阶段） -->
+  <!-- P2 临时授权 -->
   <div class="mc-page" id="page-grants" hidden>
     <section class="mc-lead">
       <p class="mc-en">Active Grants</p>
       <p class="mc-zh">生效中的授权</p>
       <p class="mc-hero"><b id="grant-n">0</b></p>
       <div class="mc-act">
-        <button class="btn btn--accent" type="button" disabled><span class="lbl">签发</span></button>
-        <button class="btn btn--ghost" type="button" disabled><span class="lbl">查看规则</span></button>
+        <button class="btn btn--accent" type="button" id="btn-issue"><span class="lbl">签发</span></button>
+        <button class="btn btn--ghost" type="button" id="btn-rules"><span class="lbl">查看规则</span></button>
       </div>
     </section>
     <section class="mc-side">
       <p class="mc-en">Blocked Today</p>
-      <div class="mc-side-row"><span class="mc-k">今日拦截</span><span class="mc-v mc-n">0</span></div>
+      <div class="mc-side-row"><span class="mc-k">今日拦截</span><span class="mc-v mc-n" id="blocked-n">0</span></div>
       <p class="mc-m">沙盒账号 AITEMP</p>
+      <p class="mc-m" id="helper-meta"></p>
     </section>
     <section class="mc-main">
-      <div class="mc-bar"><span class="mc-en">Grants</span></div>
-      <div class="mc-note" data-theme="dark">
-        <p class="mc-zh">临时授权还没有部署</p>
-        <p>这一页的功能要在电脑上装好以后才能用。安装包会做这几件事，需要你在主账号用管理员身份运行一次：</p>
-        <ol>
-          <li>建隐藏的沙盒账号 aitemp，命令都以它的身份执行；</li>
-          <li>启动临时授权网关（本机 8086 端口），并开通外网域名 tmcp.maimaiqiu.work；</li>
-          <li>按规则收紧 aitemp 的文件和联网权限。</li>
-        </ol>
+      <div class="mc-warn" id="grant-warn" hidden></div>
+      <div class="mc-bar">
+        <span class="mc-en">Grants</span>
+        <div class="seg" role="group" aria-label="授权范围" id="grant-filter"><button type="button" aria-pressed="true" data-v="active">生效中</button><button type="button" aria-pressed="false" data-v="all">全部</button></div>
+      </div>
+      <div class="mc-grants" id="grant-list"></div>
+      <div class="mc-loghead"><span class="mc-en">Log</span><span class="mc-zh">执行记录</span><span class="mc-logfilter" id="log-filter" hidden></span></div>
+      <div class="mc-log" id="log">
+        <div class="mc-lrow mc-lhead"><span class="h">时间</span><span class="h">操作</span><span class="h">命令或路径</span><span class="h">结果</span><span class="h">说明</span><span class="h d">用时</span></div>
+        <div class="mc-lbody" id="log-body"></div>
       </div>
     </section>
   </div>
 
-  <div class="toast-stack" aria-live="polite" style="position:absolute;right:32px;bottom:32px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;z-index:400"></div>
+  <!-- P5 待确认：任何页面都能看到 -->
+  <section class="mc-pend" data-theme="dark" id="pend" hidden aria-live="polite"></section>
+
+  <div class="toast-stack" aria-live="polite" style="position:absolute;right:32px;top:80px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;z-index:400"></div>
 </div></div>
+
+<!-- P3 签发 / P4 签发结果 -->
+<dialog class="dialog dialog--md mc-dlg" id="dlg-issue" aria-labelledby="dlg-issue-h">
+  <div class="dlg-head"><h4 id="dlg-issue-h">签发临时授权</h4><button class="cbtn" type="button" data-close aria-label="关闭"><svg class="ic"><use href="#i-close"></use></svg></button></div>
+  <div class="dlg-body" id="issue-form">
+    <div class="mc-f">
+      <span class="field-label">文件夹<span class="req">必填</span></span>
+      <div class="mc-chips" id="issue-folders"></div>
+      <div class="mc-frow">
+        <div class="input input--sm" id="issue-path-box"><input id="issue-path" type="text" placeholder="粘贴或拖入路径，例如 D:\Projects\demo" autocomplete="off" spellcheck="false"></div>
+        <button class="btn btn--secondary btn--sm" type="button" id="issue-add"><span class="lbl">添加</span></button>
+        <button class="btn btn--secondary btn--sm" type="button" id="issue-pick"><span class="lbl">浏览…</span></button>
+        <button class="btn btn--ghost btn--sm" type="button" id="issue-browse"><span class="lbl">在这里选</span></button>
+      </div>
+      <div class="mc-fs" id="issue-fs" hidden></div>
+      <p class="mc-hint">只能读写这些文件夹。受保护位置、系统和程序目录、盘符和顶层目录不能选。</p>
+    </div>
+    <div class="mc-f">
+      <label class="field-label" for="issue-name">用途</label>
+      <div class="input input--sm"><input id="issue-name" type="text" maxlength="60" placeholder="留空就用文件夹名" autocomplete="off"></div>
+    </div>
+    <div class="mc-f"><span class="field-label">有效期</span>
+      <div class="mc-frow"><div class="seg" role="group" aria-label="有效期" id="issue-minutes"><button type="button" data-v="30">30 分钟</button><button type="button" data-v="60">1 小时</button><button type="button" data-v="240">4 小时</button><button type="button" data-v="1440">1 天</button></div></div></div>
+    <div class="mc-f">
+      <div class="mc-f"><span class="field-label">可执行次数</span>
+        <div class="mc-frow"><div class="seg" role="group" aria-label="可执行次数" id="issue-limit"><button type="button" data-v="5">5</button><button type="button" data-v="20">20</button><button type="button" data-v="50">50</button><button type="button" data-v="-1">不限</button><button type="button" data-v="custom">自定义</button></div>
+        <div class="input input--sm mc-num" id="issue-custom-box" hidden><input id="issue-custom" type="text" inputmode="numeric" value="10"><span class="unit">次</span></div></div></div>
+    </div>
+    <div class="mc-f2">
+      <div class="mc-f"><span class="field-label">联网</span>
+        <div class="seg" role="group" aria-label="联网" id="issue-net"><button type="button" data-v="0">不允许</button><button type="button" data-v="1">允许</button></div></div>
+      <div class="mc-f"><span class="field-label">执行前确认</span>
+        <div class="seg" role="group" aria-label="执行前确认" id="issue-confirm"><button type="button" data-v="0">不需要</button><button type="button" data-v="1">需要</button></div></div>
+    </div>
+    <p class="mc-hint">只有执行命令和写文件计次；读取、列目录、被拦截和被拒绝的调用不计。允许联网时经 Clash 出网。</p>
+  </div>
+  <div class="dlg-body" id="issue-done" hidden></div>
+  <div class="dlg-foot" id="issue-foot">
+    <span class="mc-sum" id="issue-sum"></span>
+    <button class="btn btn--ghost btn--sm" type="button" data-close><span class="lbl">取消</span></button>
+    <button class="btn btn--accent btn--sm" type="button" id="issue-go"><span class="lbl">签发</span></button>
+  </div>
+  <div class="dlg-foot" id="issue-foot2" hidden>
+    <button class="btn btn--secondary btn--sm" type="button" id="issue-copy"><span class="lbl">再次复制提示词</span></button>
+    <button class="btn btn--accent btn--sm" type="button" data-close><span class="lbl">完成</span></button>
+  </div>
+</dialog>
+
+<!-- P6 执行前检查规则 -->
+<dialog class="dialog dialog--md mc-dlg" id="dlg-rules" aria-labelledby="dlg-rules-h">
+  <div class="dlg-head"><h4 id="dlg-rules-h">执行前检查规则</h4><button class="cbtn" type="button" data-close aria-label="关闭"><svg class="ic"><use href="#i-close"></use></svg></button></div>
+  <div class="dlg-body">
+    <p>规则只作提醒和记录：真正的边界是沙盒账号 aitemp 自己的权限，规则漏掉的写法也碰不到授权文件夹以外的东西。命中规则的调用会被拦截，不计次数。今天拦截 <b class="mc-n" id="rules-blocked">0</b> 次。</p>
+    <dl class="mc-rules" id="rules-list"></dl>
+    <div class="mc-verify" id="verify-out" hidden></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn btn--secondary btn--sm" type="button" id="btn-verify"><span class="lbl">检查沙盒权限</span></button>
+    <button class="btn btn--accent btn--sm" type="button" data-close><span class="lbl">知道了</span></button>
+  </div>
+</dialog>
 <script src="/static/ds/components/bundle.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/grants.js"></script>
 </body>
 </html>

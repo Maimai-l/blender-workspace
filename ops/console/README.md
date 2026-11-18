@@ -20,8 +20,12 @@
   - Clash 是直连模式时照样开启，但提示实际不经过节点。
 - 测试：`python3 console.py --demo` 用模拟数据（隧道、服务、Clash 都是假的），Playwright 截图核对设计稿；电脑上用 blender 账号在 18765 端口跑过真实环境（检测、启停 Blender 服务、开关代理、令牌和 Host 校验、Clash 链路读取）。隧道开关只在主账号可用（凭证在主账号）。
 
-## 第二阶段（待做）：临时授权
-网关（tmcp.maimaiqiu.work → 8086）、沙盒账号 aitemp、执行前确认与检查、执行记录。需要管理员：建账号、给文件夹授权、在 Cloudflare 上给隧道加 tmcp 的 DNS 记录（`cloudflared tunnel route dns`，凭证在主账号）。
+## 第二阶段（2026-11-18 实现）：临时授权
+- 实现在 `ops/tempauth/`（授权助手、网关、安装包、验收测试），见那里的 README。
+- `console.py`：`/api/grants`、`approvals`、`logs`、`rules`、`fs`、`sandbox` 转给网关的管理接口 127.0.0.1:8087；后台线程订阅网关的事件流，转推 `approval.created/resolved`、`log.created/updated`、`grant.changed`、`counts`；`POST /api/fs/pick` 弹出选择文件夹对话框。`C:\Program Files\BlenderMCP\tempauth\gateway.py` 存在即视为已部署。
+- `agent.py`：第五个服务 `grant`（8086），直接用 Python 运行 gateway.py（不经 mcp-proxy），代理启动时自动拉起。
+- 页面：`static/grants.js`（P2 授权列表与执行记录、P3/P4 签发、P5 待确认浮层（任何页面可见，可收起）、P6 规则与沙盒自检、记录详情）。
+- 第四条线路的第三段改为“授权助手”：网关和助手都就绪才算接通。
 
 ## 浏览器 MCP（2026-11-18）
 方案见《Windows 主机维护手册》的「浏览器」页。实现要点：

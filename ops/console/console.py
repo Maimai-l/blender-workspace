@@ -1,6 +1,8 @@
 """MCP 控制台 v2（运行在主账号里），按《MCP 控制台需求》和《MCP 控制台设计稿》实现。
 
-浏览器打开 http://127.0.0.1:8765 。两个页面：连接状态、临时授权（第二阶段）。
+浏览器打开 http://127.0.0.1:8765 。两个页面：连接状态、临时授权。
+- 临时授权：/api/grants、approvals、logs、rules、fs、sandbox 转给 blender 账号里的临时授权网关的管理接口
+  （127.0.0.1:8087，令牌在 C:\\ProgramData\\BlenderMCP\\tempauth.token），网关的事件转推到本页的事件流。
 - 外网访问：Cloudflare 隧道，一条隧道按域名分到各条线路。
 - 线路：外网域名 → 本机 MCP 服务 → 下游应用。MCP 服务、Blender、Unity 的开关转交给 blender 账号里的 agent.py。
 - 网络代理：blender 账号经主账号的 Clash（mihomo）上网；同时经 Clash 的控制管道读模式、节点和延迟，
@@ -42,7 +44,11 @@ TUNNEL_CONFIG = DATA / "cloudflared.yml"
 TOKEN_FILE = DATA / "panel.token"
 CLASH_PIPE = os.environ.get("BMCP_CLASH_PIPE", r"\\.\pipe\verge-mihomo")
 CLASH_TEST_URL = "https://www.gstatic.com/generate_204"
-GRANT_DEPLOYED = os.environ.get("BMCP_GRANT_DEPLOYED") == "1"   # 第二阶段装好临时授权网关后打开
+TEMPAUTH_DIR = Path(os.environ.get("BMCP_TEMPAUTH_DIR", r"C:\Program Files\BlenderMCP\tempauth"))
+GRANT_DEPLOYED = os.environ.get("BMCP_GRANT_DEPLOYED") == "1" or (TEMPAUTH_DIR / "gateway.py").exists()
+GW_PORT = int(os.environ.get("TMCP_ADMIN_PORT", "8087"))
+GW_TOKEN_FILE = Path(os.environ.get("TMCP_ADMIN_TOKEN_FILE", r"C:\ProgramData\BlenderMCP\tempauth.token"))
+GRANTS = {"online": False, "helper": None, "active": 0, "pending": 0, "blocked_today": 0}
 
 # 4 条线路：外网域名 → MCP 服务 → 下游应用
 ROUTES = [
@@ -258,7 +264,7 @@ class DemoEnv:
 
     def __init__(self):
         self.tunnel = True
-        self.listen = {8080: 1, 8084: 2, 9876: 3, 8765: 4, 8088: 5}
+        self.listen = {8080: 1, 8084: 2, 9876: 3, 8765: 4, 8088: 5, 8086: 6}
         self.procs = {"blender.exe": [3]}
         self.net = {"mode": "clash", "port": 7897}
         self.node, self.mode = "香港 01", "rule"
@@ -538,8 +544,11 @@ def snapshot():
             app = {"label": "出口", "port": port, "state": state, "node": node, "delay": EXIT.get("delay"),
                    "dedicated": port == 7899, "installed": bool(ab.get("installed"))}
         elif r["id"] == "grant":
-            app = {"label": "授权管理", "port": None, "state": "connected" if GRANT_DEPLOYED else "closed",
-                   "active": 0, "pending": 0, "deployed": GRANT_DEPLOYED}
+            helper = GRANTS.get("helper") or {}
+            ok = GRANT_DEPLOYED and svc_up and GRANTS["online"] and helper.get("ok")
+            app = {"label": "授权助手", "port": None, "state": "connected" if ok else "closed",
+                   "active": GRANTS["active"], "pending": GRANTS["pending"], "deployed": GRANT_DEPLOYED,
+                   "helper": helper, "gateway": GRANTS["online"]}
         for k in ("app:" + r["id"],):          # 应用连上后清掉“正在打开”
             if BUSY.get(k) == "launching" and app and app["state"] == "connected":
                 BUSY.pop(k, None)
@@ -565,7 +574,8 @@ def snapshot():
     return {"ok": True, "tunnel": tunnel, "routes": routes, "online": online, "total": len(counted),
             "proxy": proxy, "agent": {"online": agent_online, "msg": a.get("msg", "")},
             "check": {"at": CHECK["at"], "running": CHECK["running"]},
-            "grants": {"deployed": GRANT_DEPLOYED, "active": 0, "pending": 0}}
+            "grants": {"deployed": GRANT_DEPLOYED, "online": GRANTS["online"], "helper": GRANTS.get("helper"),
+                       "active": GRANTS["active"], "pending": GRANTS["pending"], "blocked_today": GRANTS["blocked_today"]}}
 
 
 def mark_stale(snap):
@@ -577,10 +587,112 @@ def mark_stale(snap):
             r["check"] = c
 
 
+# ======================================================================== 临时授权网关
+
+def gw(method, path, body=None, timeout=150):
+    """调网关的管理接口，返回 (数据, 状态码)。"""
+    try:
+        tok = GW_TOKEN_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return {"ok": False, "msg": "临时授权网关没有运行"}, 503
+    data = json.dumps(body or {}, ensure_ascii=False).encode() if method == "POST" else None
+    req = urllib.request.Request(f"http://127.0.0.1:{GW_PORT}{path}", data=data, method=method,
+                                 headers={"X-Tempauth-Token": tok, "Content-Type": "application/json"})
+    try:
+        with LOCAL.open(req, timeout=timeout) as r:
+            return json.loads(r.read()), r.status
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read()), e.code
+        except ValueError:
+            return {"ok": False, "msg": f"网关返回 {e.code}"}, e.code
+    except (urllib.error.URLError, OSError, ValueError):
+        return {"ok": False, "msg": "临时授权网关没有运行"}, 503
+
+
+def gw_state():
+    d, code = gw("GET", "/admin/state", timeout=10)
+    if code == 200 and d.get("ok"):
+        GRANTS.update(online=True, helper=d.get("helper"), active=d.get("active", 0), pending=d.get("pending", 0),
+                      blocked_today=d.get("blocked_today", 0))
+    else:
+        GRANTS.update(online=False, helper=None)
+    kick()
+
+
+def gw_relay():
+    """订阅网关的事件流，转推给页面；断了 3 秒后重连。"""
+    while True:
+        if not GRANT_DEPLOYED:
+            time.sleep(30)
+            continue
+        try:
+            tok = GW_TOKEN_FILE.read_text(encoding="utf-8").strip()
+            req = urllib.request.Request(f"http://127.0.0.1:{GW_PORT}/admin/events", headers={"X-Tempauth-Token": tok})
+            with LOCAL.open(req, timeout=40) as r:
+                gw_state()
+                ev, data = None, []
+                for raw in r:
+                    line = raw.decode("utf-8").rstrip("\r\n")
+                    if line.startswith("event:"):
+                        ev = line[6:].strip()
+                    elif line.startswith("data:"):
+                        data.append(line[5:].strip())
+                    elif not line:
+                        if ev and data:
+                            d = json.loads("\n".join(data))
+                            if ev == "counts":
+                                GRANTS.update(active=d.get("active", 0), pending=d.get("pending", 0),
+                                              blocked_today=d.get("blocked_today", 0))
+                                kick()
+                            HUB.publish(ev, d)
+                        ev, data = None, []
+        except Exception as e:
+            if GRANTS["online"]:
+                print("gw_relay:", type(e).__name__, e, file=sys.stderr)
+        if GRANTS["online"]:
+            GRANTS.update(online=False)
+            kick()
+        time.sleep(3)
+
+
+PICKING = {"on": False}
+
+
+def pick_folder(body):
+    """在主账号的桌面上弹出选择文件夹的对话框（R4.1.2）。"""
+    if not IS_WIN:
+        return {"ok": False, "msg": "只能在 Windows 上弹出选择框"}, 400
+    if PICKING["on"]:
+        return {"ok": False, "msg": "选择框已经打开了，请在任务栏里找一下"}, 409
+    start = str(body.get("start") or r"D:\Projects").replace("'", "''")
+    ps = ("Add-Type -AssemblyName System.Windows.Forms;"
+          "$f=New-Object System.Windows.Forms.FolderBrowserDialog;"
+          "$f.Description='选择要临时授权的文件夹';$f.ShowNewFolderButton=$true;"
+          f"$f.SelectedPath='{start}';"
+          "$w=New-Object System.Windows.Forms.Form;$w.TopMost=$true;"
+          "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
+          "if($f.ShowDialog($w) -eq [System.Windows.Forms.DialogResult]::OK){$f.SelectedPath}")
+    PICKING["on"] = True
+    try:
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-STA", "-Command", ps], capture_output=True, timeout=600,
+                           creationflags=NO_WINDOW)
+        path = r.stdout.decode("utf-8", "replace").strip()
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "msg": "选择框超时"}, 408
+    finally:
+        PICKING["on"] = False
+    if not path:
+        return {"ok": True, "path": None}, 200
+    return {"ok": True, "path": path}, 200
+
+
 def poller():
     n = 0
     while True:
         try:
+            if GRANT_DEPLOYED and n % 15 == 7:
+                gw_state()
             if n % 15 == 0:
                 refresh_clash(measure=(n % 60 == 0))
                 if EXIT.get("port"):
@@ -753,7 +865,7 @@ def act_clash_best():
 NOT_YET = ({"ok": False, "msg": "临时授权尚未部署"}, 501)
 
 
-def route(method, path, body):
+def route(method, path, body, query=""):
     parts = [p for p in path.split("/") if p][1:]
     key = "/".join(parts)
     if method == "GET" and key == "status":
@@ -779,7 +891,14 @@ def route(method, path, body):
     if len(parts) == 3 and parts[0] == "routes" and parts[1] in BY_ID and parts[2] == "log" and method == "GET":
         return ENV.agent(f"/log/{parts[1]}"), 200
     if parts and parts[0] in ("grants", "approvals", "logs", "rules", "fs", "sandbox"):
-        return NOT_YET
+        if not GRANT_DEPLOYED:
+            return NOT_YET
+        if key == "fs/pick" and method == "POST":
+            return pick_folder(body)
+        res = gw(method, "/admin/" + key + ("?" + query if query else ""), body if method == "POST" else None)
+        if method == "POST":
+            threading.Thread(target=gw_state, daemon=True).start()
+        return res
     return {"ok": False, "msg": "not found"}, 404
 
 
@@ -863,7 +982,7 @@ class Handler(BaseHTTPRequestHandler):
         if not path.startswith("/api/"):
             return self._send(404, {"ok": False, "msg": "not found"})
         try:
-            data, code = route(method, path, body)
+            data, code = route(method, path, body, url.query)
             self._send(code, data)
         except Exception as e:
             self._send(500, {"ok": False, "msg": f"{type(e).__name__}: {e}"})
@@ -914,6 +1033,7 @@ def main():
         DATA.mkdir(parents=True, exist_ok=True)
         TOKEN_FILE.write_text(TOKEN, encoding="utf-8")
     threading.Thread(target=poller, daemon=True).start()
+    threading.Thread(target=gw_relay, daemon=True).start()
     if not no_browser:
         threading.Timer(0.5, open_browser, args=(TOKEN,)).start()
     srv.serve_forever()

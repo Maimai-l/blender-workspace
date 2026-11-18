@@ -67,7 +67,8 @@
     var c = r.check && !r.check.stale ? r.check : null;
     var ok = c ? c.ok : r.live.ok;
     var where = c ? c.where : { tunnel: '外网访问', service: '服务', app: '应用', domain: '外网域名', exit: '出口' }[r.live.break];
-    if (ok) return '<b>正常</b>' + (c ? '' : '');
+    if (ok && c && c.slow) return '<b class="is-err">不稳</b><span title="' + esc((c.times || []).map(function (x) { return x === null ? '无响应' : x + 's'; }).join(' / ')) + '">' + esc(c.msg) + '</span>';
+    if (ok) return '<b>正常</b>' + (c && c.median !== null && c.median !== undefined ? '<i>' + c.median + 's</i>' : '');
     return '<b class="is-err">不通</b>断在' + esc(where || '');
   }
 

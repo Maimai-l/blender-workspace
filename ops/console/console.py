@@ -133,7 +133,7 @@ class RealEnv:
         req = urllib.request.Request(f"https://{host}/mcp", data=b"{}", method="POST",
                                      headers={"Content-Type": "application/json", "User-Agent": "bmcp-console"})
         try:
-            urllib.request.urlopen(req, timeout=12)
+            urllib.request.urlopen(req, timeout=25)
             return 200
         except urllib.error.HTTPError as e:
             return e.code
@@ -917,7 +917,30 @@ def check_routes():
                 brk, msg = "app", f"{r['app']['label']}未连接"
             else:
                 brk, msg = None, "正常"
+            # 再并发探 5 次看响应时间：隧道的某条连接出毛病时，请求会时好时坏（2026-11-18：约四分之一卡 20 秒），
+            # 只看一次的状态码发现不了
+            times, slow = [], False
+            if code == 401:
+                tl = []
+
+                def timed():
+                    t0 = time.time()
+                    c2 = ENV.probe(r["host"])
+                    tl.append(round(time.time() - t0, 1) if c2 == 401 else None)
+
+                ps = [threading.Thread(target=timed) for _ in range(5)]
+                for p in ps:
+                    p.start()
+                for p in ps:
+                    p.join()
+                times = sorted(tl, key=lambda x: 99 if x is None else x)
+                bad = [x for x in times if x is None or x > 5]
+                if bad:
+                    slow = True
+                    msg = f"时好时坏：5 次里 {len(bad)} 次" + ("没响应" if None in bad else f"超过 5 秒（最慢 {max(x for x in bad if x)} 秒）")
+            med = times[len(times) // 2] if times and times[len(times) // 2] is not None else None
             results[r["id"]] = {"ok": brk is None, "break": brk, "where": BREAKS.get(brk), "msg": msg, "code": code,
+                                "slow": slow, "times": times, "median": med,
                                 "at": time.strftime("%H:%M:%S"), "stale": False, "live_sig": json.dumps(r["live"])}
 
         threads = [threading.Thread(target=one, args=(r,)) for r in snap["routes"] if r["live"]["break"] != "undeployed"]

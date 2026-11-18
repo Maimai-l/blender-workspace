@@ -60,6 +60,8 @@
 - PowerShell 脚本里不要定义和外部程序同名的函数（函数名不分大小写，且优先于程序）：2026-11-18 的测试包把 icacls 包成 `function Icacls`，函数里的 `& icacls` 调回自己，无限递归到调用深度溢出。包装函数另起名字，里面写 `icacls.exe`。交给用户运行前，用 `[System.Management.Automation.Language.Parser]::ParseFile` 查语法，并核对没有函数名和 `Get-Command -CommandType Application` 撞名。
 - icacls 给任何新加的权限项都会自动带上 SYNCHRONIZE，连 `(WD,AD,WEA,WA,D,DC)` 这样的具体权限也一样。拿它加“拒绝写入”，被拒绝的账号连程序都运行不了（打开、执行文件都要 SYNCHRONIZE）。只想拒绝写入时用 .NET 的 `FileSystemAccessRule`（非完全控制的拒绝项会去掉 SYNCHRONIZE），实测掩码 0x00010156；判断时用 Get-Acl 读掩码，icacls 的显示会把权限合并成 `W`，看不出差别。
 - `Start-Process -ArgumentList` 不会给带空格的参数加引号：`python -c "一段代码"` 会被拆开。要传代码就写成脚本文件再传路径。
+- Windows 上某级目录对一个账号拒绝了读（继承来的拒绝也算），这个账号在它下面更深处的文件夹里用 git 会失败：git 建目录时逐级 stat 整条路径。要让它在深处工作，给中间各级目录加不继承的“读属性”允许项（2026-11-18 临时授权）。
+- Python 的 `open()` 打开命名管道用 GENERIC_READ|GENERIC_WRITE，GENERIC_WRITE 含 FILE_APPEND_DATA（对管道是 CreateNewInstance）。.NET 的 PipeAccessRights.ReadWrite 不含这一位，只给 ReadWrite 时 Python 客户端会被拒绝。
 - TextMeshPro 在未激活的层级里量不出文字尺寸。要按文字高度排版的界面，先 `SetActive(true)`，再 `ForceMeshUpdate()`，然后读 `preferredHeight`。
 
 ## Anime short "Awakening" (2026-11): rendering a 2D-anime-looking film from Blender

@@ -13,6 +13,7 @@
   umcp.maimaiqiu.work → 127.0.0.1:8082 mcp-proxy → mcp-for-unity.exe (stdio) → Unity 编辑器桥接 6400/6401
   xmcp.maimaiqiu.work → 127.0.0.1:8084 mcp-proxy --requestTimeout 90000 → claude.exe mcp serve (2.1.311)
   wmcp.maimaiqiu.work → 127.0.0.1:8088 mcp-proxy --requestTimeout 90000 → Playwright MCP 0.0.85 → 无界面 Edge → Clash 浏览器专用入口 127.0.0.1:7899（proxy: GLOBAL，不受 Clash 全局模式影响）
+  tmcp.maimaiqiu.work/t/<令牌>/mcp → 127.0.0.1:8086 临时授权网关（blender 账号，管理接口 8087）→ 命名管道 aitemp-helper → 授权助手（SYSTEM 服务 AITempHelper）→ 以沙盒账号 aitemp 执行
 ```
 
 | 组件 | 位置 | 运行账号 | 说明 |
@@ -29,7 +30,7 @@
 - blender 账号对 `C:\Program Files\BlenderMCP\` 没有写权限。要改 `agent.py`、`panel.py` 或换服务版本，就做成安装包，请用户在主账号的管理员 PowerShell 7 里运行。
 - 同一台电脑上的其他服务：`0.0.0.0:17860` 是用户自己的 FireRedASR2S 转写台，开着局域网共享，属正常；`7897` 是 Clash Verge；Tailscale 也在运行。
 
-- 2026-11-18 起控制台是 v2（`ops/console/`：连接状态页、Clash 联动、浏览器线路），装法和测试见那里的 README。临时授权（tmcp → 8086）还没部署。
+- 2026-11-18 起控制台是 v2（`ops/console/`：连接状态页、Clash 联动、浏览器线路），装法和测试见那里的 README。临时授权（tmcp → 8086）2026-11-18 装好，见 `ops/tempauth/README.md`。
 
 ## 2. 健康检查
 

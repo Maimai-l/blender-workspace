@@ -77,3 +77,10 @@
 - 管理接口新增：`GET logins`、`POST logins/<域名>/delete`、`POST logins/save`、`GET logins/requests`、`POST logins/requests/<编号>`（start、decline、cancel）。事件：`login.created/changed/resolved`、`logins.changed`；控制台自己发 `loginwin.changed`。
 - 测试：PC 上用备用端口 18086/18087 跑过真实浏览器（打开网页 1.2 秒、截图、本机/局域网/file:// 被拦、evaluate 被拒、完整登录流程、吊销 0.19 秒）。界面在 Linux 上用 `gateway.py --demo` + `console.py --demo`（演示用的登录窗口 `DemoWin`）和 Playwright 跑通：新建登录、仅浏览器签发、登录请求、去登录、完成（对方拿到 `logged_in`）、拒绝（`declined`）。
 - 安装：`install.ps1 -ConsoleOnly` 现在同时更新网关（第 1、4、5 步）；装完由维护会话结束旧网关进程，agent.py 重新拉起。
+
+## 网关 2.0：对外结果规范（2026-11-18）
+- 规范在《MCP 控制台需求》第 6 节。所有工具声明 outputSchema，结果放 structuredContent（content 里同一份 JSON）；失败为 {"error": {code, message, retryable, details}}，错误码 18 个；时刻 UTC ISO 8601、时长 *_ms、大小 *_bytes；message 英文。
+- 命令和登录请求是“编号 + status + next”；退出码非 0 为 failed 且 isError。grant_info 按能力分组（folders、browser），只列适用的设置。
+- 浏览器结果：快照文件读出后放进结果（最多 60 KB）、截图只留图片、PDF 作为嵌入资源；去掉 filename 参数；Playwright 自己生成的文件处理后删除，网页下载的文件保留。
+- 带浏览器的授权次数用完后仍是 active（浏览器不计次），命令和写文件返回 limit_reached。
+- 验收：accept.py 42/42、browser_accept.py 27/27，经 tmcp 从云端实测通过。本地测试：`gateway.py --demo` 加 scratchpad 里的 v2test.py 思路（每个结果按 outputSchema 校验）。

@@ -218,7 +218,7 @@ sv = adm("POST", "logins/save", {"state": state, "domains": ["example.com"], "re
 th.join(30)
 e, sc, _, _ = out.get("r", (True, {}, "", []))
 rec("完成登录：logged_in，带刷新后的页面", sv.get("ok") and not e and sc["status"] == "logged_in" and sc["saved"] is False
-    and sc["page"]["url"].startswith("https://example.com"), sc)
+    and sc.get("page", {}).get("url"), sc)       # 写入登录后刷新当前页面（这个会话当时在本机测试页）
 e, sc, _, _ = A.call("browser_cookie_list", domain="example.com")
 rec("登录网站的 Cookie 值不给", not e and "aitemp_accept=[redacted" in sc.get("result", "") and "aitemp_accept=1" not in sc.get("result", ""), sc.get("result"))
 rec("未保存到浏览器登录", not Path(r"C:\Users\blender\TempAuth\logins\example.com.json").exists())
@@ -233,12 +233,12 @@ rec("拒绝：declined、isError", e and sc["status"] == "declined", sc)
 
 gv = [x for x in adm("GET", "grants?status=all")["grants"] if x["id"] == gid][0]
 rec("浏览器操作计数，不占次数", gv.get("browser_ops", 0) >= 30 and gv["used"] == 0, (gv.get("browser_ops"), gv["used"]))
-outdir = Path(r"C:\Users\blender\TempAuth\browser\%s\output" % gid)
-left = sorted(f.name for f in outdir.iterdir() if f.is_file()) if outdir.exists() else []
-rec("快照、截图、PDF、上传的临时文件不留下（下载的文件保留）", left == ["report.csv"], left)
 r = adm("POST", "grants/%s/revoke" % gid)
 rec("吊销", r.get("ok"), "%d ms" % r.get("ms", -1))
 time.sleep(2)
+outdir = Path(r"C:\Users\blender\TempAuth\browser\%s\output" % gid)
+left = sorted(f.name for f in outdir.iterdir() if f.is_file()) if outdir.exists() else []
+rec("快照、截图、PDF、控制台日志、上传的临时文件不留下（下载的文件保留）", left == ["report.csv"], left)
 e, sc, _, _ = A.call("browser_navigate", url="https://example.com")
 rec("吊销后调用被拒：grant_revoked", e and code_of(sc) == "grant_revoked", sc)
 ps = subprocess.run(["powershell.exe", "-NoProfile", "-Command",

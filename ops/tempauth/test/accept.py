@@ -77,7 +77,8 @@ def run_wait(url, command, shell="cmd", timeout=600, **kw):
     err, sc = tool(url, "run_command", command=command, shell=shell, timeout_seconds=timeout, **kw)
     while sc.get("next"):
         err, sc = tool(url, sc["next"]["tool"], **sc["next"]["arguments"])
-    return err, text_of(sc)
+    out = text_of(sc)
+    return err, out if (out or not err) else json.dumps(sc, ensure_ascii=False)   # 失败又没有输出时给出整个结果（reason、message）
 
 
 def hrun(gid, command, shell="cmd", timeout=60, cwd=None):

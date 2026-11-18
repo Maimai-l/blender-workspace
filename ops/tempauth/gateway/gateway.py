@@ -631,8 +631,16 @@ def worker():
         t["state"], t["started"] = "running", now()
         update_log(t["log"], result="running", note="执行中")
         try:
-            r = helper_for(g, {"op": "run", "grant": g["id"], "command": t["command"], "shell": t["shell"], "cwd": t["cwd"],
-                               "online": bool(g["net"]), "timeout": t["timeout"]})
+            req = {"op": "run", "grant": g["id"], "command": t["command"], "shell": t["shell"], "cwd": t["cwd"],
+                   "online": bool(g["net"]), "timeout": t["timeout"]}
+            for i in range(30):          # 助手还在收尾上一条命令时回 busy：网关本来就一次一条，稍等再试
+                try:
+                    r = helper_for(g, req)
+                    break
+                except HelperError as e:
+                    if e.code != "busy" or i == 29:
+                        raise
+                    time.sleep(0.5)
             t["job"] = r["job"]
             while True:
                 p = HELPER.call({"op": "poll", "job": t["job"], "wait": 30000})
@@ -1606,6 +1614,15 @@ def close_browser(gid, sid=None):
             INJECTED.pop(gid, None)
     for e in es:
         e["b"].close()
+    try:
+        g = get_grant(gid)
+        out = grant_outdir(g) if g else None
+        if out and not [k for k in BROWSERS if k[0] == gid]:
+            for f in out.iterdir():
+                if f.is_file() and PW_FILE.match(f.name):
+                    f.unlink()
+    except OSError:
+        pass
 
 
 def close_idle_browsers():
@@ -1764,6 +1781,30 @@ def web_target(name, args):
 
 LOCAL_LINK = re.compile(r"\[([^\]]*)\]\((?![A-Za-z][A-Za-z0-9+.\-]+:)([^)\s]+)\)")   # 不带网址协议的链接才是本地文件
 DL_EVENT = re.compile(r'Downloaded file (.+?) to "([^"]+)"')
+CONSOLE_REF = re.compile(r"(console-[\w.\-]+\.log)#L(\d+)(?:-L(\d+))?")
+
+
+def console_lines(g, m):
+    """“New console entries: console-….log#L2-L3”：文件在电脑上，对方读不到；把这几行放进结果。"""
+    f = local_file(g, m.group(1))
+    if not f:
+        return m.group(0)
+    lines = f.read_text("utf-8", "ignore").splitlines()
+    a, b = int(m.group(2)), int(m.group(3) or m.group(2))
+    got = lines[a - 1:b][:50]
+    return "\n" + "\n".join("  " + x[:500] for x in got) if got else ""
+
+
+def drop_files(g, r):
+    """丢弃的 Playwright 结果里引用的快照、截图文件一并删掉。"""
+    for c in r.get("content", []):
+        for m in LOCAL_LINK.finditer(c.get("text", "") if c.get("type") == "text" else ""):
+            f = local_file(g, m.group(2))
+            if f and PW_FILE.match(f.name) and not f.name.startswith("console-"):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
 PW_FILE = re.compile(r"^(page|console|network|snapshot|find)-.*\.(yml|yaml|md|txt|log|png|jpe?g|webp|pdf)$", re.I)
 TAB_LINE = re.compile(r"^- (\d+):( \(current\))? \[(.*)\]\((.*)\)\s*$")
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -1829,7 +1870,7 @@ def browser_result(g, name, r, snap_mode="full", limit=SNAP_ACTION, note=None):
 
     text = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
     blocks = [c for c in r.get("content", []) if c.get("type") != "text"]
-    text = LOCAL_LINK.sub(fix, ANSI.sub("", text))
+    text = CONSOLE_REF.sub(lambda m: console_lines(g, m), LOCAL_LINK.sub(fix, ANSI.sub("", text)))
     for m in DL_EVENT.finditer(text):                   # “Downloaded file x to "./x"”：下载事件不是链接，单独认
         f = local_file(g, m.group(2))
         if f and not any(d["name"] == f.relative_to(outdir).as_posix() for d in downloads):
@@ -2298,7 +2339,9 @@ def call_browser(g, name, args):
             try:
                 run_code(b, "async (page) => { try { await page.waitForLoadState('%s', { timeout: 20000 }); } catch (e) {} "
                             "return 'JSON:{}'; }" % wait_until, 40)
-                r = b.call("tools/call", {"name": "browser_snapshot", "arguments": {}}, WAIT_BUDGET)
+                r2 = b.call("tools/call", {"name": "browser_snapshot", "arguments": {}}, WAIT_BUDGET)
+                drop_files(g, r)
+                r = r2
             except Exception as e:
                 print("wait_until:", e, file=sys.stderr)
     except TooManySessions:

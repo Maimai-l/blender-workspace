@@ -24,3 +24,10 @@
 ### 第二次测试（15:37，62 项未通过 10 项）
 - WFP 生效：本机回环全部拦住（测试用的 47123 也连不上），断网时 7899 也连不上，联网时只放行 7899；外网直连一律拦，经 7899 能翻墙。
 - 剩下的 10 项都是 D 盘程序运行不了：icacls 连具体权限也自动加 SYNCHRONIZE（Get-Acl 读到掩码 0x00110156）。改用 `test/denywrite.ps1`（Windows PowerShell 5.1 + .NET FileSystemAccessRule），实测掩码 0x00010156。以后助手服务给目录加拒绝项也要避开 SYNCHRONIZE。
+
+### 第三次测试（15:48，62 项未通过 1 项）
+- 程序全部能跑：conda 的 python、`python -m venv`（3.8 秒）、node、npm、git、`blender -b`（2.3 秒）。程序目录的拒绝写入生效（往 conda 的 site-packages 写文件被拒）。
+- 装包：断网时 venv 的 pip、npm、git clone 都失败；联网时 venv 里 `pip install six`、`npm install is-number`、`git clone` 都成功。PYTHONUSERBASE、npm 全局目录都指向授权文件夹的 `.aitemp`。
+- 本机回环、外网直连、文件、账号、吊销全部符合预期。
+- 唯一未通过的是测试本身的问题：`pip install --user tomli` 里的 tomli 已在 conda base，pip 什么也没装就返回成功，所以 `--user` 其实没测到。已改成装 conda base 没有的 cowsay，并检查它确实装在 `.aitemp\pyuser` 下；放进第二阶段的验收测试里一起跑。
+- 用时：给 `D:\ProgramData` 加拒绝写入要 55 秒（文件多），以后安装时做一次即可，签发授权不用重做；断网时 npm 要重试约 70 秒才放弃，已在环境变量里把 npm 重试改为 1 次、间隔 2～5 秒。

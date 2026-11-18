@@ -31,6 +31,10 @@ def env():
                    ("npm_config_cache", "npm-cache"), ("npm_config_prefix", "npm-global"), ("UV_CACHE_DIR", "uv-cache")):
         e[k] = os.path.join(AIT, sub)
         os.makedirs(e[k], exist_ok=True)
+    # round 3: offline npm took 70 s to give up (default 2 retries, 10-60 s back-off); keep one quick retry
+    e["npm_config_fetch_retries"] = "1"
+    e["npm_config_fetch_retry_mintimeout"] = "2000"
+    e["npm_config_fetch_retry_maxtimeout"] = "5000"
     e["PATH"] = os.pathsep.join([r"D:\ProgramData", r"D:\ProgramData\Scripts", r"D:\Program Files",
                                  r"C:\Program Files\Git\cmd", r"C:\Windows\System32", r"C:\Windows"])
     for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
@@ -156,7 +160,19 @@ expect = "allow" if ONLINE else "deny"
 check_cmd("装包", "venv 里 pip install six", expect, [VPY, "-m", "pip", "install", "--disable-pip-version-check", "six"], 300)
 check_cmd("装包", "npm install is-number（装在文件夹的 node_modules）", expect,
           ["cmd", "/c", NPM, "install", "--no-fund", "--no-audit", "is-number"], 300)
-check_cmd("装包", "pip install --user（装进 .aitemp）", expect,
-          [PY, "-m", "pip", "install", "--user", "--disable-pip-version-check", "--no-warn-script-location", "tomli"], 300)
+# cowsay is not in conda base (checked 2026-11-18); tomli was, so round 3 "installed" nothing
+def pip_user():
+    ok, d = run([PY, "-m", "pip", "install", "--user", "--disable-pip-version-check", "--no-warn-script-location",
+                 "cowsay"], 300)
+    if not ok:
+        return False, d
+    ok2, where = run([PY, "-c", "import cowsay; print(cowsay.__file__)"])
+    landed = ok2 and os.path.join(AIT, "pyuser").lower() in where.lower()
+    return landed, f"{d} | 装到 {where}"
+try:
+    ok, d = pip_user()
+except Exception as e:
+    ok, d = False, f"{type(e).__name__}: {e}"
+record("装包", "pip install --user cowsay（要装进 .aitemp\\pyuser）", expect, ok, d)
 check_cmd("装包", "git clone GitHub 仓库", expect,
           [GIT, "clone", "--depth", "1", "https://github.com/octocat/Hello-World.git", f"hello-{PHASE}"], 180)

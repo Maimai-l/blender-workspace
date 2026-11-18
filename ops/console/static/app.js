@@ -68,7 +68,8 @@
     var ok = c ? c.ok : r.live.ok;
     var where = c ? c.where : { tunnel: '外网访问', service: '服务', app: '应用', domain: '外网域名', exit: '出口' }[r.live.break];
     if (ok && c && c.slow) return '<b class="is-err">不稳</b><span title="' + esc((c.times || []).map(function (x) { return x === null ? '无响应' : x + 's'; }).join(' / ')) + '">' + esc(c.msg) + '</span>';
-    if (ok) return '<b>正常</b>' + (c && c.median !== null && c.median !== undefined ? '<i>' + c.median + 's</i>' : '');
+    var last = r.check;   // 状态变过以后结论按实时状态，响应时间仍显示最近一次检测的
+    if (ok) return '<b>正常</b>' + (last && last.median !== null && last.median !== undefined ? '<i>' + last.median + 's</i>' : '');
     return '<b class="is-err">不通</b>断在' + esc(where || '');
   }
 

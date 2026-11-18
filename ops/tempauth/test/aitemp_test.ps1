@@ -22,7 +22,7 @@ $profiles = @('C:\Users\Administrator', 'C:\Users\blender')
 $hideKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList'
 
 function Sid { (Get-LocalUser $user).SID.Value }
-function Icacls([string[]]$a) { $o = & icacls @a 2>&1; if ($LASTEXITCODE -ne 0) { throw "icacls $($a -join ' ') 失败：$o" } }
+function Set-AitempAcl([string[]]$a) { $o = & icacls.exe @a 2>&1; if ($LASTEXITCODE -ne 0) { throw "icacls $($a -join ' ') 失败：$o" } }
 function UserRights([string]$sid, [bool]$add) {
     $inf = Join-Path $env:TEMP 'aitemp_rights.inf'; $db = Join-Path $env:TEMP 'aitemp_rights.sdb'
     secedit /export /cfg $inf /areas USER_RIGHTS | Out-Null
@@ -44,7 +44,7 @@ if ($Undo) {
     $sid = Sid
     Get-NetFirewallRule -Name 'AITemp-*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
     $dirs = @(Get-ChildItem D:\ -Directory -Force | Where-Object { $_.Name -notin $skipDirs } | ForEach-Object FullName) + 'D:\', 'C:\' + $protected + $profiles + $grant
-    foreach ($d in $dirs) { if (Test-Path $d) { & icacls $d /remove "*$sid" 2>&1 | Out-Null } }
+    foreach ($d in $dirs) { if (Test-Path $d) { & icacls.exe $d /remove "*$sid" 2>&1 | Out-Null } }
     UserRights $sid $false
     Remove-ItemProperty $hideKey -Name $user -ErrorAction SilentlyContinue
     Remove-LocalUser $user
@@ -77,14 +77,16 @@ Note "- 登录界面已隐藏，已禁止远程桌面和网络登录（SID $sid�
 Write-Host '2/6 文件权限（第一次会遍历大目录，可能要几分钟）……'
 foreach ($d in Get-ChildItem D:\ -Directory -Force | Where-Object { $_.Name -notin $skipDirs }) {
     $s = Get-Date
-    if ($d.Name -in $programDirs) { Icacls @($d.FullName, '/deny', "*${sid}:(OI)(CI)(W,D,DC)"); $kind = '程序：拒绝写入' }
-    else { Icacls @($d.FullName, '/deny', "*${sid}:(OI)(CI)F"); $kind = '数据：拒绝读写' }
+    try {
+        if ($d.Name -in $programDirs) { Set-AitempAcl @($d.FullName, '/deny', "*${sid}:(OI)(CI)(W,D,DC)"); $kind = '程序：拒绝写入' }
+        else { Set-AitempAcl @($d.FullName, '/deny', "*${sid}:(OI)(CI)F"); $kind = '数据：拒绝读写' }
+    } catch { $kind = "**没设上**：$($_.Exception.Message)" }
     Note ("- {0}  {1}  {2:N1}s" -f $d.FullName, $kind, ((Get-Date) - $s).TotalSeconds)
 }
-Icacls @('D:\', '/deny', "*${sid}:(AD,WD)"); Icacls @('D:\', '/deny', "*${sid}:(OI)(NP)(IO)F")
-Icacls @('C:\', '/deny', "*${sid}:(AD,WD)")
-foreach ($p in $protected) { if (Test-Path $p) { Icacls @($p, '/deny', "*${sid}:(OI)(CI)F") } }
-foreach ($p in $profiles) { if (Test-Path $p) { Icacls @($p, '/deny', "*${sid}:F") } }
+Set-AitempAcl @('D:\', '/deny', "*${sid}:(AD,WD)"); Set-AitempAcl @('D:\', '/deny', "*${sid}:(OI)(NP)(IO)F")
+Set-AitempAcl @('C:\', '/deny', "*${sid}:(AD,WD)")
+foreach ($p in $protected) { if (Test-Path $p) { Set-AitempAcl @($p, '/deny', "*${sid}:(OI)(CI)F") } }
+foreach ($p in $profiles) { if (Test-Path $p) { Set-AitempAcl @($p, '/deny', "*${sid}:F") } }
 Note '- D:\ 根目录的文件拒绝读写、根目录不能新建；C:\ 根目录不能新建；受保护位置和两个账号的用户目录拒绝'
 
 Write-Host '3/6 防火墙规则……'
@@ -96,7 +98,7 @@ New-NetFirewallRule -Name 'AITemp-Offline' -DisplayName 'AITemp：断网' -Direc
 Write-Host '4/6 测试用的授权文件夹……'
 if (Test-Path $grant) { Remove-Item $grant -Recurse -Force }
 New-Item $grant -ItemType Directory | Out-Null
-Icacls @($grant, '/grant', "*${sid}:(OI)(CI)M")
+Set-AitempAcl @($grant, '/grant', "*${sid}:(OI)(CI)M")
 Copy-Item (Join-Path $here 'runner.py') $grant
 $report = Join-Path $grant 'report.jsonl'
 
@@ -116,9 +118,13 @@ foreach ($phase in 'offline', 'online') {
 Enable-NetFirewallRule -Name 'AITemp-Offline'
 
 Write-Host '6/6 撤销授权后再查……'
-Icacls @($grant, '/remove:g', "*$sid")
-$probe = Start-Process -FilePath $py -ArgumentList '-c', "import os,sys; os.listdir(r'$grant')" -Credential $cred -WorkingDirectory $env:SystemRoot -LoadUserProfile -WindowStyle Hidden -PassThru -Wait
-$revoked = $probe.ExitCode -ne 0
+Set-AitempAcl @($grant, '/remove:g', "*$sid")
+# 探测脚本放在 aitemp 读得到、但不在授权文件夹里的地方；退出码 3 = 被拒绝，0 = 还能列出，其他 = 脚本自身出错
+$probeFile = 'C:\Users\Public\aitemp_probe.py'
+@("import os, sys", "try:", "    os.listdir(r'$grant')", "    sys.exit(0)", "except PermissionError:", "    sys.exit(3)") | Set-Content $probeFile -Encoding UTF8
+$probe = Start-Process -FilePath $py -ArgumentList $probeFile -Credential $cred -WorkingDirectory $env:SystemRoot -LoadUserProfile -WindowStyle Hidden -PassThru -Wait
+Remove-Item $probeFile -ErrorAction SilentlyContinue
+$revoked = $probe.ExitCode -eq 3
 Add-Content $report (ConvertTo-Json -Compress @{ phase = 'revoke'; group = '吊销'; check = '吊销后列授权文件夹'; expect = 'deny'; got = ($(if ($revoked) { 'deny' } else { 'allow' })); pass = $revoked; detail = "exit $($probe.ExitCode)" })
 $hidden = (Get-ItemProperty $hideKey -Name $user -ErrorAction SilentlyContinue).$user -eq 0
 Add-Content $report (ConvertTo-Json -Compress @{ phase = 'account'; group = '账号'; check = '登录界面隐藏 aitemp'; expect = 'allow'; got = ($(if ($hidden) { 'allow' } else { 'deny' })); pass = $hidden; detail = '' })

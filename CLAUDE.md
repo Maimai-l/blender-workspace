@@ -57,6 +57,8 @@
 - 域重载（进出 Play Mode、重新编译、重开项目）后，mcp-for-unity 的端口可能在 6400 和 6401 之间切换，之后的调用报 “upstream request failed”，但 `mcpforunity://instances` 里实例仍显示在运行。用 `set_active_instance` 传当前端口号（如 `"6400"`）重新指定即可恢复。
 - 电脑锁屏时（Windows 没有前台窗口），构建出的游戏窗口不往屏幕输出画面：`ScreenCapture` 截到的是旧画面（启动画面的底色 RGB 35,31,32），帧率计数会到上千，没有意义。截图要把摄像机渲染到 RenderTexture 再读回；测性能要让摄像机在正常游戏循环里渲染到 RenderTexture，几十帧后用 `ReadPixels` 等显卡做完再计时。不要循环调用 `Camera.Render()` 来测，在 URP 下每次约 100 毫秒，反映不了真实帧耗时。
 - TextMeshPro 富文本 `<font="字体名" material="材质名">` 里的材质，按名字不区分大小写的哈希（`TMP_TextUtilities.GetHashCode`）查找。自己注册材质要用 `MaterialReferenceManager.AddFontMaterial(TMP_TextUtilities.GetHashCode(mat.name), mat)`；用 `GetSimpleHashCode` 会查不到，整段标签被原样显示成文字。同一个哈希重复添加会抛异常，先用 `TryGetMaterial` 判断。截图不一定拍到每种带标签的文字，自动测试里可以扫描 `GetParsedText()`，查有没有残留的 `<标签>`。
+- PowerShell 脚本里不要定义和外部程序同名的函数（函数名不分大小写，且优先于程序）：2026-11-18 的测试包把 icacls 包成 `function Icacls`，函数里的 `& icacls` 调回自己，无限递归到调用深度溢出。包装函数另起名字，里面写 `icacls.exe`。交给用户运行前，用 `[System.Management.Automation.Language.Parser]::ParseFile` 查语法，并核对没有函数名和 `Get-Command -CommandType Application` 撞名。
+- `Start-Process -ArgumentList` 不会给带空格的参数加引号：`python -c "一段代码"` 会被拆开。要传代码就写成脚本文件再传路径。
 - TextMeshPro 在未激活的层级里量不出文字尺寸。要按文字高度排版的界面，先 `SetActive(true)`，再 `ForceMeshUpdate()`，然后读 `preferredHeight`。
 
 ## Anime short "Awakening" (2026-11): rendering a 2D-anime-looking film from Blender

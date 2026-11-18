@@ -439,6 +439,8 @@
     $('issue-name').placeholder = c.folder ? '默认使用文件夹名' : '默认为“浏览器”';
     summary();
   }
+  function hostsValue() { return $('issue-hosts').value.split(/[,，;\s]+/).map(function (x) { return x.trim(); }).filter(Boolean); }
+  $('issue-hosts').addEventListener('input', function () { $('issue-hosts-warn').hidden = !hostsValue().length; });
   $('issue-cap-folder').addEventListener('change', applyCaps);
   $('issue-cap-browser').addEventListener('change', applyCaps);
 
@@ -578,6 +580,7 @@
     var last = state.last || {};
     state.folders = (last.folders || []).slice(0, 1);
     state.pickLogins = [];
+    $('issue-hosts').value = ''; $('issue-hosts-warn').hidden = true;
     $('issue-cap-folder').checked = last.browser && !(last.folders || []).length ? false : true;
     $('issue-cap-browser').checked = !!last.browser;
     $('issue-name').value = '';
@@ -622,6 +625,7 @@
     var c = caps();
     b.disabled = true; b.querySelector('.lbl').textContent = '签发中';
     var body = { folders: c.folder ? state.folders : [], browser: c.browser, logins: c.browser ? state.pickLogins : [],
+      allow_hosts: c.browser ? hostsValue() : [],
       name: $('issue-name').value.trim(), minutes: parseInt(segGet($('issue-minutes')), 10),
       limit: limitValue(), net: c.folder && segGet($('issue-net')) === '1', confirm: c.folder && segGet($('issue-confirm')) === '1' };
     api('POST', '/api/grants', body).then(function (r) {
@@ -647,6 +651,7 @@
       '<dl class="mc-dl"><dt>用途</dt><dd>' + esc(g.name) + '</dd>' +
       (hasF ? '<dt>文件夹</dt><dd>' + esc(g.folders.join('、')) + '</dd>' : '') +
       (g.browser ? '<dt>浏览器</dt><dd>' + (g.logins.length ? '登录 ' + esc(g.logins.join('、')) : '无登录') + '</dd>' : '') +
+      (g.browser && g.allow_hosts && g.allow_hosts.length ? '<dt>本机或局域网</dt><dd>' + esc(g.allow_hosts.join('、')) + '</dd>' : '') +
       '<dt>到期</dt><dd>' + esc(g.expires_at) + '</dd>' +
       (hasF ? '<dt>次数</dt><dd>' + (g.limit < 0 ? '不限' : g.limit + ' 次') + '</dd><dt>命令联网</dt><dd>' + (g.net ? '允许' : '不允许') +
         '</dd><dt>执行前确认</dt><dd>' + (g.confirm ? '需要' : '不需要') + '</dd>' : '') + '</dl>' +

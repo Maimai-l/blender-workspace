@@ -3,6 +3,7 @@
 然后把暂存目录整个传到电脑的 D:\\Projects\\mcp-console-stage\\tempauth\\。"""
 import hashlib
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -21,9 +22,18 @@ FILES = {
     "console/static/grants.js": OPS / "console/static/grants.js",
 }
 
+PYPDF = "pypdf==7.1.1"     # 网关读 PDF 文字用；纯 Python，没有依赖（Python 3.11 起不需要 typing_extensions）
+
 out = Path(sys.argv[1])
 if out.exists():
     shutil.rmtree(out)
+wheel_dir = HERE / ".wheels"
+wheel_dir.mkdir(exist_ok=True)
+whl = sorted(wheel_dir.glob("pypdf-7.1.1-*.whl"))
+if not whl:
+    subprocess.run([sys.executable, "-m", "pip", "download", PYPDF, "--no-deps", "-q", "-d", str(wheel_dir)], check=True)
+    whl = sorted(wheel_dir.glob("pypdf-7.1.1-*.whl"))
+FILES["vendor/pypdf.whl"] = whl[0]
 ps = (HERE / "install.ps1").read_text(encoding="utf-8")
 for rel, src in FILES.items():
     dst = out / rel

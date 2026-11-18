@@ -28,6 +28,7 @@ $manifest = [ordered]@{
     'helper\wfp.cs' = '@@helper/wfp.cs'
     'gateway\gateway.py' = '@@gateway/gateway.py'
     'denywrite.ps1' = '@@denywrite.ps1'
+    'vendor\pypdf.whl' = '@@vendor/pypdf.whl'
     'console\console.py' = '@@console/console.py'
     'console\agent.py' = '@@console/agent.py'
     'console\static\index.html' = '@@console/static/index.html'
@@ -139,6 +140,13 @@ if ($HelperOnly) { Write-Host ''; Write-Host '完成：授权助手已更新并�
 
 Write-Host '4/6 安装临时授权网关……'
 Copy-Item (Join-Path $src 'gateway\gateway.py') (Join-Path $dst 'gateway.py') -Force
+# 网关读 PDF 文字用的 pypdf（纯 Python）：解到 tempauth\vendor
+$vendor = Join-Path $dst 'vendor'
+if (Test-Path $vendor) { Remove-Item $vendor -Recurse -Force }
+$zip = Join-Path $env:TEMP 'tempauth-pypdf.zip'
+Copy-Item (Join-Path $src 'vendor\pypdf.whl') $zip -Force
+Expand-Archive -Path $zip -DestinationPath $vendor -Force
+Remove-Item $zip -Force
 
 Write-Host '5/6 更新控制台……'
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match 'BlenderMCP\\panel\\panel\.py' } |

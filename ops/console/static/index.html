@@ -112,6 +112,11 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
       <span class="field-label">登录状态</span>
       <div class="mc-logins" id="issue-logins"></div>
       <p class="mc-warn-s" id="issue-login-warn" hidden>授权期间，对方可使用所选网站的登录状态进行操作。</p>
+      <div class="mc-f">
+        <label class="field-label" for="issue-hosts">可访问的本机或局域网地址</label>
+        <div class="input input--sm"><input id="issue-hosts" type="text" placeholder="默认不可访问；多个地址用逗号分隔，如 192.168.1.20:8080" autocomplete="off" spellcheck="false"></div>
+        <p class="mc-warn-s" id="issue-hosts-warn" hidden>授权期间，对方可访问这些地址上的服务。</p>
+      </div>
     </div>
     <div class="mc-sec">
       <p class="mc-sec-h">范围</p>

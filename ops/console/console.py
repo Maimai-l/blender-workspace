@@ -658,33 +658,153 @@ def gw_relay():
 
 PICKING = {"on": False}
 
+# 资源管理器样式的选择文件夹对话框（IFileOpenDialog + FOS_PICKFOLDERS，可多选）。旧的 FolderBrowserDialog 是一棵树，不好用。
+PICKER_CS = r"""
+using System; using System.Runtime.InteropServices;
+[ComImport, Guid("DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7")] class FileOpenDialogRCW {}
+[ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IShellItem {
+  void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+  void GetParent(out IShellItem si);
+  void GetDisplayName(uint sigdn, [MarshalAs(UnmanagedType.LPWStr)] out string name);
+  void GetAttributes(uint mask, out uint attrs);
+  void Compare(IShellItem si, uint hint, out int order);
+}
+[ComImport, Guid("b63ea76d-1f85-456f-a19c-48159efa858b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IShellItemArray {
+  void BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+  void GetPropertyStore(int flags, ref Guid riid, out IntPtr ppv);
+  void GetPropertyDescriptionList(IntPtr key, ref Guid riid, out IntPtr ppv);
+  void GetAttributes(int flags, uint mask, out uint attrs);
+  void GetCount(out uint n);
+  void GetItemAt(uint i, out IShellItem si);
+  void EnumItems(out IntPtr e);
+}
+[ComImport, Guid("d57c7288-d4ad-4768-be02-9d969532d960"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IFileOpenDialog {
+  [PreserveSig] int Show(IntPtr parent);
+  void SetFileTypes(uint c, IntPtr f); void SetFileTypeIndex(uint i); void GetFileTypeIndex(out uint i);
+  void Advise(IntPtr p, out uint c); void Unadvise(uint c);
+  void SetOptions(uint fos); void GetOptions(out uint fos);
+  void SetDefaultFolder(IShellItem si); void SetFolder(IShellItem si);
+  void GetFolder(out IShellItem si); void GetCurrentSelection(out IShellItem si);
+  void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string n); void GetFileName(out IntPtr n);
+  void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string t);
+  void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string t);
+  void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string t);
+  void GetResult(out IShellItem si); void AddPlace(IShellItem si, int fdap);
+  void SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string e);
+  void Close(int hr); void SetClientGuid(ref Guid g); void ClearClientData(); void SetFilter(IntPtr f);
+  void GetResults(out IShellItemArray a); void GetSelectedItems(out IShellItemArray a);
+}
+public static class FolderPicker {
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHCreateItemFromParsingName(string path, IntPtr pbc, [In] ref Guid riid, out IShellItem si);
+  public static string[] Pick(IntPtr owner, string title, string start) {
+    var d = (IFileOpenDialog)new FileOpenDialogRCW();
+    uint o; d.GetOptions(out o);
+    d.SetOptions(o | 0x20 | 0x40 | 0x200 | 0x800);   // 选文件夹、只要文件系统路径、可多选、路径必须存在
+    d.SetTitle(title); d.SetOkButtonLabel("选择");
+    if (!string.IsNullOrEmpty(start) && System.IO.Directory.Exists(start)) {
+      IShellItem si; Guid g = typeof(IShellItem).GUID;
+      try { SHCreateItemFromParsingName(start, IntPtr.Zero, ref g, out si); d.SetFolder(si); } catch { }
+    }
+    if (d.Show(owner) != 0) return new string[0];   // 取消
+    IShellItemArray arr; d.GetResults(out arr);
+    uint n; arr.GetCount(out n);
+    var res = new string[n];
+    for (uint i = 0; i < n; i++) { IShellItem it; arr.GetItemAt(i, out it); string p; it.GetDisplayName(0x80058000, out p); res[i] = p; }
+    return res;
+  }
+}
+"""
+
+
+def _ps(script, timeout):
+    """运行一段 Windows PowerShell 5.1 脚本（-EncodedCommand，避免引号问题），返回标准输出。"""
+    import base64
+    enc = base64.b64encode(script.encode("utf-16-le")).decode()
+    r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-STA", "-ExecutionPolicy", "Bypass",
+                        "-EncodedCommand", enc], capture_output=True, timeout=timeout, creationflags=NO_WINDOW)
+    return r.stdout.decode("utf-8", "replace").strip(), r.stderr.decode("utf-8", "replace").strip()
+
 
 def pick_folder(body):
-    """在主账号的桌面上弹出选择文件夹的对话框（R4.1.2）。"""
+    """点拖放区：在主账号桌面上弹出资源管理器样式的选择框（R4.1.2），可多选。"""
     if not IS_WIN:
         return {"ok": False, "msg": "只能在 Windows 上弹出选择框"}, 400
     if PICKING["on"]:
         return {"ok": False, "msg": "选择框已经打开了，请在任务栏里找一下"}, 409
     start = str(body.get("start") or r"D:\Projects").replace("'", "''")
-    ps = ("Add-Type -AssemblyName System.Windows.Forms;"
-          "$f=New-Object System.Windows.Forms.FolderBrowserDialog;"
-          "$f.Description='选择要临时授权的文件夹';$f.ShowNewFolderButton=$true;"
-          f"$f.SelectedPath='{start}';"
-          "$w=New-Object System.Windows.Forms.Form;$w.TopMost=$true;"
-          "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
-          "if($f.ShowDialog($w) -eq [System.Windows.Forms.DialogResult]::OK){$f.SelectedPath}")
+    script = ("$ErrorActionPreference='Stop';[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
+              "Add-Type -AssemblyName System.Windows.Forms;"
+              "Add-Type -TypeDefinition @'\n" + PICKER_CS + "\n'@\n"
+              "$f=New-Object System.Windows.Forms.Form;$f.TopMost=$true;$f.ShowInTaskbar=$false;$f.Opacity=0;"
+              "$f.StartPosition='CenterScreen';$f.Show();$f.Activate();"
+              f"$r=[FolderPicker]::Pick($f.Handle,'选择要临时授权的文件夹（可多选）','{start}');$f.Close();"
+              "ConvertTo-Json -Compress -InputObject @($r)")
     PICKING["on"] = True
     try:
-        r = subprocess.run(["powershell.exe", "-NoProfile", "-STA", "-Command", ps], capture_output=True, timeout=600,
-                           creationflags=NO_WINDOW)
-        path = r.stdout.decode("utf-8", "replace").strip()
+        out, err = _ps(script, 900)
     except subprocess.TimeoutExpired:
         return {"ok": False, "msg": "选择框超时"}, 408
     finally:
         PICKING["on"] = False
-    if not path:
-        return {"ok": True, "path": None}, 200
-    return {"ok": True, "path": path}, 200
+    try:
+        paths = json.loads(out or "[]")
+    except ValueError:
+        return {"ok": False, "msg": "选择框出错：" + (err or out)[:200]}, 500
+    if isinstance(paths, str):
+        paths = [paths]
+    return {"ok": True, "paths": [p for p in paths if p]}, 200
+
+
+EXPLORER_PS = ("[Console]::OutputEncoding=[Text.Encoding]::UTF8;$sel=@();$cur=@();"
+               "foreach($w in (New-Object -ComObject Shell.Application).Windows()){try{$d=$w.Document;"
+               "$cur+=$d.Folder.Self.Path;foreach($i in $d.SelectedItems()){$sel+=$i.Path}}catch{}};"
+               "ConvertTo-Json -Compress -InputObject @{selected=@($sel);folders=@($cur)}")
+
+
+def resolve_drop(body):
+    """拖进来的文件夹：浏览器只给名字（和里面的文件名），这里按打开着的资源管理器窗口找出完整路径。
+    先看各窗口里选中的项，再看各窗口当前所在的文件夹、桌面和常用目录里有没有同名文件夹；
+    同名的不止一个时，用里面的文件名比对。"""
+    items = [x for x in (body.get("items") or []) if isinstance(x, dict) and x.get("name")]
+    if not IS_WIN:
+        return {"ok": True, "results": [{"name": x["name"], "path": None, "candidates": []} for x in items]}, 200
+    try:
+        out, _ = _ps(EXPLORER_PS, 20)
+        win = json.loads(out or "{}")
+    except (subprocess.TimeoutExpired, ValueError):
+        win = {}
+    selected = [p for p in (win.get("selected") or []) if p]
+    home = Path.home()
+    roots = [p for p in (win.get("folders") or []) if p] + [
+        str(home / "Desktop"), r"C:\Users\Public\Desktop", str(home / "Documents"), str(home / "Downloads"),
+        r"D:\Projects", r"D:\Blender\Projects", r"D:\Unity\Projects", "D:\\", "C:\\"]
+    results = []
+    for it in items:
+        name = str(it["name"])
+        cands = [p for p in selected if os.path.basename(p.rstrip("\\")).lower() == name.lower() and os.path.isdir(p)]
+        if not cands:
+            cands = [os.path.join(r, name) for r in roots if os.path.isdir(os.path.join(r, name))]
+        uniq = []
+        for c in cands:
+            if c.lower() not in [u.lower() for u in uniq]:
+                uniq.append(c)
+        path = uniq[0] if len(uniq) == 1 else None
+        if len(uniq) > 1:
+            kids = {str(k).lower() for k in (it.get("children") or [])}
+            def score(p):
+                try:
+                    return len(kids & {n.lower() for n in os.listdir(p)})
+                except OSError:
+                    return -1
+            ranked = sorted(uniq, key=score, reverse=True)
+            if kids and score(ranked[0]) > score(ranked[1]):
+                path = ranked[0]
+        results.append({"name": name, "path": path, "candidates": uniq[:5]})
+    return {"ok": True, "results": results}, 200
 
 
 def poller():
@@ -895,6 +1015,8 @@ def route(method, path, body, query=""):
             return NOT_YET
         if key == "fs/pick" and method == "POST":
             return pick_folder(body)
+        if key == "fs/resolve" and method == "POST":
+            return resolve_drop(body)
         res = gw(method, "/admin/" + key + ("?" + query if query else ""), body if method == "POST" else None)
         if method == "POST":
             threading.Thread(target=gw_state, daemon=True).start()

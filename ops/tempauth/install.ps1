@@ -12,8 +12,9 @@
 #  6 给隧道加 tmcp.maimaiqiu.work 的域名记录
 # 装完：双击桌面上的「Blender MCP 控制台」，在“连接状态”页把外网访问关闭再开启一次（让隧道加载新域名），然后告诉 Claude。
 # 只更新授权助手（改了 AitempHelper.cs 时）：同一条命令后面加 -HelperOnly，只做第 1、3 步。
+# 只更新控制台页面和 panel.py、agent.py：加 -ConsoleOnly，只做第 1、5 步。
 #Requires -RunAsAdministrator
-param([switch]$HelperOnly)
+param([switch]$HelperOnly, [switch]$ConsoleOnly)
 $ErrorActionPreference = 'Stop'
 $src = Split-Path -Parent $MyInvocation.MyCommand.Path      # D:\Projects\mcp-console-stage\tempauth
 $root = 'C:\Program Files\BlenderMCP'
@@ -76,7 +77,7 @@ foreach ($k in $manifest.Keys) {
     if ((Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash -ne $manifest[$k]) { throw "文件和预期不一致，已停止安装：$k" }
 }
 
-if ($HelperOnly) { Write-Host '2/6 跳过（只更新助手）' } else {
+if ($HelperOnly -or $ConsoleOnly) { Write-Host '2/6 跳过' } else {
 Write-Host '2/6 沙盒账号和基线权限……'
 if (-not (Get-LocalUser $user -ErrorAction SilentlyContinue)) {
     $pw = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(30)) + 'aA1!'
@@ -106,6 +107,7 @@ if (Test-Path 'D:\Projects\aitemp-test') { & icacls.exe 'D:\Projects\aitemp-test
 Write-Host "    aitemp 就绪（SID $sid）"
 }
 
+if ($ConsoleOnly) { Write-Host '3/6 跳过' } else {
 Write-Host '3/6 编译并安装授权助手……'
 New-Item -ItemType Directory -Force -Path $dst | Out-Null
 $build = Join-Path $env:TEMP ('aitemp-build-' + [guid]::NewGuid().ToString('N'))
@@ -132,10 +134,13 @@ $log = 'C:\ProgramData\BlenderMCP\aitemp-helper.log'
 if (Test-Path $log) { Get-Content $log -Tail 3 | ForEach-Object { Write-Host "    $_" } }
 if ((Get-Content $log -Tail 5 -ErrorAction SilentlyContinue) -match 'start failed') { Write-Warning '授权助手启动时报错（见上面的日志），装完告诉 Claude。' }
 
+}
 if ($HelperOnly) { Write-Host ''; Write-Host '完成：授权助手已更新并重启。告诉 Claude 即可。'; return }
 
+if (-not $ConsoleOnly) {
 Write-Host '4/6 安装临时授权网关……'
 Copy-Item (Join-Path $src 'gateway\gateway.py') (Join-Path $dst 'gateway.py') -Force
+}
 
 Write-Host '5/6 更新控制台……'
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match 'BlenderMCP\\panel\\panel\.py' } |
@@ -147,6 +152,7 @@ Copy-Item (Join-Path $src 'console\console.py') (Join-Path $panel 'panel.py') -F
 Copy-Item (Join-Path $src 'console\agent.py') (Join-Path $panel 'agent.py') -Force
 foreach ($f in 'index.html', 'app.js', 'app.css', 'grants.js') { Copy-Item (Join-Path $src "console\static\$f") (Join-Path $panel "static\$f") -Force }
 Write-Host "    旧版备份在 $bak"
+if ($ConsoleOnly) { Write-Host ''; Write-Host '完成：双击桌面上的「Blender MCP 控制台」打开新版，然后告诉 Claude。'; return }
 
 Write-Host '6/6 添加域名 tmcp.maimaiqiu.work……'
 $cf = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source

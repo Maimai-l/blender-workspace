@@ -89,14 +89,12 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
   <div class="dlg-body" id="issue-form">
     <div class="mc-f">
       <span class="field-label">文件夹<span class="req">必填</span></span>
-      <div class="mc-chips" id="issue-folders"></div>
-      <div class="mc-frow">
-        <div class="input input--sm" id="issue-path-box"><input id="issue-path" type="text" placeholder="粘贴或拖入路径，例如 D:\Projects\demo" autocomplete="off" spellcheck="false"></div>
-        <button class="btn btn--secondary btn--sm" type="button" id="issue-add"><span class="lbl">添加</span></button>
-        <button class="btn btn--secondary btn--sm" type="button" id="issue-pick"><span class="lbl">浏览…</span></button>
-        <button class="btn btn--ghost btn--sm" type="button" id="issue-browse"><span class="lbl">在这里选</span></button>
+      <div class="mc-drop" id="issue-drop" role="button" tabindex="0" aria-label="拖入文件夹，或点击选择">
+        <svg class="ic ic--lg" aria-hidden="true"><use href="#i-upload"></use></svg>
+        <p class="mc-drop-t" id="issue-drop-t">把文件夹拖到这里，或<b>点击选择</b></p>
+        <p class="mc-drop-s">可以一次选多个；也可以按 Ctrl+V 粘贴路径</p>
       </div>
-      <div class="mc-fs" id="issue-fs" hidden></div>
+      <ul class="mc-picked" id="issue-folders"></ul>
       <p class="mc-hint">只能读写这些文件夹。受保护位置、系统和程序目录、盘符和顶层目录不能选。</p>
     </div>
     <div class="mc-f">

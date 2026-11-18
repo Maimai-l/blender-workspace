@@ -255,80 +255,100 @@
 
   function folderChips() {
     $('issue-folders').innerHTML = state.folders.map(function (f, i) {
-      return '<span class="tag" title="' + esc(f) + '">' + esc(f) + '<button class="rm" type="button" data-rm="' + i + '" aria-label="移除"><svg class="ic"><use href="#i-close"></use></svg></button></span>';
-    }).join('') || '<span class="mc-k">还没选文件夹</span>';
+      var name = f.replace(/[\\\/]+$/, '').split(/[\\\/]/).pop();
+      return '<li><svg class="ic" aria-hidden="true"><use href="#i-box"></use></svg><span class="mc-pk-name">' + esc(name) + '</span>' +
+        '<span class="mc-pk-path" title="' + esc(f) + '">' + esc(f) + '</span>' +
+        '<button class="cbtn" type="button" data-rm="' + i + '" aria-label="移除 ' + esc(name) + '"><svg class="ic"><use href="#i-close"></use></svg></button></li>';
+    }).join('');
     summary();
   }
 
   function addFolder(p) {
     p = (p || '').trim().replace(/^"+|"+$/g, '').replace(/^file:\/\/\//, '');
-    if (/^[A-Za-z]:/.test(p)) p = p.replace(/\//g, '\\');
     try { p = decodeURIComponent(p); } catch (e) {}
-    if (!p) return;
-    var box = $('issue-path-box');
-    box.classList.remove('is-error');
-    api('POST', '/api/fs/check', { folder: p }).then(function (r) {
-      if (!r.ok) { box.classList.add('is-error'); toast('error', r.msg || '这个文件夹不能授权'); return; }
-      if (state.folders.some(function (f) { return f.toLowerCase() === r.real.toLowerCase(); })) return;
-      state.folders.push(r.real);
-      $('issue-path').value = '';
+    if (/^[A-Za-z]:/.test(p)) p = p.replace(/\//g, '\\');
+    if (!p) return Promise.resolve(false);
+    return api('POST', '/api/fs/check', { folder: p }).then(function (r) {
+      if (!r.ok) { toast('error', p + '：' + (r.msg || '这个文件夹不能授权')); return false; }
+      if (!state.folders.some(function (f) { return f.toLowerCase() === r.real.toLowerCase(); })) state.folders.push(r.real);
       folderChips();
+      return true;
     });
+  }
+
+  function dropBusy(text) {
+    var d = $('issue-drop');
+    d.classList.toggle('is-busy', !!text);
+    $('issue-drop-t').innerHTML = text ? esc(text) : '把文件夹拖到这里，或<b>点击选择</b>';
   }
 
   $('issue-folders').addEventListener('click', function (e) {
     var b = e.target.closest('[data-rm]'); if (!b) return;
     state.folders.splice(+b.dataset.rm, 1); folderChips();
   });
-  $('issue-add').addEventListener('click', function () { addFolder($('issue-path').value); });
-  $('issue-path').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addFolder(this.value); } });
-  $('issue-path').addEventListener('input', function () { $('issue-path-box').classList.remove('is-error'); });
-  // 从资源管理器拖进来：浏览器只给文件名、不给完整路径；拖的是文字（地址栏里的路径）就能用
-  [$('issue-path-box'), $('issue-folders')].forEach(function (el) {
-    el.addEventListener('dragover', function (e) { e.preventDefault(); });
-    el.addEventListener('drop', function (e) {
-      e.preventDefault();
-      var t = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
-      if (t) { t.split(/\r?\n/).filter(function (x) { return x && x[0] !== '#'; }).forEach(addFolder); return; }
-      toast('info', '浏览器拿不到拖进来的文件夹的完整路径。请点“浏览…”选择，或者从资源管理器的地址栏复制路径粘贴进来');
-    });
-  });
-  $('issue-pick').addEventListener('click', function () {
-    var b = this; b.setAttribute('aria-busy', 'true');
-    toast('info', '已在桌面上打开选择框，选好后点“确定”');
-    api('POST', '/api/fs/pick', { start: state.folders[0] || '' }).then(function (r) {
-      b.removeAttribute('aria-busy');
+
+  /* 点击：在桌面上弹出资源管理器样式的选择框（可多选） */
+  function pick() {
+    if ($('issue-drop').classList.contains('is-busy')) return;
+    dropBusy('已在桌面上打开选择窗口，选好后点“选择”……');
+    api('POST', '/api/fs/pick', { start: state.folders[0] ? state.folders[0].replace(/\\[^\\]+$/, '') : '' }).then(function (r) {
+      dropBusy('');
       if (!r.ok) return MC.after(r);
-      if (r.path) addFolder(r.path);
+      (r.paths || []).forEach(addFolder);
+    });
+  }
+  $('issue-drop').addEventListener('click', pick);
+  $('issue-drop').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+
+  /* 拖入：浏览器只给文件夹名和里面的文件名，由后台按打开着的资源管理器窗口找出完整路径 */
+  function readNames(dir) {
+    return new Promise(function (res) {
+      try { dir.createReader().readEntries(function (es) { res(es.slice(0, 200).map(function (x) { return x.name; })); }, function () { res([]); }); }
+      catch (e) { res([]); }
+    });
+  }
+  var depth = 0;
+  dlg.addEventListener('dragenter', function (e) { e.preventDefault(); if (++depth === 1) $('issue-drop').classList.add('is-over'); });
+  dlg.addEventListener('dragleave', function () { if (--depth <= 0) { depth = 0; $('issue-drop').classList.remove('is-over'); } });
+  dlg.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  dlg.addEventListener('drop', function (e) {
+    e.preventDefault(); depth = 0; $('issue-drop').classList.remove('is-over');
+    if ($('issue-form').hidden) return;
+    var dt = e.dataTransfer;
+    var entries = [].slice.call(dt.items || []).map(function (it) { return it.webkitGetAsEntry ? it.webkitGetAsEntry() : null; }).filter(Boolean);
+    var text = dt.getData('text/uri-list') || dt.getData('text/plain');
+    if (!entries.length) {
+      if (text) text.split(/\r?\n/).filter(function (x) { return x && x[0] !== '#'; }).forEach(addFolder);
+      return;
+    }
+    var dirs = entries.filter(function (x) { return x.isDirectory; });
+    if (dirs.length < entries.length) toast('info', '只能授权文件夹，拖进来的文件已忽略');
+    if (!dirs.length) return;
+    dropBusy('正在找 ' + dirs.map(function (x) { return x.name; }).join('、') + ' 的位置……');
+    Promise.all(dirs.map(readNames)).then(function (kids) {
+      return api('POST', '/api/fs/resolve', { items: dirs.map(function (d, i) { return { name: d.name, children: kids[i] }; }) });
+    }).then(function (r) {
+      dropBusy('');
+      if (!r.ok) return MC.after(r);
+      r.results.forEach(function (x) {
+        if (x.path) addFolder(x.path);
+        else if (x.candidates.length > 1) toast('info', '有好几个叫“' + x.name + '”的文件夹，请点击选择');
+        else toast('info', '没找到“' + x.name + '”在哪里。请从资源管理器的窗口里拖，或点击选择');
+      });
     });
   });
 
-  /* 页内浏览 */
-  function browse(path) {
-    var box = $('issue-fs');
-    box.hidden = false;
-    box.innerHTML = '<p class="mc-k">读取中…</p>';
-    api('GET', '/api/fs?path=' + encodeURIComponent(path || '')).then(function (r) {
-      if (!r.ok) { box.innerHTML = '<p class="mc-k">' + esc(r.msg || '打不开') + '</p>'; return; }
-      var h = '<div class="mc-fs-bar">' + (r.path ? '<button class="btn btn--ghost btn--sm" type="button" data-cd="' + esc(r.parent || '') + '"><span class="lbl">上一级</span></button>' : '') +
-        '<span class="mc-m">' + esc(r.path || '此电脑') + '</span></div><ul class="mc-fs-list">';
-      h += r.dirs.map(function (d) {
-        return '<li><button class="mc-fs-name" type="button" ' + (d.enter !== false ? 'data-cd="' + esc(d.path) + '"' : 'disabled') + '>' + esc(d.name) + '</button>' +
-          (d.ok ? '<button class="pill pill--sm" type="button" data-choose="' + esc(d.path) + '"><span class="lbl">选这个</span></button>' :
-            '<span class="mc-k">' + esc(d.reason) + '</span>') + '</li>';
-      }).join('') || '<li class="mc-k">没有子文件夹</li>';
-      box.innerHTML = h + '</ul>';
-    });
-  }
-  $('issue-browse').addEventListener('click', function () {
-    var box = $('issue-fs');
-    if (!box.hidden) { box.hidden = true; return; }
-    browse(state.folders[0] ? state.folders[0].replace(/\\[^\\]+$/, '') : 'D:\\Projects');
-  });
-  $('issue-fs').addEventListener('click', function (e) {
-    var b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.choose) { addFolder(b.dataset.choose); return; }
-    if (b.hasAttribute('data-cd')) browse(b.dataset.cd);
+  // 拖到对话框以外的地方时，别让浏览器把文件夹当网页打开
+  window.addEventListener('dragover', function (e) { e.preventDefault(); });
+  window.addEventListener('drop', function (e) { e.preventDefault(); });
+
+  /* 粘贴路径 */
+  dlg.addEventListener('paste', function (e) {
+    if ($('issue-form').hidden || e.target.closest('input')) return;
+    var t = (e.clipboardData || window.clipboardData).getData('text');
+    if (!t) return;
+    e.preventDefault();
+    t.split(/\r?\n/).filter(function (x) { return x.trim(); }).forEach(addFolder);
   });
 
   function limitValue() {
@@ -353,9 +373,7 @@
     var last = state.last || {};
     state.folders = (last.folders || []).slice(0, 1);
     $('issue-name').value = '';
-    $('issue-path').value = '';
-    $('issue-path-box').classList.remove('is-error');
-    $('issue-fs').hidden = true;
+    dropBusy('');
     segSet($('issue-minutes'), last.minutes || 60);
     var lim = last.limit === undefined ? 20 : last.limit;
     var preset = ['5', '20', '50', '-1'].indexOf(String(lim)) >= 0;

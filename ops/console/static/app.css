@@ -136,20 +136,27 @@ body{font:400 14px/1.6 var(--font-body);overflow:hidden}
 .mc-f{display:flex;flex-direction:column;gap:6px;min-width:0}
 .mc-f2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .mc-frow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.mc-frow .input{flex:1;min-width:160px}
-.mc-frow .btn{flex:none;min-width:0;padding:0 14px}
 .mc-num{flex:none!important;min-width:0!important;width:88px}
-.mc-chips{display:flex;flex-wrap:wrap;gap:6px;min-height:24px;align-items:center}
-.mc-chips .tag{max-width:100%;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-en)}
 .mc-hint{font:400 12px/18px var(--font-body);color:var(--color-text-secondary)}
-.mc-fs{border:1px solid var(--color-border-subtle);max-height:220px;overflow-y:auto}
-.mc-fs-bar{display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--color-border-subtle);position:sticky;top:0;background:var(--color-bg-raised)}
-.mc-fs-list{list-style:none;margin:0;padding:4px 0}
-.mc-fs-list li{display:flex;align-items:center;gap:8px;padding:2px 8px 2px 0;min-height:30px}
-.mc-fs-name{flex:1;min-width:0;text-align:left;border:0;background:none;color:var(--color-text-primary);font:400 13px/20px var(--font-body);padding:4px 8px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.mc-fs-name:hover:not(:disabled){text-decoration:underline}
-.mc-fs-name:disabled{color:var(--color-text-disabled);cursor:default}
-.mc-fs-list .mc-k{flex:none}
+/* 拖放区：拖入文件夹或点击弹出选择框 */
+.mc-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:128px;padding:20px 16px;
+  border:1.5px dashed var(--color-border-control);border-radius:var(--radius-md);background:var(--color-bg-surface,transparent);
+  color:var(--color-text-secondary);text-align:center;cursor:pointer;transition:border-color var(--duration-base) ease,background-color var(--duration-base) ease}
+.mc-drop .ic{width:28px;height:28px;color:var(--color-text-tertiary)}
+.mc-drop-t{font:400 14px/20px var(--font-body);color:var(--color-text-primary)!important}
+.mc-drop-t b{font-family:var(--font-medium);font-weight:500;text-decoration:underline;text-underline-offset:3px}
+.mc-drop-s{font:400 12px/18px var(--font-body)}
+.mc-drop:hover{border-color:var(--color-border-strong)}
+.mc-drop:focus-visible{outline:2px solid var(--color-focus-ring);outline-offset:2px}
+.mc-drop.is-over{border-color:var(--y-300);border-style:solid;background:color-mix(in srgb,var(--y-300) 10%,transparent)}
+.mc-drop.is-over .ic{color:var(--color-text-primary)}
+.mc-drop.is-busy{cursor:progress;border-style:solid}
+.mc-picked{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.mc-picked li{display:grid;grid-template-columns:16px auto minmax(0,1fr) 24px;align-items:center;gap:10px;min-height:36px;border-bottom:1px solid var(--color-border-subtle)}
+.mc-picked li .ic{width:16px;height:16px;color:var(--color-text-tertiary)}
+.mc-pk-name{font:500 13px/20px var(--font-medium);white-space:nowrap}
+.mc-picked .cbtn .ic{width:12px;height:12px;color:var(--color-text-secondary)}
+.mc-pk-path{font:400 12px/20px var(--font-en);color:var(--color-text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mc-sum{margin-right:auto;font:400 13px/20px var(--font-body);color:var(--color-text-secondary)}
 .mc-sum b{font-family:var(--font-medium);font-weight:500;color:var(--color-text-primary)}
 .mc-ok{color:var(--color-text-primary)!important;font-family:var(--font-medium)}

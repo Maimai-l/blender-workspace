@@ -14,6 +14,7 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $grant = 'D:\Projects\aitemp-test'
 $user = 'aitemp'
 $py = (Get-ChildItem 'C:\Program Files\BlenderMCP\python' -Recurse -Filter python.exe | Select-Object -First 1).FullName
+$denyHash = '285CBBB3E8F5694468166F3ADCA78CE0255F8241C7BED633784332F1B2A3674F'
 $wfpHash = '7EC83AD429CDFBBE653F504270C2D503231F96611690690B2CD064DFD7ABC3E6'
 $runnerHash = 'D9806FFCDEF95A24345929F8FC6A1F843906E323F2E92AF1ECB3C0D3E9B9085C'
 $programDirs = @('Program Files', 'Program Files (x86)', 'ProgramData')
@@ -24,6 +25,14 @@ $hideKey = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialA
 
 function Sid { (Get-LocalUser $user).SID.Value }
 function Set-AitempAcl([string[]]$a) { $o = & icacls.exe @a 2>&1; if ($LASTEXITCODE -ne 0) { throw "icacls $($a -join ' ') 失败：$o" } }
+# 给程序目录加“拒绝写入和删除”。不能用 icacls：它给任何 ACE 都自动带上 SYNCHRONIZE，拒绝了它连程序都运行不了
+# （2026-11-18 两次测试）。.NET 生成非完全控制的拒绝项时会去掉 SYNCHRONIZE（实测掩码 0x00010156）。
+# 程序目录的“拒绝写入和删除”交给 denywrite.ps1，用 Windows PowerShell 5.1 执行（这条路径已在电脑上实测）。
+# 不能用 icacls：它给任何 ACE 都自动带上 SYNCHRONIZE，拒绝了它连程序都运行不了（2026-11-18 两次测试）。
+function Set-AitempDenyWrite([string]$path, [string]$sid) {
+    $o = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'denywrite.ps1') -Path $path -Sid $sid 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "denywrite.ps1 失败：$o" }
+}
 function UserRights([string]$sid, [bool]$add) {
     $inf = Join-Path $env:TEMP 'aitemp_rights.inf'; $db = Join-Path $env:TEMP 'aitemp_rights.sdb'
     secedit /export /cfg $inf /areas USER_RIGHTS | Out-Null
@@ -41,6 +50,7 @@ function UserRights([string]$sid, [bool]$add) {
 }
 
 if ((Get-FileHash (Join-Path $here 'wfp.cs') -Algorithm SHA256).Hash -ne $wfpHash) { throw 'wfp.cs 和预期不一致，已停止。' }
+if ((Get-FileHash (Join-Path $here 'denywrite.ps1') -Algorithm SHA256).Hash -ne $denyHash) { throw 'denywrite.ps1 和预期不一致，已停止。' }
 Add-Type -Path (Join-Path $here 'wfp.cs')
 
 if ($Undo) {
@@ -86,8 +96,7 @@ foreach ($d in $targets) { if (Test-Path $d) { & icacls.exe $d /remove "*$sid" 2
 foreach ($d in Get-ChildItem D:\ -Directory -Force | Where-Object { $_.Name -notin $skipDirs }) {
     $s = Get-Date
     try {
-        # 只拒绝写入和删除这几项具体权限；不能用 W，它包含 SYNCHRONIZE，会连程序都运行不了（2026-11-18 第一次测试）
-        if ($d.Name -in $programDirs) { Set-AitempAcl @($d.FullName, '/deny', "*${sid}:(OI)(CI)(WD,AD,WEA,WA,D,DC)"); $kind = '程序：拒绝写入' }
+        if ($d.Name -in $programDirs) { Set-AitempDenyWrite $d.FullName $sid; $kind = '程序：拒绝写入（不含 SYNCHRONIZE）' }
         else { Set-AitempAcl @($d.FullName, '/deny', "*${sid}:(OI)(CI)F"); $kind = '数据：拒绝读写' }
     } catch { $kind = "**没设上**：$($_.Exception.Message)" }
     Note ("- {0}  {1}  {2:N1}s" -f $d.FullName, $kind, ((Get-Date) - $s).TotalSeconds)

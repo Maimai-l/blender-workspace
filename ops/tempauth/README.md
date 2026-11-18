@@ -20,3 +20,7 @@
 - Windows 防火墙的按账号规则管不到本机回环（127.0.0.1 上的转写台、agent、Clash 都连得上，断网时还能经 7899 上网）。改用 WFP：`test/wfp.cs`（Add-Type 加载）在 ALE_AUTH_CONNECT_V4/V6 层按 aitemp 的 SID 拦 127.0.0.0/8 和 ::1，联网时再加一条更高权重的放行 127.0.0.1:7899；过滤器持久，自带 provider 和 sublayer，`Remove()` 只删自己加的。结构体布局已用 VS 的 cl 按 SDK 头文件算过，和 C# 一致（FWPM_FILTER0 200 字节）。
 - 外网直连一律拦（防火墙规则 AITemp-Direct），联网只能经 Clash 7899。
 - 火绒对 svchost 弹窗：测试包里以别的账号启动程序（Secondary Logon 服务）、改防火墙（mpssvc）、加 WFP 过滤器（BFE）都在 svchost 里执行，火绒会提示，属于预期。
+
+### 第二次测试（15:37，62 项未通过 10 项）
+- WFP 生效：本机回环全部拦住（测试用的 47123 也连不上），断网时 7899 也连不上，联网时只放行 7899；外网直连一律拦，经 7899 能翻墙。
+- 剩下的 10 项都是 D 盘程序运行不了：icacls 连具体权限也自动加 SYNCHRONIZE（Get-Acl 读到掩码 0x00110156）。改用 `test/denywrite.ps1`（Windows PowerShell 5.1 + .NET FileSystemAccessRule），实测掩码 0x00010156。以后助手服务给目录加拒绝项也要避开 SYNCHRONIZE。

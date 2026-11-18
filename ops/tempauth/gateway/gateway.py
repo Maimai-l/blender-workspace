@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PureWindowsPath
 from urllib.parse import urlsplit
@@ -61,6 +61,11 @@ def now():
 
 def hms(t):
     return datetime.fromtimestamp(t).strftime("%H:%M:%S") if t else ""
+
+
+def utc(t):
+    """给对方 AI 看的时间一律用 UTC：对方不知道这台电脑在哪个时区。控制台给主人看的仍用本地时间。"""
+    return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if t else ""
 
 
 SEP = "\\" if IS_WIN else "/"
@@ -308,7 +313,7 @@ class FakeHelper:
             if a == "list":
                 if os.path.isfile(path):
                     st = os.stat(path)
-                    return {"ok": True, "file": {"p": os.path.basename(path), "s": st.st_size, "m": hms(st.st_mtime)}}
+                    return {"ok": True, "file": {"p": os.path.basename(path), "s": st.st_size, "m": utc(st.st_mtime)}}
                 if not os.path.isdir(path):
                     raise HelperError("not_found", "不存在：" + path)
                 items = []
@@ -318,7 +323,7 @@ class FakeHelper:
                         items.append({"p": os.path.relpath(os.path.join(root, d), path) + "\\", "d": True, "link": False})
                     for f in sorted(files):
                         st = os.stat(os.path.join(root, f))
-                        items.append({"p": os.path.relpath(os.path.join(root, f), path), "s": st.st_size, "m": hms(st.st_mtime)})
+                        items.append({"p": os.path.relpath(os.path.join(root, f), path), "s": st.st_size, "m": utc(st.st_mtime)})
                     if depth + 1 >= req.get("depth", 1):
                         dirs[:] = []
                 return {"ok": True, "items": items[:1000], "more": len(items) > 1000}
@@ -435,6 +440,7 @@ def grant_view(g):
          "confirm": bool(g["confirm"]), "state": st, "remaining": max(0, int(g["expires"] - t)),
          "restorable": st == "revoked" and not g["released"] and g["expires"] > t and t - g["revoked_at"] < RESTORE_WINDOW}
     v["created_hm"], v["expires_at"] = hms(g["created"]), datetime.fromtimestamp(g["expires"]).strftime("%m-%d %H:%M")
+    v["expires_utc"] = utc(g["expires"])
     v["browser"] = bool(g["browser"])
     v["logins"] = json.loads(g["logins"] or "[]")
     v["browser_ops"] = STORE.q("SELECT COUNT(*) n FROM logs WHERE grant_id=? AND op NOT IN ('run','read','write','list')",
@@ -671,7 +677,7 @@ def make_prompt(g, url):
     if not folders:
         return make_browser_prompt(g, url)
     lim = "不限" if g["lim"] < 0 else f"{g['lim']} 次"
-    exp = datetime.fromtimestamp(g["expires"]).strftime("%Y-%m-%d %H:%M")
+    exp = utc(g["expires"])
     lines = [
         "我给你开了一个临时 MCP 连接，可以在我电脑（Windows）的指定文件夹里执行命令、读写文件"
         + ("，并使用一个浏览器。" if g["browser"] else "。"),
@@ -681,7 +687,7 @@ def make_prompt(g, url):
         "这次授权的边界：",
         f"- 用途：{g['name']}",
         "- 文件夹：" + "、".join(folders) + "（只能在这里面读写；命令默认在第一个文件夹里执行）",
-        f"- 到期：{exp}，之后地址失效",
+        f"- 到期：{exp}（UTC），之后地址失效",
         f"- 次数：{lim}（执行命令和写文件计次；读文件、列目录、被拦截或被拒绝的调用不计）",
         "- 联网：" + ("允许，经代理出网，pip、npm、git 都能用" if g["net"] else "不允许，下载和安装都会失败"),
         "- 执行前确认：" + ("需要，每条命令要我在电脑上点允许，可能要等一会" if g["confirm"] else "不需要"),
@@ -709,14 +715,14 @@ def browser_prompt_lines(g):
 
 
 def make_browser_prompt(g, url):
-    exp = datetime.fromtimestamp(g["expires"]).strftime("%Y-%m-%d %H:%M")
+    exp = utc(g["expires"])
     return "\n".join([
         "我给你开了一个临时 MCP 连接，可以使用我电脑上的一个浏览器。",
         f"连接地址：{url}",
         "把它添加为自定义连接器（远程 MCP 服务，不需要登录）。地址里带着令牌，请不要转给别人。",
         "",
         f"用途：{g['name']}",
-        f"到期：{exp}，之后地址失效",
+        f"到期：{exp}（UTC），之后地址失效",
         "",
         *browser_prompt_lines(g),
     ])
@@ -998,9 +1004,15 @@ def call_tool(g, name, args):
     if name == "grant_info":
         v = grant_view(g)
         lim = "不限" if v["limit"] < 0 else f"{v['used']}/{v['limit']}"
-        return text_result(f"用途：{v['name']}\n文件夹：{'、'.join(v['folders'])}\n状态：{v['state']}\n到期：{v['expires_at']}"
-                           f"（剩 {v['remaining'] // 60} 分钟）\n已用次数：{lim}\n联网：{'允许' if v['net'] else '不允许'}\n"
-                           f"执行前确认：{'需要' if v['confirm'] else '不需要'}")
+        lines = [f"用途：{v['name']}", f"状态：{v['state']}",
+                 f"到期：{v['expires_utc']}（UTC，剩 {v['remaining'] // 60} 分钟）"]
+        if v["folders"]:
+            lines += [f"文件夹：{'、'.join(v['folders'])}", f"已用次数：{lim}", f"联网：{'允许' if v['net'] else '不允许'}",
+                      f"执行前确认：{'需要' if v['confirm'] else '不需要'}"]
+        if v["browser"]:
+            lines += ["浏览器：允许", "已带登录：" + ("、".join(v["logins"]) or "无")]
+        lines.append(f"当前时间：{utc(now())}（UTC）")
+        return text_result("\n".join(lines))
     if name in ("get_command_result", "cancel_command"):
         with TASK_LOCK:
             t = TASKS.get(str(args.get("task_id", "")))
@@ -1639,7 +1651,7 @@ def expire_logins():
 
 def mcp_instructions(g):
     v = grant_view(g)
-    text = f"这是电脑主人给你的临时授权（{v['name']}），{v['expires_at']} 到期。"
+    text = f"这是电脑主人给你的临时授权（{v['name']}），{v['expires_utc']}（UTC）到期。"
     if v["folders"]:
         text += (f"只能在 {'、'.join(v['folders'])} 里执行命令和读写文件。Windows；命令默认 cmd，可选 powershell、bash。"
                  "Python 是只读的 conda，装包先建 venv。" + ("命令可以联网（经代理）。" if v["net"] else "命令不能联网。")

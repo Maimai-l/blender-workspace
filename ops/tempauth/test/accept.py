@@ -153,8 +153,9 @@ def main():
     rec("装包", "联网：pip --user 装进 .aitemp\\pyuser", not err and ".aitemp\\pyuser" in out.lower().replace("/", "\\"), out[-200:])
     err, out = run_wait(UB, "npm install --no-fund --no-audit is-number", timeout=300)
     rec("装包", "联网：npm install", not err and (B / "node_modules" / "is-number").exists(), out[-200:])
-    err, out = run_wait(UB, "git clone --depth 1 https://github.com/octocat/Hello-World.git hw", timeout=180)
-    rec("装包", "联网：git clone", not err and (B / "hw" / "README").exists(), out[-200:])
+    hw = "hw-%d" % time.time()          # 每次一个新目录：上次留下的 hw 会让 clone 失败
+    err, out = run_wait(UB, "git clone --depth 1 https://github.com/octocat/Hello-World.git " + hw, timeout=180)
+    rec("装包", "联网：git clone", not err and (B / hw / "README").exists(), out[-200:])
     err, out = run_wait(UA, "python -m pip install six")
     rec("装包", "断网：pip install 被执行前检查拦下", err and "拦截" in out, out)
     code, _, out = hrun(ida, ".venv\\Scripts\\python -m pip install --retries 0 --timeout 5 six", timeout=120)

@@ -60,13 +60,22 @@ rec("说明含 request_login 和 UTC", "request_login" in init["result"]["instru
 e, sc, _, _ = tool(U, "grant_info")
 rec("grant_info 只有浏览器一组", not e and "folders" not in sc and sc["browser"]["counted"] is False and sc["expires_at"].endswith("Z"), sc)
 
-t0 = time.time(); e, _, txt, _ = tool(U, "browser_navigate", url="https://example.com")
-rec("打开 example.com，快照在结果里", not e and "Example Domain" in txt and "```yaml" in txt and "[ref=" in txt and not LOCAL.search(txt),
-    "%.1fs" % (time.time() - t0))
-e, _, txt, types = tool(U, "browser_take_screenshot", filename="ignored.png")
-rec("截图只有图片，没有本地链接", not e and types == ["image"], types)
-e, _, txt, types = tool(U, "browser_pdf_save")
+t0 = time.time(); e, sc, txt, _ = tool(U, "browser_navigate", url="https://example.com")
+rec("打开 example.com：JSON 里有 page 和 snapshot", not e and sc["page"]["title"] == "Example Domain" and "[ref=" in sc["snapshot"]["text"]
+    and not LOCAL.search(txt) and json.loads(txt) == sc, "%.1fs" % (time.time() - t0))
+ref = (re.search(r'link "Learn more" \[ref=(\w+)\]', sc["snapshot"]["text"]) or [None, "e6"])[1]
+e, sc, _, _ = tool(U, "browser_tabs", action="list")
+rec("标签页：tabs 数组", not e and sc["tabs"][0]["current"] and sc["tabs"][0]["url"].startswith("https://example.com"), sc)
+e, sc, txt, types = tool(U, "browser_take_screenshot", filename="ignored.png")
+rec("截图：image 内容块，JSON 里列出附件", not e and "image" in types and sc["attachments"][0]["type"] == "image" and not LOCAL.search(txt), types)
+e, sc, txt, types = tool(U, "browser_pdf_save")
 rec("PDF 作为嵌入资源返回", not e and "resource" in types and not LOCAL.search(txt), types)
+e, sc, _, _ = tool(U, "browser_navigate")
+rec("缺参数：invalid_argument", e and code_of(sc) == "invalid_argument" and sc["error"]["details"]["field"] == "url", sc)
+e, sc, _, _ = tool(U, "browser_navigate", url="https://this-domain-does-not-exist-zz9q.com/")
+rec("不存在的域名：navigation_failed、ERR_NAME_NOT_RESOLVED", e and code_of(sc) == "navigation_failed"
+    and sc["error"]["details"]["net_error"] == "ERR_NAME_NOT_RESOLVED" and "\\u001b" not in json.dumps(sc) and "callTool" not in json.dumps(sc), sc)
+e, sc, _, _ = tool(U, "browser_navigate", url="https://example.com")
 for u, why in [("http://127.0.0.1:8087/admin/state", "loopback"), ("http://localhost:8766/status", "loopback"),
                ("http://192.168.1.1/", "private"), ("file:///C:/Windows/win.ini", "scheme")]:
     e, sc, _, _ = tool(U, "browser_navigate", url=u)
@@ -74,7 +83,7 @@ for u, why in [("http://127.0.0.1:8087/admin/state", "loopback"), ("http://local
 e, sc, _, _ = tool(U, "browser_run_code_unsafe", code="async (page) => 1")
 rec("任意代码被拒", e and code_of(sc) == "tool_unavailable", sc)
 e, sc, _, _ = tool(U, "browser_click", target="e99999", element="nothing")
-rec("浏览器自己的错误：browser_error", e and code_of(sc) == "browser_error" and sc["error"]["message"], sc)
+rec("找不到元素：ref_not_found、可重试", e and code_of(sc) == "ref_not_found" and sc["error"]["retryable"] is True, sc)
 
 # 登录请求：完成（不保存）
 out = {}
@@ -112,7 +121,7 @@ logs = adm("GET", "logs?limit=50&grant=" + gid)["logs"]
 ops = {}
 for l in logs:
     ops[l["op"]] = ops.get(l["op"], 0) + 1
-rec("执行记录", ops.get("登录") == 2 and ops.get("打开网页", 0) >= 5, ops)
+rec("执行记录", ops.get("登录") == 2 and ops.get("打开网页", 0) >= 7, ops)
 gv = [x for x in adm("GET", "grants?status=all")["grants"] if x["id"] == gid][0]
 rec("浏览器操作计数，不占次数", gv.get("browser_ops", 0) >= 6 and gv["used"] == 0, (gv.get("browser_ops"), gv["used"]))
 outdir = Path(r"C:\Users\blender\TempAuth\browser\%s\output" % gid)

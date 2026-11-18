@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.request
 import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -38,7 +39,7 @@ DATA = Path(os.environ.get("TMCP_DATA", str(Path.home() / "TempAuth")))
 ADMIN_TOKEN_FILE = Path(os.environ.get("TMCP_ADMIN_TOKEN_FILE",
                                        r"C:\ProgramData\BlenderMCP\tempauth.token" if IS_WIN else str(DATA / "tempauth.token")))
 PIPE = r"\\.\pipe\aitemp-helper"
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 WAIT_BUDGET = 75          # Cloudflare 约 100 秒断开；一次调用最多等这么久
 OUTPUT_KEEP = 64 * 1024   # 执行记录里只存输出的前 64 KB
@@ -904,6 +905,14 @@ TASK_SCHEMA = _o(task_id=S, status={"type": "string", "enum": ["pending_approval
 TASK_NOTE = (" Returns a command object: task_id, status (pending_approval | queued | running | succeeded | failed | timed_out | "
              "cancelled | denied), exit_code, duration_ms, output {text, truncated}, and next (the call to make) while unfinished. "
              "Times are UTC.")
+BROWSER_SCHEMA = _o(page={"type": "object", "properties": {"url": S, "title": S}},
+                   snapshot={"type": "object", "properties": {"text": S, "truncated": B, "total_bytes": I, "hint": S}},
+                   tabs={"type": "array", "items": {"type": "object", "properties": {"index": I, "current": B, "title": S, "url": S}}},
+                   result=S, sections={"type": "object"},
+                   downloads={"type": "array", "items": {"type": "object", "properties": {"name": S, "size_bytes": I, "path": S}}},
+                   attachments={"type": "array", "items": {"type": "object", "properties": {"type": S, "mime_type": S}}})
+BROWSER_NOTE = (" Returns JSON: page {url, title}, snapshot {text, truncated} (accessibility tree with [ref=…] for element "
+                "targets), tabs, result, downloads; screenshots and PDFs come as image and resource content blocks.")
 TOOLS = [
     {"name": "run_command",
      "description": "Run a shell command as the sandbox user, inside the granted folder on the owner's Windows PC. "
@@ -1477,6 +1486,8 @@ def browser_tools(g):
         (sch.get("properties") or {}).pop("filename", None)
         if "filename" in (sch.get("required") or []):
             sch["required"] = [x for x in sch["required"] if x != "filename"]
+        t["outputSchema"] = BROWSER_SCHEMA
+        t["description"] = (t.get("description") or "").rstrip() + BROWSER_NOTE
         out.append(t)
     return out
 
@@ -1549,10 +1560,15 @@ def local_file(g, href):
     return f
 
 
-def browser_content(g, name, r):
-    """把 Playwright 的结果改成对方能用的：快照放进结果、截图只留图片、PDF 作为嵌入资源，其余本地链接换成说明。"""
+TAB_LINE = re.compile(r"^- (\d+):( \(current\))? \[(.*)\]\((.*)\)\s*$")
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def browser_result(g, name, r):
+    """把 Playwright 的 Markdown 结果整理成结构化对象（规范第 6 节）：page、snapshot、tabs、result、downloads 等；
+    快照文件读出放进对象，截图和 PDF 作为 image、resource 内容块，其余本地链接换成说明。"""
     folders = json.loads(g["folders"])
-    extra, remove = [], []
+    extra, remove, downloads, snap = [], [], [], {}
 
     def fix(m):
         label, href = m.group(1), m.group(2)
@@ -1567,48 +1583,135 @@ def browser_content(g, name, r):
         if own and low.endswith((".yml", ".yaml", ".md", ".txt", ".log")):
             raw = f.read_bytes()
             remove.append(f)
-            text = raw[:SNAPSHOT_CAP].decode("utf-8", "ignore")
-            more = ""
-            if len(raw) > SNAPSHOT_CAP:
-                more = (f"\n[truncated: showing {SNAPSHOT_CAP} of {len(raw)} bytes; narrow it with browser_snapshot target/depth "
-                        "or search with browser_find]")
-            fence = "yaml" if low.endswith((".yml", ".yaml")) else ""
-            return f"\n```{fence}\n{text.rstrip()}\n```{more}"
+            snap.update(text=raw[:SNAPSHOT_CAP].decode("utf-8", "ignore").rstrip(), total_bytes=len(raw),
+                        truncated=len(raw) > SNAPSHOT_CAP)
+            return "\x00SNAP\x00"
         if low.endswith(".pdf") and name == "browser_pdf_save":
             import base64
             size = f.stat().st_size
             remove.append(f)
             if size > PDF_CAP:
-                return f"{label}: PDF is {size} bytes, over the {PDF_CAP} byte limit for attaching"
+                return f"{label}: PDF is {size} bytes, over the {PDF_CAP} byte attachment limit"
             extra.append({"type": "resource", "resource": {"uri": "tempauth://output/" + f.name, "mimeType": "application/pdf",
                                                            "blob": base64.b64encode(f.read_bytes()).decode()}})
             return f"{label}: attached as a PDF resource ({size} bytes)"
-        size = f.stat().st_size
+        d = {"name": f.name, "size_bytes": f.stat().st_size}
         if folders:                                     # 下载在授权文件夹的 downloads 里：给完整路径，对方用 read_file 读
-            return f"{label}: {f} ({size} bytes; read it with read_file)"
-        return f"{label}: {f.name} ({size} bytes; saved on the PC, not readable through a browser-only grant)"
+            d["path"] = str(f)
+        downloads.append(d)
+        return label
 
-    content = []
-    for c in r.get("content", []):
-        if c.get("type") != "text":
-            content.append(c)
-            continue
-        text = re.sub(r"(?m)^- (?=\n```)", "", LOCAL_LINK.sub(fix, c.get("text", "")))
-        lines = [ln for ln in text.split("\n") if ln.strip() not in ("-", "- :", "")] if text else []
-        # 删掉因此变空的小节标题
-        out = []
-        for i, ln in enumerate(lines):
-            if ln.startswith("### ") and (i + 1 == len(lines) or lines[i + 1].startswith("### ")):
-                continue
-            out.append(ln)
-        if out:
-            content.append({"type": "text", "text": "\n".join(out)})
+    text = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
+    blocks = [c for c in r.get("content", []) if c.get("type") != "text"]
+    text = LOCAL_LINK.sub(fix, ANSI.sub("", text))
+    obj, sections, cur = {}, [], None
+    for ln in text.split("\n"):
+        if ln.startswith("### "):
+            cur = [ln[4:].strip(), []]
+            sections.append(cur)
+        elif cur is not None:
+            cur[1].append(ln)
+        elif ln.strip():
+            sections.append(cur := ["Result", [ln]])
+    other = {}
+    for title, lines in sections:
+        body = "\n".join(lines).strip()
+        key = title.lower()
+        if key == "page":
+            page = {}
+            for ln in lines:
+                mm = re.match(r"^- ([^:]+):\s*(.*)$", ln.strip())
+                if mm:
+                    k2 = mm.group(1).strip().lower().replace("page ", "").replace(" ", "_")
+                    page[k2] = mm.group(2).strip()
+            obj["page"] = page
+        elif key == "snapshot":
+            if not snap:
+                mm = re.search(r"```(?:yaml)?\n(.*?)```", body, re.S)
+                raw = (mm.group(1) if mm else body).encode("utf-8")
+                snap.update(text=raw[:SNAPSHOT_CAP].decode("utf-8", "ignore").rstrip(), total_bytes=len(raw),
+                            truncated=len(raw) > SNAPSHOT_CAP)
+        elif key in ("result", "open tabs"):
+            rows = [TAB_LINE.match(x.strip()) for x in lines if x.strip()]
+            if rows and all(rows):
+                obj["tabs"] = [{"index": int(x.group(1)), "current": bool(x.group(2)), "title": x.group(3), "url": x.group(4)}
+                               for x in rows]
+            elif body.replace("\x00SNAP\x00", "").strip("- \n"):
+                obj["result"] = body.replace("\x00SNAP\x00", "").strip()
+        elif body.replace("\x00SNAP\x00", "").strip("- \n"):
+            other[key.replace(" ", "_")] = body.replace("\x00SNAP\x00", "").strip()
+    if snap:
+        obj["snapshot"] = {"text": snap["text"], "truncated": snap["truncated"]}
+        if snap["truncated"]:
+            obj["snapshot"].update(total_bytes=snap["total_bytes"],
+                                   hint="Narrow it with browser_snapshot target/depth, or search with browser_find.")
+    if downloads:
+        obj["downloads"] = downloads
+    if other:
+        obj["sections"] = other
+    attached = [{"type": "image", "mime_type": c.get("mimeType")} for c in blocks if c.get("type") == "image"] + \
+               [{"type": "resource", "mime_type": "application/pdf"} for _ in extra]
+    if attached:
+        obj["attachments"] = attached
     for f in remove:
         try:
             f.unlink()
         except OSError:
             pass
-    return content + extra
+    return result(obj, False, blocks + extra)
+
+
+NET_CONN = {"ERR_CONNECTION_CLOSED", "ERR_CONNECTION_RESET", "ERR_EMPTY_RESPONSE", "ERR_TUNNEL_CONNECTION_FAILED",
+            "ERR_PROXY_CONNECTION_FAILED", "ERR_CONNECTION_FAILED", None}
+
+
+def dns_exists(host):
+    """经浏览器同一个代理做 DNS over HTTPS（代理断开连接时浏览器分不出是域名不存在还是连不上）。True/False/None（查不了）。"""
+    op = urllib.request.build_opener(urllib.request.ProxyHandler({"https": BROWSER_PROXY}))
+    for url in ("https://dns.google/resolve?type=A&name=", "https://cloudflare-dns.com/dns-query?type=A&name="):
+        try:
+            req = urllib.request.Request(url + host, headers={"Accept": "application/dns-json", "User-Agent": "tempauth"})
+            st = json.loads(op.open(req, timeout=6).read()).get("Status")
+            if st == 3:
+                return False
+            if st == 0:
+                return True
+        except Exception:
+            continue
+    return None
+
+
+def browser_error(text, args):
+    """Playwright 的错误原文分类成规范第 6.4 节的错误码，去掉终端颜色码、内部函数名和 call log。"""
+    t = ANSI.sub("", text or "")
+    t = re.sub(r"^\s*### Error\s*", "", t)
+    t = t.split("\nCall log:")[0]
+    t = re.sub(r"\b\w+\.callTool:\s*", "", t)
+    t = re.sub(r"^(Error|TimeoutError):\s*", "", t.strip()).strip()
+    if t.startswith("Invalid arguments for tool"):
+        field = (re.search(r"→ at (\S+)", t) or [None, ""])[1]
+        why = (re.search(r"✖ (.+)", t) or [None, "invalid input"])[1].replace("Invalid input: ", "")
+        return error("invalid_argument", f"Invalid argument{(' ' + field) if field else ''}: {why}.", field=field)
+    m = re.search(r"Ref (\S+) not found", t)
+    if m:
+        return error("ref_not_found", f"Element ref {m.group(1)} is not in the current page. Take a new snapshot "
+                                      "(browser_snapshot or browser_find) and retry with a current ref.", True, ref=m.group(1))
+    m = re.search(r"net::(ERR_[A-Z_]+)(?: at (\S+))?", t)
+    m2 = re.search(r'Navigation to "([^"]+)" is interrupted by another navigation to "chrome-error://', t)
+    if m or m2:
+        net = m.group(1) if m else None
+        url = (m.group(2) if m else None) or (m2.group(1) if m2 else None) or str(args.get("url") or "")
+        d = {"url": url, "net_error": net or "ERR_FAILED"}
+        host = urlsplit(url).hostname or ""
+        if net in NET_CONN and host and dns_exists(host) is False:
+            d.update(net_error="ERR_NAME_NOT_RESOLVED", reported_error=net or "ERR_FAILED")
+            return error("navigation_failed", f"The domain {host} does not exist (DNS lookup found no such name).", **d)
+        retry = d["net_error"] not in ("ERR_NAME_NOT_RESOLVED", "ERR_CERT_AUTHORITY_INVALID", "ERR_BLOCKED_BY_CLIENT")
+        return error("navigation_failed", f"The page could not be loaded: net::{d['net_error']} at {url}.", retry, **d)
+    m = re.search(r"Timeout (\d+)ms exceeded", t)
+    if m:
+        return error("timeout", f"Timed out after {m.group(1)} ms.", True, timeout_ms=int(m.group(1)))
+    return error("browser_error", t[:2000] or "The browser reported an error.")
 
 
 def call_browser(g, name, args):
@@ -1629,16 +1732,16 @@ def call_browser(g, name, args):
     except Exception as e:
         add_log(gid, op, target, "error", str(e)[:200], now() - t0)
         if isinstance(e, TimeoutError):
-            return error("browser_error", "The browser did not finish this step within 75 s; the page may still be loading. "
-                                          "Check it with browser_snapshot.", True)
+            return error("timeout", "The browser did not finish this step within 75 s; the page may still be loading. "
+                                    "Check it with browser_snapshot.", True, timeout_ms=WAIT_BUDGET * 1000)
         return error("service_unavailable", f"The browser is not available: {e}", True)
     texts = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
     if r.get("isError") or texts.lstrip().startswith("### Error"):
-        msg = re.sub(r"^\s*### Error\s*\n?", "", texts).strip()
-        add_log(gid, op, target, "error", msg[:200], now() - t0)
-        return error("browser_error", msg[:4000] or "The browser reported an error.")
+        res = browser_error(texts, args)
+        add_log(gid, op, target, "error", res["structuredContent"]["error"]["message"][:200], now() - t0)
+        return res
     add_log(gid, op, target, "ok", "", now() - t0)
-    return {"content": browser_content(g, name, r), "isError": False}
+    return browser_result(g, name, r)
 
 
 # ---------------------------------------------------------------------- 保存的登录（按网站域名）

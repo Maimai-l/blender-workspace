@@ -13,6 +13,8 @@ FILES = {
     "helper/AitempHelper.cs": HERE / "helper/AitempHelper.cs",
     "helper/wfp.cs": HERE / "helper/wfp.cs",
     "gateway/gateway.py": HERE / "gateway/gateway.py",
+    "gateway/blocklist.txt": HERE / "gateway/blocklist.txt",
+    "gateway/Readability.js": HERE / "gateway/vendor/Readability.js",
     "denywrite.ps1": HERE / "test/denywrite.ps1",
     "console/console.py": OPS / "console/console.py",
     "console/agent.py": OPS / "console/agent.py",

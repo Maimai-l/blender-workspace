@@ -27,6 +27,8 @@ $manifest = [ordered]@{
     'helper\AitempHelper.cs' = '@@helper/AitempHelper.cs'
     'helper\wfp.cs' = '@@helper/wfp.cs'
     'gateway\gateway.py' = '@@gateway/gateway.py'
+    'gateway\blocklist.txt' = '@@gateway/blocklist.txt'
+    'gateway\Readability.js' = '@@gateway/Readability.js'
     'denywrite.ps1' = '@@denywrite.ps1'
     'vendor\pypdf.whl' = '@@vendor/pypdf.whl'
     'console\console.py' = '@@console/console.py'
@@ -147,6 +149,9 @@ $zip = Join-Path $env:TEMP 'tempauth-pypdf.zip'
 Copy-Item (Join-Path $src 'vendor\pypdf.whl') $zip -Force
 Expand-Archive -Path $zip -DestinationPath $vendor -Force
 Remove-Item $zip -Force
+# 屏蔽列表（主人维护）和读正文用的 Mozilla Readability（Apache-2.0）
+Copy-Item (Join-Path $src 'gateway\blocklist.txt') (Join-Path $dst 'blocklist.txt') -Force
+Copy-Item (Join-Path $src 'gateway\Readability.js') (Join-Path $vendor 'Readability.js') -Force
 
 Write-Host '5/6 更新控制台……'
 Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match 'BlenderMCP\\panel\\panel\.py' } |

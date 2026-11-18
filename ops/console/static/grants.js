@@ -580,7 +580,7 @@
     var last = state.last || {};
     state.folders = (last.folders || []).slice(0, 1);
     state.pickLogins = [];
-    $('issue-hosts').value = ''; $('issue-hosts-warn').hidden = true;
+    $('issue-hosts').value = ''; $('issue-hosts-warn').hidden = true; $('issue-browser-full').checked = false;
     $('issue-cap-folder').checked = last.browser && !(last.folders || []).length ? false : true;
     $('issue-cap-browser').checked = !!last.browser;
     $('issue-name').value = '';
@@ -626,6 +626,7 @@
     b.disabled = true; b.querySelector('.lbl').textContent = '签发中';
     var body = { folders: c.folder ? state.folders : [], browser: c.browser, logins: c.browser ? state.pickLogins : [],
       allow_hosts: c.browser ? hostsValue() : [],
+      browser_full: c.browser && $('issue-browser-full').checked,
       name: $('issue-name').value.trim(), minutes: parseInt(segGet($('issue-minutes')), 10),
       limit: limitValue(), net: c.folder && segGet($('issue-net')) === '1', confirm: c.folder && segGet($('issue-confirm')) === '1' };
     api('POST', '/api/grants', body).then(function (r) {

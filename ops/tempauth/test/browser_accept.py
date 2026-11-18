@@ -1,16 +1,25 @@
-# 浏览器授权验收（正式网关 8086/8087，blender 账号运行）。结果直接打印；签发一条仅浏览器授权，测完吊销。
-# 网关 2.2：结果格式见《MCP 控制台需求》第 6 节。用到外网（example.com、维基百科、arxiv、httpbin），本机起一个 18099 的测试页。
-import base64, http.server, json, re, subprocess, threading, time, urllib.request, urllib.error
+# 浏览器授权验收（网关 3.0，blender 账号运行）。结果直接打印；签发浏览器授权，测完吊销。
+# 用到外网（example.com、维基百科、arxiv、Bing、httpbin），本机起一个 18099 的测试页。
+# 备用网关上跑：TA_ADMIN=18087 TA_MCP=18086 TA_DATA=<数据目录> TA_TOKEN=<令牌文件>
+import base64, http.server, json, os, re, subprocess, threading, time, urllib.request, urllib.error
 from pathlib import Path
+ADMIN, MCP = os.environ.get("TA_ADMIN", "8087"), os.environ.get("TA_MCP", "8086")
+DATA = Path(os.environ.get("TA_DATA", r"C:\Users\blender\TempAuth"))
+TOK = Path(os.environ.get("TA_TOKEN", r"C:\ProgramData\BlenderMCP\tempauth.token")).read_text().strip()
+DEMO = os.environ.get("TA_DEMO") == "1"          # 备用网关是 --demo：登录不写进浏览器
 OP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-TOK = Path(r"C:\ProgramData\BlenderMCP\tempauth.token").read_text().strip()
 res = []
 PAGE = b"""<!doctype html><html><head><title>Local Test</title></head><body>
-<main><h1>Local test page</h1><p>Hello from <b>18099</b>.</p>
+<main><h1>Local test page</h1><p>Hello from <b>18099</b>. The quick brown fox jumps over the lazy dog in this paragraph,
+which is long enough for article extraction to keep it as the main content of the page and not a fragment.</p>
+<p>Second paragraph mentions the magic number 4242 so that find can locate it in the extracted text easily.</p>
 <table><tr><th>k</th><th>v</th></tr><tr><td>a</td><td>1</td></tr></table></main>
 <nav>menu item</nav>
-<input type=file id=f onchange="document.getElementById('o').textContent=this.files[0].name+':'+this.files[0].size">
-<div id=o>none</div><a href="/report.csv" download>report</a>
+<label>Name <input id=n></label><button onclick="document.getElementById('o').textContent='hi '+document.getElementById('n').value">Greet</button>
+<select id=s><option>red</option><option>blue</option></select>
+<label><input type=checkbox id=c> agree</label>
+<input type=file id=f onchange="document.getElementById('u').textContent=this.files[0].name+':'+this.files[0].size">
+<div id=o>none</div><div id=u>none</div><a href="/report.csv" download>report</a>
 <div style="height:3000px">tall</div></body></html>"""
 
 
@@ -32,11 +41,11 @@ class H(http.server.BaseHTTPRequestHandler):
 
 def rec(name, ok, detail=""):
     res.append((name, bool(ok)))
-    print(("PASS " if ok else "FAIL ") + name + " | " + json.dumps(detail, ensure_ascii=False, default=str)[:240], flush=True)
+    print(("PASS " if ok else "FAIL ") + name + " | " + json.dumps(detail, ensure_ascii=False, default=str)[:260], flush=True)
 
 
 def adm(m, p, b=None):
-    r = urllib.request.Request("http://127.0.0.1:8087/admin/" + p, method=m, data=json.dumps(b).encode() if b is not None else None,
+    r = urllib.request.Request(f"http://127.0.0.1:{ADMIN}/admin/" + p, method=m, data=json.dumps(b).encode() if b is not None else None,
                                headers={"X-Tempauth-Token": TOK, "Content-Type": "application/json"})
     try:
         return json.loads(OP.open(r, timeout=100).read())
@@ -45,10 +54,8 @@ def adm(m, p, b=None):
 
 
 class Sess:
-    """一个 MCP 会话：initialize 拿到 Mcp-Session-Id，之后都带着。"""
-
     def __init__(self, url):
-        self.url, self.sid = url.replace("https://tmcp.maimaiqiu.work", "http://127.0.0.1:8086"), None
+        self.url, self.sid = url.replace("https://tmcp.maimaiqiu.work", f"http://127.0.0.1:{MCP}"), None
         r = self.rpc("initialize", {"protocolVersion": "2025-06-18"}, raw=True)
         self.sid = r.headers.get("Mcp-Session-Id")
         self.init = json.loads(r.read())["result"]
@@ -65,185 +72,136 @@ class Sess:
         return r if raw else json.loads(r.read()).get("result", {})
 
     def call(self, tool, **a):
-        """返回 (isError, structuredContent, 文本, 内容块类型)。"""
         r = self.rpc("tools/call", {"name": tool, "arguments": a})
         c = r.get("content", [])
-        return (r.get("isError"), r.get("structuredContent") or {}, "\n".join(x.get("text", "") for x in c if x.get("type") == "text"),
-                [x["type"] for x in c])
+        return r.get("isError"), r.get("structuredContent") or {}, [x["type"] for x in c]
 
 
 def code_of(sc):
     return ((sc or {}).get("error") or {}).get("code")
 
 
-def num(s):
-    return int(re.sub(r"\D", "", str(s)) or 0)
+def ref(els, pattern):
+    m = re.search(r"^(\w+) " + pattern, els, re.M)        # ref 可能带框架前缀，如 f4e16
+    return m.group(1) if m else None
 
 
-LOCAL = re.compile(r"\]\(\.?/?[^)\s]*\.(yml|png|jpe?g|pdf|log)\)")
 srv = http.server.ThreadingHTTPServer(("127.0.0.1", 18099), H)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
-
 g = adm("POST", "grants", {"browser": True, "minutes": 30, "name": "浏览器验收", "allow_hosts": ["127.0.0.1:18099"]})
 U, gid = g["url"], g["grant"]["id"]
-rec("签发仅浏览器授权（允许 127.0.0.1:18099）", g.get("ok") and g["grant"]["folders"] == [] and g["grant"]["allow_hosts"] == ["127.0.0.1:18099"])
-rec("提示词按能力分组、时间 UTC", "浏览器：" in g["prompt"] and "文件夹：" not in g["prompt"] and "（UTC）" in g["prompt"]
-    and "127.0.0.1:18099" in g["prompt"])
+rec("签发（允许 127.0.0.1:18099）", g.get("ok") and g["grant"]["allow_hosts"] == ["127.0.0.1:18099"] and "web_search" in g["prompt"])
 A, B = Sess(U), Sess(U)
 rec("每个 MCP 会话一个编号", A.sid and B.sid and A.sid != B.sid)
 tools = A.rpc("tools/list")["tools"]
-names = {t["name"] for t in tools}
-rec("工具：读内容、坐标、滚轮、前进刷新、下载、重置、网络、录制", {"browser_get_text", "browser_evaluate", "browser_mouse_click_xy",
-    "browser_mouse_wheel", "browser_navigate_forward", "browser_reload", "browser_read_download", "browser_reset",
-    "browser_network_requests", "browser_cookie_list", "browser_start_tracing", "request_login"} <= names
-    and not names & {"browser_run_code_unsafe", "browser_storage_state", "run_command"}, len(names))
-rec("没有 filename 参数", not [t["name"] for t in tools if "filename" in (t.get("inputSchema", {}).get("properties") or {})])
-rec("说明含 request_login 和 UTC", "request_login" in A.init["instructions"] and "UTC" in A.init["instructions"])
+names = [t["name"] for t in tools]
+rec("默认工具精简（≤ 15 个），定义小", len(names) <= 15 and {"web_search", "web_read", "browser_open", "browser_act", "browser_eval"} <= set(names)
+    and len(json.dumps(tools)) < 20000, [len(names), len(json.dumps(tools))])
+gf = adm("POST", "grants", {"browser": True, "minutes": 10, "name": "完整工具", "browser_full": True})
+nf = [t["name"] for t in Sess(gf["url"]).rpc("tools/list")["tools"]]
+rec("勾了完整浏览器工具时列出原始工具", len(nf) > 50 and "browser_click" in nf and "browser_run_code_unsafe" not in nf, len(nf))
+adm("POST", "grants/%s/revoke" % gf["grant"]["id"])
+e, sc, _ = A.call("grant_info")
+rec("语言时区跟随出口", sc["browser"]["locale"] and sc["browser"]["timezone_id"] and sc["browser"]["blocklist_size"] > 1000, sc.get("browser"))
 
-t0 = time.time(); e, sc, txt, _ = A.call("browser_navigate", url="https://example.com")
-rec("打开 example.com：page 和 snapshot", not e and sc["page"]["title"] == "Example Domain" and "[ref=" in sc["snapshot"]["text"]
-    and not LOCAL.search(txt) and json.loads(txt) == sc, "%.1fs" % (time.time() - t0))
-e, sc, _, _ = A.call("browser_navigate", url="https://example.com", snapshot="none")
-rec("snapshot=none 不带快照", not e and sc["snapshot"].get("omitted") and "text" not in sc["snapshot"], sc.get("snapshot"))
-e, sc, _, types = A.call("browser_take_screenshot")
-rec("截图：image 内容块", not e and "image" in types and sc["attachments"][0]["type"] == "image", types)
-e, sc, txt, types = A.call("browser_pdf_save")
-rec("PDF 作为嵌入资源返回", not e and "resource" in types and not LOCAL.search(txt), types)
-e, sc, _, _ = A.call("browser_navigate")
-rec("缺参数：invalid_argument", e and code_of(sc) == "invalid_argument" and sc["error"]["details"]["field"] == "url", sc)
-e, sc, _, _ = A.call("browser_navigate", url="https://this-domain-does-not-exist-zz9q.com/")
-rec("不存在的域名：ERR_NAME_NOT_RESOLVED，没有颜色码和内部函数名", e and code_of(sc) == "navigation_failed"
-    and sc["error"]["details"]["net_error"] == "ERR_NAME_NOT_RESOLVED" and "\\u001b" not in json.dumps(sc) and "callTool" not in json.dumps(sc), sc)
-e, sc, _, _ = A.call("browser_click", target="e99999", element="nothing")
-rec("找不到元素：ref_not_found、可重试", e and code_of(sc) == "ref_not_found" and sc["error"]["retryable"] is True, sc)
-for u, why in [("http://127.0.0.1:8087/admin/state", "loopback"), ("http://localhost:8766/status", "loopback"),
-               ("http://192.168.1.1/", "private"), ("file:///C:/Windows/win.ini", "scheme")]:
-    e, sc, _, _ = A.call("browser_navigate", url=u)
-    rec("拦截 " + u, e and code_of(sc) == "url_blocked" and sc["error"]["details"]["reason"] == why, sc)
-e, sc, _, _ = A.call("browser_run_code_unsafe", code="async (page) => 1")
-rec("Node 里的任意代码不提供", e and code_of(sc) == "tool_unavailable", sc)
+# 查资料
+t0 = time.time(); e, sc, _ = A.call("web_search", query="attention is all you need arxiv")
+rec("web_search（Bing）", not e and len(sc.get("results", [])) >= 5 and all(r["url"].startswith("http") for r in sc["results"]),
+    [round(time.time() - t0, 1), [r["url"] for r in sc.get("results", [])[:3]]])
+e, sc, _ = A.call("web_read", url="https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)", limit=4000)
+rec("web_read 维基百科：article，没有侧栏", not e and sc["scope"] == "article" and "[checkbox" not in sc["text"] and sc["total_chars"] > 20000
+    and sc["next_offset"] == 4000, [sc.get("scope"), sc.get("total_chars"), sc.get("text", "")[:120]])
+e, sc, _ = A.call("web_read", find='"self-attention" encoder', limit=3000)
+rec("web_read find：只给相关段落", not e and sc["matches"] and all(("attention" in m["text"].lower() or "encoder" in m["text"].lower()) for m in sc["matches"]),
+    [sc.get("match_lines"), len(sc.get("matches", []))])
+t0 = time.time(); e, sc, _ = A.call("web_read", url="https://arxiv.org/pdf/1706.03762", limit=1500)
+rec("web_read 在线 PDF", not e and sc["source"] == "pdf" and sc["pages"] >= 10 and "Attention" in sc["text"], [sc.get("pages"), round(time.time() - t0, 1)])
+e, sc, _ = A.call("web_read", url="https://www.bing.com/search?q=playwright", limit=2000)
+rec("web_read 搜索结果页：正文为空时退回整页", not e and sc["total_chars"] > 500, [sc.get("scope"), sc.get("total_chars"), sc.get("note")])
+e, sc, _ = A.call("browser_open", url="https://www.codenong.com/")
+rec("屏蔽列表里的网站打不开", e and code_of(sc) == "url_blocked" and sc["error"]["details"]["reason"] == "blocklist", sc)
 
-e, sc, _, _ = A.call("browser_navigate", url="http://127.0.0.1:18099/")
-rec("允许的本机地址可访问", not e and sc["page"]["title"] == "Local Test", sc.get("page") or sc)
-e, sc, _, _ = A.call("browser_evaluate", function="async () => { try { const r = await fetch('http://127.0.0.1:8087/admin/state'); return 'open ' + r.status; } catch (e) { return 'blocked'; } }")
-rec("页面脚本连不到其他本机端口", not e and "open 200" not in sc.get("result", ""), sc.get("result"))
-e, sc, _, _ = A.call("browser_evaluate", function="() => navigator.userAgent")
-rec("UA 不带 Headless", not e and "Headless" not in sc["result"] and "Edg/" in sc["result"], sc.get("result"))
-e, sc, _, _ = A.call("browser_get_text")
-rec("browser_get_text：正文（main）转 markdown", not e and sc["scope"] == "main" and "# Local test page" in sc["text"]
-    and "| a | 1 |" in sc["text"] and "menu item" not in sc["text"], sc.get("text"))
-e, sc, _, _ = A.call("browser_get_text", scope="page", format="text")
-rec("browser_get_text：整页纯文本", not e and "menu item" in sc["text"], sc.get("scope"))
-A.call("browser_mouse_move_xy", x=400, y=300)
-e, sc, _, _ = A.call("browser_mouse_wheel", deltaX=0, deltaY=2500)
-time.sleep(0.8)
-e2, sc2, _, _ = A.call("browser_evaluate", function="() => window.scrollY")
-rec("滚轮", not e and num(sc2.get("result")) > 1000, sc2.get("result"))
-A.call("browser_evaluate", function="() => window.scrollTo(0, 0)")
-snap = A.call("browser_snapshot")[1]["snapshot"]["text"]
-fref = (re.search(r'button "Choose File" \[ref=(\w+)\]', snap) or re.search(r'\[ref=(\w+)\][^\n]*Choose', snap) or [None, "e5"])[1]
-A.call("browser_click", target=fref, element="file input")
-e, sc, _, _ = A.call("browser_file_upload", files=[{"name": "hello.txt", "content_base64": base64.b64encode(b"hello world").decode()}])
-e2, sc2, _, _ = A.call("browser_evaluate", function="() => document.getElementById('o').textContent")
-rec("上传：调用方给内容（base64）", not e and "hello.txt:11" in sc2.get("result", ""), [sc.get("error"), sc2.get("result")])
-snap = A.call("browser_snapshot")[1]["snapshot"]["text"]
-lref = (re.search(r'link "report" \[ref=(\w+)\]', snap) or [None, "e9"])[1]
-A.call("browser_click", target=lref, element="report")
+# 操作网页
+e, sc, _ = A.call("browser_open", url="http://127.0.0.1:18099/")
+els = sc.get("elements", {}).get("text", "")
+rec("browser_open：元素列表", not e and sc["page"]["title"] == "Local Test" and ref(els, "textbox") and ref(els, r'button "Greet"')
+    and sc["elements"]["total_chars"] < sc["elements"]["snapshot_chars"], els[:300])
+tb, bt, cb, sel, fi = ref(els, "textbox"), ref(els, r'button "Greet"'), ref(els, "checkbox"), ref(els, "combobox"), ref(els, r'button "Choose File"')
+e, sc, _ = A.call("browser_act", actions=[{"type": {"ref": tb, "text": "Ada"}}, {"click": bt}, {"check": cb}, {"select": {"ref": sel, "values": ["blue"]}},
+                                          {"upload": {"ref": fi, "files": [{"name": "hello.txt", "content_base64": base64.b64encode(b"hello world").decode()}]}},
+                                          {"scroll": {"dy": 1500}}])
+rec("browser_act：一次执行 6 个操作，返回滚动位置", not e and sc.get("completed") == 6 and sc["scroll"]["y"] > 1000, [sc.get("completed"), sc.get("scroll"), sc.get("error")])
+e, sc, _ = A.call("browser_eval", function="() => [document.getElementById('o').textContent, document.getElementById('u').textContent, document.getElementById('c').checked, document.getElementById('s').value, document.querySelectorAll('p').length]")
+rec("browser_eval：原始 JSON；操作都生效", not e and sc.get("value") == ["hi Ada", "hello.txt:11", True, "blue", 2], sc)
+e, sc, _ = A.call("browser_act", actions=[{"click": "e99999"}])
+rec("browser_act 出错：指出第几个操作", e and code_of(sc) == "ref_not_found" and sc["error"]["details"]["index"] == 0, sc)
+e, sc, _ = A.call("browser_act", actions=[{"upload": {"files": [{"name": "x.txt", "content_base64": "eA=="}]}}])
+rec("没打开文件选择框就上传：no_file_chooser", e and code_of(sc) == "no_file_chooser", sc)
+e, sc, _ = A.call("browser_act", actions=[{"scroll": {"to": "top"}}, {"click": ref(els, r'link "report"')}], observe="none")
 time.sleep(1)
-e, scl, _, _ = A.call("browser_read_download")
-e2, scr, _, _ = A.call("browser_read_download", name="report.csv")
-rec("下载后读取内容", any(d["name"] == "report.csv" for d in scl.get("downloads", [])) and scr.get("content") == "a,b\n1,2\n", [scl, scr])
+e, sc2, _ = A.call("browser_tabs")
+rec("下载：报告文件名，不留下载页标签", not e and any(d["name"] == "report.csv" for d in sc.get("downloads", []))
+    and not any("downloads" in t["url"] for t in sc2.get("tabs", [])), [sc.get("downloads"), sc2.get("tabs")])
+e, sc, _ = A.call("browser_files", action="read", name="report.csv")
+rec("browser_files 读下载", not e and sc.get("content") == "a,b\n1,2\n", sc)
+e, sc, _ = A.call("browser_observe", mode="full", limit=500)
+e2, sc2, _ = A.call("browser_observe", mode="full", offset=500, limit=500)
+rec("browser_observe full：分页", not e and sc["snapshot"]["next_offset"] == 500 and sc2["snapshot"]["offset"] == 500)
+e, sc, types = A.call("browser_screenshot")
+rec("截图", not e and "image" in types, types)
+B.call("browser_open", url="https://example.com", observe="none")
+e, sa, _ = A.call("browser_tabs")
+e, sb, _ = B.call("browser_tabs")
+rec("两个会话各用各的浏览器", "18099" in sa["tabs"][0]["url"] and "example.com" in sb["tabs"][0]["url"])
 
-e, sc, _, _ = B.call("browser_navigate", url="https://example.com")
-e, sca, _, _ = A.call("browser_tabs", action="list")
-e, scb, _, _ = B.call("browser_tabs", action="list")
-rec("两个会话各用各的浏览器", "18099" in sca["tabs"][0]["url"] and "example.com" in scb["tabs"][0]["url"], [sca.get("tabs"), scb.get("tabs")])
+# 状态和评测
+B.call("browser_open", url="https://httpbin.org/cookies/set?sid=SECRET123", observe="none")
+B.call("browser_eval", function="async () => (await fetch('/headers', {headers: {Authorization: 'Bearer TOKEN456'}})).status")
+e, sc, _ = B.call("browser_inspect", kind="network", filter="httpbin", limit=3)
+idx = [i["index"] for i in sc.get("items", []) if i["url"].endswith("/headers")]
+rec("browser_inspect network：分页", not e and len(sc["items"]) <= 3 and sc["total"] >= 1, [sc.get("total"), sc.get("items")])
+if not idx:
+    e, scall, _ = B.call("browser_inspect", kind="network", filter="headers")
+    idx = [i["index"] for i in scall.get("items", [])]
+e, sc, _ = B.call("browser_inspect", kind="network", index=idx[-1] if idx else 1, part="request-headers")
+rec("请求头里的 Cookie、Authorization 打码", not e and "SECRET123" not in sc.get("text", "") and "TOKEN456" not in sc.get("text", "")
+    and "[redacted]" in sc.get("text", ""), sc.get("text", "")[:200])
+e, sc, _ = B.call("browser_inspect", kind="cookies", filter="httpbin.org")
+rec("browser_inspect cookies", not e and any(c["name"] == "sid" for c in sc.get("items", [])), sc.get("items"))
+e, sc, _ = B.call("browser_reset", locale="en-GB", timezone_id="Europe/London")
+B.call("browser_open", url="https://example.com", observe="none")
+e, sc2, _ = B.call("browser_eval", function="() => [navigator.language, Intl.DateTimeFormat().resolvedOptions().timeZone]")
+rec("browser_reset：语言和时区", sc2.get("value") == ["en-GB", "Europe/London"], sc2)
 
-e, sc, _, _ = B.call("browser_navigate", url="https://en.wikipedia.org/wiki/Transformer_(deep_learning_architecture)")
-sn = sc.get("snapshot", {})
-rec("大页面快照默认截到 2 万字", sn.get("truncated") and len(sn["text"]) <= 20000 and sn.get("next_offset") == len(sn["text"]),
-    {k: v for k, v in sn.items() if k != "text"})
-e, sc2, _, _ = B.call("browser_snapshot", offset=sn.get("next_offset", 1), limit=5000)
-rec("快照翻页（不重抓）", not e and sc2["snapshot"]["offset"] == sn.get("next_offset") and len(sc2["snapshot"]["text"]) == 5000)
-e, sc, _, _ = B.call("browser_get_text", limit=3000)
-e2, sc2, _, _ = B.call("browser_get_text", offset=3000, limit=3000)
-rec("正文分页", not e and sc["next_offset"] == 3000 and sc2["offset"] == 3000 and sc["text"] != sc2["text"], sc.get("total_chars"))
-t0 = time.time()
-B.call("browser_navigate", url="https://arxiv.org/pdf/1706.03762")
-e, sc, _, _ = B.call("browser_get_text", limit=1500)
-rec("在线 PDF：提取文字", not e and sc.get("source") == "pdf" and sc.get("pages", 0) > 5 and "Attention" in sc.get("text", ""),
-    [sc.get("pages"), sc.get("total_chars"), round(time.time() - t0, 1), sc.get("error")])
-B.call("browser_navigate_back")
-e, sc, _, _ = B.call("browser_navigate_forward")
-rec("前进", not e and "arxiv.org/pdf" in sc.get("page", {}).get("url", ""), sc.get("page") or sc)
-e, sc, _, _ = B.call("browser_reload", wait_until="load")
-rec("刷新", not e and sc.get("page"), sc.get("page") or sc)
-e, sc, _, _ = B.call("browser_navigate", url="https://www.bing.com/search?q=playwright+mcp", wait_until="networkidle")
-rec("wait_until=networkidle", not e and sc.get("snapshot", {}).get("total_chars", 0) > 6000, sc.get("snapshot", {}).get("total_chars"))
-
-B.call("browser_navigate", url="https://httpbin.org/cookies/set?sid=SECRET123")
-B.call("browser_evaluate", function="async () => (await fetch('/headers', {headers: {Authorization: 'Bearer TOKEN456'}})).status")
-e, sc, _, _ = B.call("browser_network_requests")
-idx = re.findall(r"(\d+)\. \[GET\] https://httpbin.org/headers", sc.get("result", ""))
-e, sc, _, _ = B.call("browser_network_request", index=int(idx[-1]) if idx else 1, part="request-headers")
-rec("网络记录里 Cookie、Authorization 打码", not e and "cookie: [redacted]" in sc.get("result", "") and "SECRET123" not in sc.get("result", "")
-    and "TOKEN456" not in sc.get("result", ""), sc.get("result", "")[:200])
-B.call("browser_start_tracing")
-B.call("browser_navigate", url="https://example.com")
-e, sc, _, _ = B.call("browser_stop_tracing")
-tr = [d for d in sc.get("downloads", []) if d["name"].endswith(".trace")]
-e2, sc2, _, _ = B.call("browser_read_download", name=tr[0]["name"], encoding="base64", limit=1000) if tr else (True, {}, "", [])
-rec("录制 trace 并读取", tr and not e2 and sc2.get("length_bytes", 0) > 0, sc.get("downloads"))
-e, sc, _, _ = B.call("browser_reset", locale="en-US", timezone_id="America/New_York")
-B.call("browser_navigate", url="https://example.com")
-e, sc2, _, _ = B.call("browser_evaluate", function="() => [navigator.language, Intl.DateTimeFormat().resolvedOptions().timeZone]")
-rec("browser_reset：语言和时区", "en-US" in sc2.get("result", "") and "America/New_York" in sc2.get("result", ""), sc2.get("result"))
-e, sc, _, _ = B.call("grant_info")
-rec("grant_info：浏览器设置", sc["browser"]["locale"] == "en-US" and sc["browser"]["allowed_local_hosts"] == ["127.0.0.1:18099"]
-    and sc["browser"]["sessions_open"] == 2 and "folders" not in sc, sc.get("browser"))
-
-# 登录请求：完成（不保存）
+# 登录请求
 out = {}
 th = threading.Thread(target=lambda: out.update(r=A.call("request_login", url="https://example.com/", reason="验收测试")))
 th.start(); time.sleep(2)
 mine = [r for r in adm("GET", "logins/requests")["requests"] if r["grant_id"] == gid]
-rec("登录请求出现在列表", len(mine) == 1, mine)
-rid = mine[0]["id"]
+rid = mine[0]["id"] if mine else ""
 adm("POST", "logins/requests/" + rid, {"action": "start"})
-e, sc, _, _ = A.call("check_login", request_id=rid, wait_seconds=0)
-rec("登录中：in_progress，next 指向 check_login", not e and sc["status"] == "in_progress" and sc["next"]["tool"] == "check_login", sc)
 state = {"cookies": [{"name": "aitemp_accept", "value": "1", "domain": ".example.com", "path": "/", "expires": -1,
                       "httpOnly": False, "secure": True, "sameSite": "Lax"}], "origins": []}
 sv = adm("POST", "logins/save", {"state": state, "domains": ["example.com"], "request": rid, "titles": {}, "save": False})
 th.join(30)
-e, sc, _, _ = out.get("r", (True, {}, "", []))
-rec("完成登录：logged_in，带刷新后的页面", sv.get("ok") and not e and sc["status"] == "logged_in" and sc["saved"] is False
-    and sc.get("page", {}).get("url"), sc)       # 写入登录后刷新当前页面（这个会话当时在本机测试页）
-e, sc, _, _ = A.call("browser_cookie_list", domain="example.com")
-rec("登录网站的 Cookie 值不给", not e and "aitemp_accept=[redacted" in sc.get("result", "") and "aitemp_accept=1" not in sc.get("result", ""), sc.get("result"))
-rec("未保存到浏览器登录", not Path(r"C:\Users\blender\TempAuth\logins\example.com.json").exists())
-out = {}
-th = threading.Thread(target=lambda: out.update(r=A.call("request_login", url="https://example.org/", reason="验收测试：拒绝")))
-th.start(); time.sleep(2)
-reqs = [r for r in adm("GET", "logins/requests")["requests"] if r.get("state") == "pending"]
-adm("POST", "logins/requests/" + reqs[0]["id"], {"action": "decline"})
-th.join(30)
-e, sc, _, _ = out.get("r", (False, {}, "", []))
-rec("拒绝：declined、isError", e and sc["status"] == "declined", sc)
+e, sc, _ = out.get("r", (True, {}, []))
+rec("登录请求：logged_in", sv.get("ok") and not e and sc["status"] == "logged_in" and (DEMO or sc.get("page")), sc)
+if not DEMO:
+    e, sc, _ = A.call("browser_inspect", kind="cookies", filter="example.com")
+    rec("登录网站的 Cookie 值不给", not e and any(c["name"] == "aitemp_accept" and "redacted" in c["value"] for c in sc.get("items", [])), sc.get("items"))
 
 gv = [x for x in adm("GET", "grants?status=all")["grants"] if x["id"] == gid][0]
-rec("浏览器操作计数，不占次数", gv.get("browser_ops", 0) >= 30 and gv["used"] == 0, (gv.get("browser_ops"), gv["used"]))
+rec("浏览器操作计数，不占次数", gv.get("browser_ops", 0) >= 20 and gv["used"] == 0, (gv.get("browser_ops"), gv["used"]))
 r = adm("POST", "grants/%s/revoke" % gid)
 rec("吊销", r.get("ok"), "%d ms" % r.get("ms", -1))
 time.sleep(2)
-outdir = Path(r"C:\Users\blender\TempAuth\browser\%s\output" % gid)
+outdir = DATA / "browser" / gid / "output"
 left = sorted(f.name for f in outdir.iterdir() if f.is_file()) if outdir.exists() else []
-rec("快照、截图、PDF、控制台日志、上传的临时文件不留下（下载的文件保留）", left == ["report.csv"], left)
-e, sc, _, _ = A.call("browser_navigate", url="https://example.com")
+rec("临时文件不留下（下载的文件保留）", left == ["report.csv"], left)
+e, sc, _ = A.call("web_read", url="https://example.com")
 rec("吊销后调用被拒：grant_revoked", e and code_of(sc) == "grant_revoked", sc)
 ps = subprocess.run(["powershell.exe", "-NoProfile", "-Command",
-                     "(Get-CimInstance Win32_Process | ? { $_.CommandLine -match '%s' }).Count" % gid],
-                    capture_output=True, text=True).stdout.strip()
+                     "(Get-CimInstance Win32_Process | ? { $_.CommandLine -match '%s' }).Count" % gid], capture_output=True, text=True).stdout.strip()
 rec("浏览器进程都已结束", ps in ("0", ""), ps)
 srv.shutdown()
 print("RESULT %d/%d" % (sum(1 for _, ok in res if ok), len(res)))

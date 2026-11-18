@@ -215,3 +215,5 @@ body{font:400 14px/1.6 var(--font-body);overflow:hidden}
 .mc-pend .mc-rec input,.mc-keep input{accent-color:#fff}
 .mc-keep{display:flex;align-items:center;gap:8px;font:400 13px/20px var(--font-body);color:var(--strip-fg)}
 .mc-keep input{width:16px;height:16px;margin:0}
+.mc-keep--light{color:var(--fg-2,#5f5d58)!important;font:400 13px/20px var(--font-body);margin-top:4px}
+.mc-keep--light input{accent-color:var(--ink-fixed,#191919)}

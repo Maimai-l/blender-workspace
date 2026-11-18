@@ -117,6 +117,7 @@ d.dataset.theme=(t==='light'||t==='dark')?t:(window.matchMedia&&matchMedia('(pre
         <div class="input input--sm"><input id="issue-hosts" type="text" placeholder="默认不可访问；多个地址用逗号分隔，如 192.168.1.20:8080" autocomplete="off" spellcheck="false"></div>
         <p class="mc-warn-s" id="issue-hosts-warn" hidden>授权期间，对方可访问这些地址上的服务。</p>
       </div>
+      <label class="mc-keep mc-keep--light"><input type="checkbox" id="issue-browser-full">完整浏览器工具（另含 Playwright 的约 60 个原始工具，用于测试和调试）</label>
     </div>
     <div class="mc-sec">
       <p class="mc-sec-h">范围</p>

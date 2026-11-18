@@ -39,7 +39,7 @@ DATA = Path(os.environ.get("TMCP_DATA", str(Path.home() / "TempAuth")))
 ADMIN_TOKEN_FILE = Path(os.environ.get("TMCP_ADMIN_TOKEN_FILE",
                                        r"C:\ProgramData\BlenderMCP\tempauth.token" if IS_WIN else str(DATA / "tempauth.token")))
 PIPE = r"\\.\pipe\aitemp-helper"
-VERSION = "2.2.0"
+VERSION = "3.0.0"
 
 WAIT_BUDGET = 75          # Cloudflare 约 100 秒断开；一次调用最多等这么久
 OUTPUT_KEEP = 64 * 1024   # 执行记录里只存输出的前 64 KB
@@ -408,6 +408,8 @@ class Store:
             self.db.execute("ALTER TABLE grants ADD COLUMN logins TEXT DEFAULT '[]'")
         if "allow_hosts" not in cols:
             self.db.execute("ALTER TABLE grants ADD COLUMN allow_hosts TEXT DEFAULT '[]'")
+        if "browser_full" not in cols:
+            self.db.execute("ALTER TABLE grants ADD COLUMN browser_full INTEGER DEFAULT 0")
 
     def q(self, sql, args=()):
         with self.lock:
@@ -451,6 +453,7 @@ def grant_view(g):
     v["browser"] = bool(g["browser"])
     v["logins"] = json.loads(g["logins"] or "[]")
     v["allow_hosts"] = json.loads(g.get("allow_hosts") or "[]")
+    v["browser_full"] = bool(g.get("browser_full"))
     v["browser_ops"] = STORE.q("SELECT COUNT(*) n FROM logs WHERE grant_id=? AND op NOT IN ('run','read','write','list')",
                                (g["id"],))[0]["n"] if g["browser"] else 0
     return v
@@ -716,10 +719,10 @@ def browser_prompt_lines(g):
         "- 经代理访问外网；浏览器操作不计次数，不需要我确认（上面的次数和联网设置只管命令）",
         "- 已带登录：" + ("、".join(logins) if logins else "无"),
         "- 本机和局域网地址：" + ("只能访问 " + "、".join(allow) if allow else "不能访问") + "；不能打开本地文件",
-        "- 读网页正文、论文和 PDF 用 browser_get_text（可分页）；操作结果里的快照默认最多 2 万字，可传 snapshot=none 省上下文，"
-        "用 browser_snapshot 的 offset 翻页；browser_evaluate 可以在页面里跑脚本取数据",
-        "- 上传文件时把内容（base64）传给 browser_file_upload；下载的文件用 browser_read_download 读",
-        "- 浏览器语言和时区默认 zh-CN、Asia/Shanghai，可用 browser_reset 改；每个 MCP 会话有自己的浏览器",
+        "- 查资料：web_search 搜索，web_read 打开并读正文或 PDF（find 只取含关键词的段落，可分页）",
+        "- 操作网页：browser_open 打开并列出可操作元素（ref），browser_act 一次执行一串操作（点击、输入、选择、滚动、上传等），"
+        "browser_eval 在页面里跑脚本取数据；下载的文件用 browser_files 读",
+        "- 浏览器语言和时区默认跟随出口所在地，可用 browser_reset 改；每个 MCP 会话有自己的浏览器；屏蔽列表里的网站打不开，也不出现在搜索结果里",
         "- 需要登录其他网站，或遇到验证码、邮件验证时，调用 request_login，由我在电脑上登录；不要向我索要密码或验证码",
     ]
 
@@ -776,10 +779,10 @@ def issue(body):
         except HelperDown as e:
             return {"ok": False, "msg": str(e)}, 503
     STORE.x("INSERT INTO grants (id, name, folders, token_hash, created, expires, lim, used, net, confirm, minutes, browser, logins, "
-            "allow_hosts) VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?,?)",
+            "allow_hosts, browser_full) VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?,?,?)",
             (gid, name, json.dumps(reals, ensure_ascii=False), hashlib.sha256(token.encode()).hexdigest(), t,
              t + minutes * 60, lim, 1 if body.get("net") else 0, 1 if body.get("confirm") else 0, minutes,
-             1 if browser else 0, json.dumps(logins), json.dumps(allow)))
+             1 if browser else 0, json.dumps(logins), json.dumps(allow), 1 if browser and body.get("browser_full") else 0))
     STORE.meta("last_issue", {"folders": reals, "minutes": minutes, "limit": lim, "net": bool(body.get("net")),
                               "confirm": bool(body.get("confirm")), "browser": browser, "logins": logins, "allow_hosts": allow})
     g = get_grant(gid)
@@ -1141,7 +1144,7 @@ def call_tool(g, name, args):
     """返回 MCP tools/call 的 result。每次调用一条执行记录（控制台看的说明仍用中文）。"""
     gid = g["id"]
     st = grant_state(g)
-    if name.startswith("browser_") or name in ("request_login", "check_login"):
+    if name.startswith(("browser_", "web_")) or name in ("request_login", "check_login"):
         if not g["browser"]:
             return error("capability_missing", "This grant does not include a browser.", capability="browser")
         if st in ("revoked", "expired") and name != "check_login":
@@ -1321,10 +1324,11 @@ def grant_info(g):
                         "counted": ["run_command", "write_file"], "command_network": v["net"], "confirm_commands": v["confirm"]}
     if v["browser"]:
         key = (g["id"], sid_now())
-        opts = SESSION_OPTS.get(key) or {}
+        opts = SESSION_OPTS.get(key) or default_context()
         o["browser"] = {"network": "proxy", "counted": False, "logins": v["logins"],
-                        "allowed_local_hosts": v["allow_hosts"], "locale": opts.get("locale") or "zh-CN",
-                        "timezone_id": opts.get("timezone_id") or "Asia/Shanghai", "user_agent": BROWSER_UA,
+                        "allowed_local_hosts": v["allow_hosts"], "locale": opts.get("locale"),
+                        "timezone_id": opts.get("timezone_id"), "user_agent": BROWSER_UA,
+                        "tools": "full" if g.get("browser_full") else "standard", "blocklist_size": len(BLOCKLIST),
                         "sessions_open": sum(1 for k in BROWSERS if k[0] == g["id"]), "max_sessions": MAX_SESSIONS}
         eg = egress_info()
         if eg:
@@ -1579,7 +1583,7 @@ def browser_for(g, sid=None):
             state_file = d / f"state-{sid}.json"
             state_file.write_text(json.dumps(state), encoding="utf-8")
         config = None
-        opts = SESSION_OPTS.get(key) or {}
+        opts = SESSION_OPTS.get(key) or default_context()
         ctx = {k2: v for k2, v in (("locale", opts.get("locale")), ("timezoneId", opts.get("timezone_id"))) if v}
         if ctx:
             config = d / f"config-{sid}.json"
@@ -1597,7 +1601,8 @@ def browser_for(g, sid=None):
             for t in b.call("tools/list", {}, 60)["tools"]:
                 TOOL_SCHEMAS[t["name"]] = t
         BROWSERS[key] = {"b": b, "used": now()}
-        return b
+    install_blocklist(b)
+    return b
 
 
 def close_browser(gid, sid=None):
@@ -1682,55 +1687,46 @@ GW_TOOL_NAMES = {t["name"] for t in GW_BROWSER_TOOLS}
 
 
 def browser_tools(g):
+    """默认：按任务设计的 11 个工具（GW3_TOOLS）。授权勾了“完整浏览器工具”时再列出 Playwright 的原始工具。
+    原始工具不列出时照样可以调用。"""
+    out = []
+    for t in GW3_TOOLS:
+        t = dict(t)
+        t["outputSchema"] = GW3_SCHEMAS[t["name"]]
+        out.append(t)
+    if not g.get("browser_full"):
+        return out
     if not TOOL_SCHEMAS:
         try:
             browser_for(g)
         except Exception as e:
             print("browser_tools:", e, file=sys.stderr)
-    out = []
     for n, t0 in TOOL_SCHEMAS.items():
-        if n in EXCLUDED:
+        if n in EXCLUDED or n in GW3_NAMES:
             continue
         t = json.loads(json.dumps(t0))
         sch = t.setdefault("inputSchema", {"type": "object"})
         props = sch.setdefault("properties", {})
-        props.pop("filename", None)              # 存到电脑上的文件名，对远程调用方没用（内容直接在结果里）
+        props.pop("filename", None)
         sch["required"] = [x for x in (sch.get("required") or []) if x != "filename"]
         if n == "browser_file_upload":
             sch["properties"] = {
-                "files": {"type": "array", "description": "Files to upload, with their content.",
-                          "items": {"type": "object", "properties": {"name": {"type": "string"}, "content_base64": {"type": "string"}},
-                                    "required": ["name", "content_base64"]}},
-                "paths": {"type": "array", "items": {"type": "string"},
-                          "description": "Files inside the granted folders (grants with folders only)."}}
+                "files": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "content_base64": {"type": "string"}}}},
+                "paths": {"type": "array", "items": {"type": "string"}}}
             sch["required"] = []
-            t["description"] = (f"Upload files to the open file chooser. Pass the file contents in files (base64, {UPLOAD_CAP >> 20} MB in "
-                                "total), or paths inside the granted folders. Call without arguments to cancel the chooser.")
         elif n == "browser_drop":
             props.pop("paths", None)
             sch["required"] = [x for x in sch["required"] if x != "paths"]
-        elif n == "browser_snapshot":
-            props["offset"] = {"type": "integer", "description": "Character offset into the last snapshot (default 0 takes a new one)."}
-            props["limit"] = {"type": "integer", "description": f"Characters to return (default {SNAP_DEFAULT}, max {SNAP_MAX})."}
-        else:
-            props.update(SNAP_PARAMS)
-            if n == "browser_navigate":
-                props["wait_until"] = WAIT_UNTIL
         if not sch["required"]:
             sch.pop("required")
         t["outputSchema"] = BROWSER_SCHEMA
-        t["description"] = (t.get("description") or "").rstrip() + BROWSER_NOTE
-        out.append(t)
-    for t in GW_BROWSER_TOOLS:
-        t = dict(t)
-        t["outputSchema"] = {"browser_get_text": TEXT_SCHEMA, "browser_read_download": DOWNLOAD_SCHEMA,
-                             "browser_reset": RESET_SCHEMA}.get(t["name"], BROWSER_SCHEMA)
         out.append(t)
     return out
 
 
 URL_WHY = {"invalid": ("网址无效", "The URL is not valid."), "scheme": ("仅支持 http、https 网址", "Only http and https URLs are allowed."),
-           "loopback": ("本机地址", "Addresses on this PC are blocked."), "private": ("本机或局域网地址", "Local and LAN addresses are blocked.")}
+           "loopback": ("本机地址", "Addresses on this PC are blocked."), "private": ("本机或局域网地址", "Local and LAN addresses are blocked."),
+           "blocklist": ("屏蔽列表中的网站", "This site is on the owner's blocklist (low-quality or copied content); use another source.")}
 
 
 def url_problem(url):
@@ -1746,6 +1742,8 @@ def url_problem(url):
         return "invalid"
     if host in ("localhost", "localhost.localdomain") or host.endswith(".localhost") or host.endswith(".local"):
         return "loopback"
+    if blocked_host(host):
+        return "blocklist"
     try:
         ip = ipaddress.ip_address(host)
         if ip.is_loopback or ip.is_unspecified:
@@ -1907,8 +1905,9 @@ def browser_result(g, name, r, snap_mode="full", limit=SNAP_ACTION, note=None):
         elif k in ("result", "open tabs"):
             rows = [TAB_LINE.match(x.strip()) for x in lines if x.strip()]
             if rows and all(rows):
+                # Edge 下载后自己开的 edge://downloads-hub 标签页不列出（关它会让 Playwright 卡住）；其余标签页保留原序号
                 obj["tabs"] = [{"index": int(x.group(1)), "current": bool(x.group(2)), "title": x.group(3), "url": x.group(4)}
-                               for x in rows]
+                               for x in rows if not x.group(4).startswith("edge://downloads")]
             elif clean.strip("- \n"):
                 obj["result"] = clean
         elif clean.strip("- \n"):
@@ -1979,6 +1978,8 @@ def browser_error(text, args):
         url = (m.group(2) if m else None) or (m2.group(1) if m2 else None) or str(args.get("url") or "")
         d = {"url": url, "net_error": net or "ERR_FAILED"}
         host = urlsplit(url).hostname or ""
+        if blocked_host(host):
+            return url_error(url, "blocklist")
         if net in NET_CONN and host and dns_exists(host) is False:
             d.update(net_error="ERR_NAME_NOT_RESOLVED", reported_error=net or "ERR_FAILED")
             return error("navigation_failed", f"The domain {host} does not exist (DNS lookup found no such name).", **d)
@@ -2003,12 +2004,12 @@ def run_code(b, js, timeout=60):
     return json.loads(json.loads('"' + m.group(1) + '"')[5:])
 
 
-MD_FN = r"""(root, fmt) => {
+MD_FN = r"""(root, fmt, novis) => {
   if (fmt === 'text') return root.innerText || '';
   const SKIP = new Set(['SCRIPT','STYLE','NOSCRIPT','TEMPLATE','SVG','CANVAS','HEAD','IFRAME','OBJECT','SELECT','BUTTON']);
   const BLOCK = new Set(['P','DIV','SECTION','ARTICLE','MAIN','HEADER','FOOTER','ASIDE','NAV','FORM','FIGURE','FIGCAPTION',
     'BLOCKQUOTE','DL','DT','DD','ADDRESS','DETAILS','SUMMARY','FIELDSET','TR','CAPTION']);
-  const vis = el => !el.checkVisibility || el.checkVisibility();
+  const vis = el => novis || !el.checkVisibility || el.checkVisibility();   // 脱离文档的节点（Readability 的结果）不查可见性
   const sp = s => (s || '').replace(/\s+/g, ' ');
   const out = []; let line = '';
   const flush = () => { const s = line.replace(/[ \t]+/g, ' ').trim(); if (s) out.push(s); line = ''; };
@@ -2211,7 +2212,8 @@ def gw_reset(g, args):
     else:
         SESSION_OPTS.pop(key, None)
     o = SESSION_OPTS.get(key) or {}
-    return result({"reset": True, "locale": o.get("locale") or "zh-CN", "timezone_id": o.get("timezone_id") or "Asia/Shanghai",
+    o = o or default_context()
+    return result({"reset": True, "locale": o.get("locale"), "timezone_id": o.get("timezone_id"),
                    "logins": json.loads(g["logins"] or "[]")})
 
 
@@ -2282,6 +2284,8 @@ def redact(g, name, r):
 
 
 def call_browser(g, name, args):
+    if name in GW3_NAMES:
+        return call_gw3(g, name, args)
     gid = g["id"]
     args = dict(args or {})
     op, t0 = web_op(name), now()
@@ -2381,11 +2385,857 @@ def egress_info():
     try:
         op = urllib.request.build_opener(urllib.request.ProxyHandler({"https": BROWSER_PROXY}))
         d = json.loads(op.open(urllib.request.Request("https://ipinfo.io/json", headers={"User-Agent": "tempauth"}), timeout=6).read())
-        v = {k: d.get(k) for k in ("country", "region", "city") if d.get(k)}
+        v = {k: d.get(k) for k in ("country", "region", "city", "timezone") if d.get(k)}
     except Exception:
         pass
     EGRESS.update(at=now(), v=v)
     return v
+
+
+# ====================================================================== 浏览器工具 3.0：按任务设计的精简工具
+# 设计见《MCP 控制台需求》第 7 节。对外默认 11 个浏览器工具；Playwright 的原始工具在“完整浏览器工具”的授权里列出，
+# 其余授权里不列出但仍可调用。
+BLOCKLIST_FILE = Path(__file__).resolve().parent / "blocklist.txt"
+READABILITY_FILE = Path(__file__).resolve().parent / "vendor" / "Readability.js"
+
+
+def load_blocklist():
+    try:
+        return {x.strip().lower() for x in BLOCKLIST_FILE.read_text(encoding="utf-8").splitlines()
+                if x.strip() and not x.lstrip().startswith("#")}
+    except OSError:
+        return set()
+
+
+BLOCKLIST = load_blocklist()
+
+
+def blocked_host(host):
+    """主人维护的屏蔽列表（低质量、搬运、垃圾站）：域名本身和它的子域名。"""
+    h = (host or "").lower().strip("[]").rstrip(".")
+    while h:
+        if h in BLOCKLIST:
+            return True
+        if "." not in h:
+            return False
+        h = h.split(".", 1)[1]
+    return False
+
+
+ROUTE_JS = """async (page) => {
+  const B = new Set(%s);
+  const blocked = (h) => { h = (h || '').toLowerCase(); while (h) { if (B.has(h)) return true; const i = h.indexOf('.'); if (i < 0) return false; h = h.slice(i + 1); } return false; };
+  await page.context().route((u) => { try { return blocked(u.hostname); } catch (e) { return false; } }, (r) => r.abort('blockedbyclient'));
+  return 'JSON:{}';
+}"""
+
+
+def install_blocklist(b):
+    """浏览器启动后在上下文里拦下屏蔽列表里的网站：点链接、跳转、页面里的请求都算。"""
+    if BLOCKLIST:
+        try:
+            run_code(b, ROUTE_JS % json.dumps(sorted(BLOCKLIST)), 30)
+        except Exception as e:
+            print("blocklist route:", e, file=sys.stderr)
+
+
+COUNTRY_LOCALE = {"US": "en-US", "GB": "en-GB", "CA": "en-CA", "AU": "en-AU", "SG": "en-SG", "IN": "en-IN", "JP": "ja-JP",
+                  "KR": "ko-KR", "CN": "zh-CN", "HK": "zh-HK", "TW": "zh-TW", "DE": "de-DE", "FR": "fr-FR", "NL": "nl-NL"}
+
+
+def default_context():
+    """默认语言和时区跟随出口所在地，避免“中文浏览器 + 美国 IP”这种不一致的环境。查不到时用 en-US、UTC。"""
+    eg = egress_info() or {}
+    return {"locale": COUNTRY_LOCALE.get(eg.get("country"), "en-US"), "timezone_id": eg.get("timezone") or "UTC"}
+
+
+# ---------------------------------------------------------------------- 页面状态：精简的可操作元素
+INTERACTIVE = {"link", "button", "textbox", "searchbox", "checkbox", "radio", "combobox", "listbox", "option", "menuitem",
+               "menuitemcheckbox", "menuitemradio", "tab", "switch", "slider", "spinbutton", "treeitem", "img"}
+SNAP_LINE = re.compile(r'^\s*- (\w+)(?: "((?:[^"\\]|\\.)*)")?(.*)$')
+STATE_JS = """async (page) => {
+  let s = {};
+  try { s = await page.evaluate(() => ({ x: Math.round(scrollX), y: Math.round(scrollY),
+    max_y: Math.max(0, Math.round(document.documentElement.scrollHeight - innerHeight)) })); } catch (e) {}
+  return 'JSON:' + JSON.stringify(s);
+}"""
+
+
+def elements_from(snap):
+    """从无障碍快照里取出可操作的元素（带 ref）和标题，一行一个：e12 link "Learn more" -> https://…"""
+    lines, out = snap.split("\n"), []
+    for i, ln in enumerate(lines):
+        m = SNAP_LINE.match(ln)
+        if not m:
+            continue
+        role, name, rest = m.group(1), m.group(2) or "", m.group(3)
+        ref = re.search(r"\[ref=(\w+)\]", rest)
+        if role == "heading":
+            lvl = re.search(r"\[level=(\d)\]", rest)
+            if name:
+                out.append(f'h{lvl.group(1) if lvl else ""} "{name}"')
+            continue
+        if role not in INTERACTIVE or not ref or (role == "img" and not name):
+            continue
+        attrs = [a for a in ("checked", "disabled", "selected", "expanded", "pressed") if f"[{a}" in rest]
+        val = ""
+        mv = re.search(r"\]:\s*(.+)$", rest)
+        if mv and role in ("textbox", "searchbox", "combobox", "spinbutton", "slider"):
+            val = mv.group(1).strip()
+        href = ""
+        if role == "link":
+            for j in range(i + 1, min(i + 4, len(lines))):
+                u = re.match(r"\s*- /url:\s*(\S+)", lines[j])
+                if u:
+                    href = u.group(1)
+                    break
+        out.append(f"{ref.group(1)} {role}" + (f' "{name}"' if name else "") + "".join(f" [{a}]" for a in attrs)
+                   + (f' = "{val}"' if val else "") + (f" -> {href}" if href else ""))
+    return "\n".join(out)
+
+
+LAST_ELEMS = {}            # (授权, 会话) → 最近一次的元素列表，browser_observe 用 offset 翻页
+ELEM_LIMIT = 12000
+
+
+def page_state(g, b, mode="interactive", limit=None, offset=0, target=None, base=None):
+    """操作之后的页面状态：page、tabs（不止一个时）、scroll，以及 elements（默认）或 snapshot（mode=full）。"""
+    key = (g["id"], sid_now())
+    try:
+        scroll = run_code(b, STATE_JS, 20)
+    except Exception:
+        scroll = {}
+    if mode == "none":
+        try:
+            d = run_code(b, "async (page) => { let t = ''; try { t = await page.title(); } catch (e) {} "
+                            "return 'JSON:' + JSON.stringify({ url: page.url(), title: t }); }", 20)
+        except Exception:
+            d = {}
+        o = dict(base or {})
+        o["page"] = d
+        o["scroll"] = scroll
+        return o
+    a = {"target": target} if target else {}
+    r = b.call("tools/call", {"name": "browser_snapshot", "arguments": a}, WAIT_BUDGET)
+    t = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
+    if r.get("isError") or t.lstrip().startswith("### Error"):
+        raise ActErr(browser_error(t, a))
+    o = browser_result(g, "browser_snapshot", r, "none")["structuredContent"]
+    full = LAST_SNAP.get(key, "")
+    o.pop("snapshot", None)
+    if mode == "full":
+        o["snapshot"] = page_slice(full, offset, limit or SNAP_DEFAULT)
+    else:
+        els = elements_from(full)
+        LAST_ELEMS[key] = els
+        o["elements"] = page_slice(els, offset, limit or ELEM_LIMIT)
+        o["elements"]["snapshot_chars"] = len(full)
+    o["scroll"] = scroll
+    for k, v in (base or {}).items():
+        o.setdefault(k, v)
+    return o
+
+
+class ActErr(Exception):
+    def __init__(self, res):
+        super().__init__("action failed")
+        self.res = res
+
+
+def pw(b, name, args, timeout=45):
+    """调一个 Playwright 工具；出错时抛 ActErr（已分类的 error 结果）。"""
+    r = b.call("tools/call", {"name": name, "arguments": args}, timeout)
+    t = "\n".join(c.get("text", "") for c in r.get("content", []) if c.get("type") == "text")
+    if r.get("isError") or t.lstrip().startswith("### Error"):
+        res = browser_error(t, args)
+        if "file chooser" in t.lower() or ("modal state" in t.lower() and name == "browser_file_upload"):
+            res = error("no_file_chooser", "No file chooser is open. Pass the file input's ref in the upload action instead "
+                                           "(upload: {ref, files}).", False)
+        raise ActErr(res)
+    return r
+
+
+def ref_of(a):
+    return a if isinstance(a, str) else (a or {}).get("ref") or (a or {}).get("target")
+
+
+def locator_js(ref, body):
+    return "async (page) => { const el = page.locator('aria-ref=' + %s); %s return 'JSON:{}'; }" % (json.dumps(ref), body)
+
+
+def do_action(g, b, a):
+    """一个操作。返回 Playwright 的结果（用来收集下载、控制台事件）或 None。"""
+    if not isinstance(a, dict) or len(a) != 1:
+        raise ActErr(error("invalid_argument", "Each action is an object with one key, e.g. {\"click\": \"e12\"}.", field="actions"))
+    (k, v), = a.items()
+    if k == "click":
+        d = v if isinstance(v, dict) else {}
+        args = {"target": ref_of(v), "element": d.get("element") or ref_of(v)}
+        if d.get("double"):
+            args["doubleClick"] = True
+        if d.get("button"):
+            args["button"] = d["button"]
+        if d.get("modifiers"):
+            args["modifiers"] = d["modifiers"]
+        return pw(b, "browser_click", args)
+    if k == "click_xy":
+        x, y = (v[0], v[1]) if isinstance(v, list) else (v.get("x"), v.get("y"))
+        args = {"x": x, "y": y}
+        if isinstance(v, dict) and v.get("button"):
+            args["button"] = v["button"]
+        if isinstance(v, dict) and v.get("count"):
+            args["clickCount"] = v["count"]
+        return pw(b, "browser_mouse_click_xy", args)
+    if k == "type":
+        return pw(b, "browser_type", {"target": v["ref"], "element": v["ref"], "text": str(v.get("text", "")),
+                                      "submit": bool(v.get("submit")), "slowly": bool(v.get("slowly"))})
+    if k == "fill":
+        r = None
+        for ref, val in v.items():
+            r = pw(b, "browser_type", {"target": ref, "element": ref, "text": str(val)})
+        return r
+    if k == "select":
+        vals = v.get("values") or ([v["value"]] if "value" in v else [])
+        return pw(b, "browser_select_option", {"target": v["ref"], "element": v["ref"], "values": [str(x) for x in vals]})
+    if k in ("check", "uncheck"):
+        run_code(b, locator_js(ref_of(v), "await el.setChecked(%s, { timeout: 8000 });" % ("true" if k == "check" else "false")), 20)
+        return None
+    if k == "press":
+        return pw(b, "browser_press_key", {"key": str(v)})
+    if k == "hover":
+        return pw(b, "browser_hover", {"target": ref_of(v), "element": ref_of(v)})
+    if k == "scroll":
+        v = v if isinstance(v, dict) else {"dy": v}
+        if v.get("to") in ("top", "bottom"):
+            run_code(b, "async (page) => { await page.evaluate((b) => window.scrollTo(0, b ? document.documentElement.scrollHeight : 0), %s); "
+                        "await page.waitForTimeout(300); return 'JSON:{}'; }" % ("true" if v["to"] == "bottom" else "false"), 20)
+        elif v.get("to"):
+            run_code(b, locator_js(v["to"], "await el.scrollIntoViewIfNeeded({ timeout: 8000 });"), 20)
+        else:
+            run_code(b, "async (page) => { const s = page.viewportSize() || { width: 1280, height: 720 }; "
+                        "await page.mouse.move(%s, %s); await page.mouse.wheel(%d, %d); await page.waitForTimeout(400); return 'JSON:{}'; }"
+                     % (json.dumps(v.get("x")) + " ?? s.width / 2", json.dumps(v.get("y")) + " ?? s.height / 2",
+                        int(v.get("dx") or 0), int(v.get("dy") or 0)), 20)
+        return None
+    if k == "drag":
+        return pw(b, "browser_drag", {"startTarget": v["from"], "startElement": v["from"], "endTarget": v["to"], "endElement": v["to"]})
+    if k == "drag_xy":
+        x1, y1, x2, y2 = v
+        return pw(b, "browser_mouse_drag_xy", {"startX": x1, "startY": y1, "endX": x2, "endY": y2})
+    if k == "wait":
+        v = v if isinstance(v, dict) else {"seconds": v}
+        if v.get("load"):
+            run_code(b, "async (page) => { try { await page.waitForLoadState(%s, { timeout: 20000 }); } catch (e) {} return 'JSON:{}'; }"
+                     % json.dumps(v["load"] if v["load"] in ("load", "domcontentloaded", "networkidle") else "load"), 30)
+            return None
+        args = {}
+        if v.get("text"):
+            args["text"] = v["text"]
+        if v.get("gone"):
+            args["textGone"] = v["gone"]
+        if v.get("seconds"):
+            args["time"] = min(float(v["seconds"]), 30)
+        return pw(b, "browser_wait_for", args or {"time": 1})
+    if k == "upload":
+        try:
+            paths, up = prepare_upload(g, v)
+        except ValueError:
+            raise ActErr(error("too_large", f"Uploads are limited to {UPLOAD_CAP >> 20} MB per call.", limit_bytes=UPLOAD_CAP))
+        except PermissionError as e:
+            raise ActErr(error("out_of_scope", "paths must be files inside the granted folders.", path=str(e)))
+        except (HelperError, HelperDown) as e:
+            raise ActErr(helper_error(e, ""))
+        try:
+            if v.get("ref"):
+                run_code(b, locator_js(v["ref"], "await el.setInputFiles(%s, { timeout: 8000 });" % json.dumps(paths)), 30)
+                return None
+            return pw(b, "browser_file_upload", {"paths": paths})
+        finally:
+            shutil.rmtree(up, ignore_errors=True)
+    if k == "dialog":
+        v = v if isinstance(v, dict) else {"accept": bool(v)}
+        args = {"accept": bool(v.get("accept", True))}
+        if v.get("text") is not None:
+            args["promptText"] = str(v["text"])
+        return pw(b, "browser_handle_dialog", args)
+    if k in ("back", "forward", "reload"):
+        fn = {"back": "goBack", "forward": "goForward", "reload": "reload"}[k]
+        run_code(b, "async (page) => { await page.%s({ waitUntil: 'domcontentloaded', timeout: 45000 }); return 'JSON:{}'; }" % fn, 60)
+        return None
+    if k == "goto":
+        url = str(v.get("url") if isinstance(v, dict) else v)
+        why = None if host_allowed(g, *host_port(url)) else url_problem(url)
+        if why:
+            raise ActErr(url_error(url, why))
+        return pw(b, "browser_navigate", {"url": url}, WAIT_BUDGET)
+    if k == "tab":
+        if "new" in v:
+            url = v.get("new") or ""
+            if url:
+                why = None if host_allowed(g, *host_port(url)) else url_problem(url)
+                if why:
+                    raise ActErr(url_error(url, why))
+            return pw(b, "browser_tabs", dict(action="new", **({"url": url} if url else {})))
+        if "select" in v:
+            return pw(b, "browser_tabs", {"action": "select", "index": int(v["select"])})
+        if "close" in v:
+            return pw(b, "browser_tabs", {"action": "close", "index": int(v["close"])})
+    raise ActErr(error("invalid_argument", f"Unknown action: {k}.", field="actions"))
+
+
+def collect(g, name, r, acc):
+    """单个操作结果里的下载和控制台、对话框等事件；同时删掉它引用的快照文件。"""
+    if not r:
+        return
+    o = browser_result(g, name, r, "none")["structuredContent"]
+    acc["downloads"] += o.get("downloads", [])
+    for k, v in (o.get("sections") or {}).items():
+        if k not in ("ran_playwright_code",):
+            acc["events"].append(v)
+    if o.get("result"):
+        acc["notes"].append(o["result"])
+
+
+# ---------------------------------------------------------------------- 各工具
+def obs_mode(args, default="interactive"):
+    m = args.get("observe") or args.get("mode") or default
+    return m if m in ("interactive", "full", "none") else default
+
+
+def gw3_open(g, args):
+    url = str(args.get("url") or "")
+    why = None if host_allowed(g, *host_port(url)) else url_problem(url)
+    if why:
+        return url_error(url, why)
+    b = browser_for(g)
+    acc = {"downloads": [], "events": [], "notes": []}
+    r = pw(b, "browser_tabs", {"action": "new", "url": url}, WAIT_BUDGET) if args.get("new_tab") else pw(b, "browser_navigate", {"url": url}, WAIT_BUDGET)
+    collect(g, "browser_navigate", r, acc)
+    wu = args.get("wait_until") or "load"
+    if wu in ("load", "networkidle"):
+        run_code(b, "async (page) => { try { await page.waitForLoadState('%s', { timeout: 15000 }); } catch (e) {} return 'JSON:{}'; }" % wu, 30)
+    return result(page_state(g, b, obs_mode(args), args.get("limit"), base=acc_base(acc)))
+
+
+def acc_base(acc):
+    o = {}
+    if acc["downloads"]:
+        o["downloads"] = acc["downloads"]
+    if acc["events"]:
+        o["events"] = acc["events"]
+    if acc["notes"]:
+        o["notes"] = acc["notes"]
+    return o
+
+
+def gw3_observe(g, args):
+    key = (g["id"], sid_now())
+    mode = obs_mode(args)
+    offset = max(0, int(args.get("offset") or 0))
+    if offset:
+        cache = LAST_SNAP.get(key) if mode == "full" else LAST_ELEMS.get(key)
+        if cache is not None:
+            part = page_slice(cache, offset, int(args.get("limit") or (SNAP_DEFAULT if mode == "full" else ELEM_LIMIT)))
+            return result({"snapshot" if mode == "full" else "elements": part})
+    return result(page_state(g, browser_for(g), mode, args.get("limit"), 0, args.get("target")))
+
+
+def gw3_act(g, args):
+    acts = args.get("actions")
+    if isinstance(acts, dict):
+        acts = [acts]
+    if not isinstance(acts, list) or not acts:
+        return error("invalid_argument", "actions must be a non-empty list, e.g. [{\"click\": \"e12\"}].", field="actions")
+    b = browser_for(g)
+    acc = {"downloads": [], "events": [], "notes": []}
+    deadline = now() + WAIT_BUDGET - 10
+    for i, a in enumerate(acts):
+        if now() > deadline:
+            st = page_state(g, b, "none", base=acc_base(acc))
+            return error("timeout", f"Stopped after {i} of {len(acts)} actions to stay within 75 s; send the rest in another call.",
+                         True, completed=i, state=st)
+        try:
+            collect(g, "browser_" + next(iter(a)), do_action(g, b, a), acc)
+        except ActErr as e:
+            res = e.res
+            try:
+                st = page_state(g, b, "none", base=acc_base(acc))
+            except Exception:
+                st = {}
+            res["structuredContent"]["error"].setdefault("details", {}).update(index=i, action=a, completed=i, state=st)
+            res["content"][0]["text"] = json.dumps(res["structuredContent"], ensure_ascii=False)
+            return res
+        except (KeyError, TypeError, ValueError, IndexError) as e:
+            return error("invalid_argument", f"Action {i} is malformed: {type(e).__name__} {e}.", index=i, action=a)
+        except RuntimeError as e:      # run_code 里的 Playwright 错误
+            res = browser_error(str(e), {})
+            res["structuredContent"]["error"].setdefault("details", {}).update(index=i, action=a, completed=i)
+            res["content"][0]["text"] = json.dumps(res["structuredContent"], ensure_ascii=False)
+            return res
+    o = page_state(g, b, obs_mode(args), args.get("limit"), base=acc_base(acc))
+    o["completed"] = len(acts)
+    return result(o)
+
+
+def gw3_screenshot(g, args):
+    b = browser_for(g)
+    a = {}
+    if args.get("target"):
+        a.update(target=args["target"], element=args["target"])
+    if args.get("full_page"):
+        a["fullPage"] = True
+    r = pw(b, "browser_take_screenshot", a, WAIT_BUDGET)
+    res = browser_result(g, "browser_take_screenshot", r, "none")
+    res["structuredContent"].pop("snapshot", None)
+    res["content"][0]["text"] = json.dumps(res["structuredContent"], ensure_ascii=False)
+    return res
+
+
+EVAL_JS = """async (page) => {
+  const ref = %s, fn = %s;
+  // 函数源码只在页面里执行：整页用“(函数)()”表达式（字符串形式的函数不会被调用）；元素上用 locator.evaluate
+  const v = ref ? await page.locator('aria-ref=' + ref).evaluate(fn) : await page.evaluate('(' + fn + ')()');
+  return 'JSON:' + JSON.stringify({ v: v === undefined ? null : v });
+}"""
+
+
+def gw3_eval(g, args):
+    fn = str(args.get("function") or args.get("expression") or "")
+    if not fn.strip():
+        return error("invalid_argument", "function is required, e.g. \"() => document.title\".", field="function")
+    try:
+        d = run_code(browser_for(g), EVAL_JS % (json.dumps(args.get("target")), json.dumps(fn)), 60)
+    except RuntimeError as e:
+        return browser_error(str(e), {})
+    v = d.get("v")
+    raw = json.dumps(v, ensure_ascii=False)
+    if len(raw) > 100000:
+        return result({"value_json": raw[:100000], "truncated": True, "total_chars": len(raw)})
+    return result({"value": v})
+
+
+def gw3_tabs(g, args):
+    act = args.get("action") or "list"
+    a = {"action": act}
+    if args.get("index") is not None:
+        a["index"] = int(args["index"])
+    if act == "new" and args.get("url"):
+        url = str(args["url"])
+        why = None if host_allowed(g, *host_port(url)) else url_problem(url)
+        if why:
+            return url_error(url, why)
+        a["url"] = url
+    b = browser_for(g)
+    r = pw(b, "browser_tabs", a)
+    o = browser_result(g, "browser_tabs", r, "none")["structuredContent"]
+    o.pop("snapshot", None)
+    return result(o)
+
+
+NET_LINE = re.compile(r"^(\d+)\. \[(\w+)\] (\S+)(?: => \[(\d+)\])?")
+COOKIE_ITEM = re.compile(r"^(\S+?)=(.*) \(domain: ([^,)]+), path: ([^)]*)\)")
+
+
+def gw3_inspect(g, args):
+    kind = args.get("kind") or "network"
+    b = browser_for(g)
+    offset = max(0, int(args.get("offset") or 0))
+    limit = clamp(args.get("limit"), 50, 1, 500)
+    if kind == "network" and args.get("index") is not None:
+        part = args.get("part") or "request-headers"
+        r = redact(g, "browser_network_request", pw(b, "browser_network_request", {"index": int(args["index"]), "part": part}))
+        t = browser_result(g, "x", r, "none")["structuredContent"].get("result", "")
+        o = {"kind": "network", "index": int(args["index"]), "part": part}
+        o.update(page_slice(t, offset, clamp(args.get("limit"), 20000, 100, TEXT_MAX)))
+        return result(o)
+    if kind == "network":
+        a = {"static": bool(args.get("static"))}
+        if args.get("filter"):
+            a["filter"] = str(args["filter"])
+        t = browser_result(g, "x", pw(b, "browser_network_requests", a), "none")["structuredContent"].get("result", "")
+        items = []
+        for ln in t.split("\n"):
+            m = NET_LINE.match(ln.strip())
+            if m:
+                items.append({"index": int(m.group(1)), "method": m.group(2), "url": m.group(3),
+                              **({"status": int(m.group(4))} if m.group(4) else {})})
+    elif kind == "cookies":
+        a = {"domain": str(args["filter"])} if args.get("filter") else {}
+        r = redact(g, "browser_cookie_list", pw(b, "browser_cookie_list", a))
+        t = browser_result(g, "x", r, "none")["structuredContent"].get("result", "")
+        items = [{"name": m.group(1), "value": m.group(2), "domain": m.group(3), "path": m.group(4)}
+                 for m in (COOKIE_ITEM.match(x.strip()) for x in t.split("\n")) if m]
+    elif kind == "storage":
+        d = run_code(b, "async (page) => 'JSON:' + JSON.stringify(await page.evaluate(() => { const f = (s) => { const o = {}; "
+                        "for (let i = 0; i < s.length; i++) { const k = s.key(i); o[k] = (s.getItem(k) || '').slice(0, 2000); } return o; }; "
+                        "return { origin: location.origin, local: f(localStorage), session: f(sessionStorage) }; }))", 20)
+        return result({"kind": "storage", **d})
+    elif kind == "console":
+        a = {"level": args.get("level") or "info", "all": True}
+        t = browser_result(g, "x", pw(b, "browser_console_messages", a), "none")["structuredContent"].get("result", "")
+        o = {"kind": "console"}
+        o.update(page_slice(t, offset, clamp(args.get("limit"), 20000, 100, TEXT_MAX)))
+        return result(o)
+    else:
+        return error("invalid_argument", "kind must be network, cookies, storage or console.", field="kind")
+    part = items[offset:offset + limit]
+    o = {"kind": kind, "items": part, "offset": offset, "total": len(items), "truncated": offset + len(part) < len(items)}
+    if o["truncated"]:
+        o["next_offset"] = offset + len(part)
+    return result(o)
+
+
+# ---------------------------------------------------------------------- 搜索
+SEARCH_JS = """async (page) => {
+  const [engine, q, pg, mkt] = %s;
+  const p = await page.context().newPage();
+  try {
+    const url = engine === 'google'
+      ? 'https://www.google.com/search?hl=' + mkt.split('-')[0] + '&num=10&start=' + ((pg - 1) * 10) + '&q=' + encodeURIComponent(q)
+      : 'https://www.bing.com/search?setlang=' + mkt + '&mkt=' + mkt + '&first=' + ((pg - 1) * 10 + 1) + '&q=' + encodeURIComponent(q);
+    await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Bing 先出页面框架（“Results are on the way”），结果条目随后才填进来：等条目本身
+    try { await p.waitForSelector(engine === 'google' ? '#search a h3, #captcha-form' : '#b_results > li.b_algo, #b_results .b_no', { timeout: 12000 }); } catch (e) {}
+    const items = await p.evaluate((engine) => {
+      const t = (e) => (e ? e.innerText : '').replace(/\\s+/g, ' ').trim();
+      if (engine === 'google') {
+        return [...document.querySelectorAll('#search a h3')].map((h) => {
+          const a = h.closest('a'); const box = a.closest('div[data-snc], div.g, div.MjjYud') || a.parentElement;
+          const sn = box ? box.querySelector('[data-sncf], .VwiC3b, .lEBKkf') : null;
+          return { title: t(h), url: a.href, snippet: t(sn) };
+        });
+      }
+      return [...document.querySelectorAll('#b_results > li.b_algo')].map((li) => {
+        const a = li.querySelector('h2 a'); if (!a) return null;
+        let url = a.href;
+        try { const u = new URL(url); const x = u.searchParams.get('u');
+          if (u.hostname.endsWith('bing.com') && x && x.startsWith('a1')) { let s = x.slice(2).replace(/-/g, '+').replace(/_/g, '/'); while (s.length %% 4) s += '='; url = atob(s); } } catch (e) {}
+        const sn = li.querySelector('.b_caption p, p.b_lineclamp2, p.b_lineclamp3, p.b_lineclamp4, .b_snippet, p');
+        return { title: t(a), url, snippet: t(sn) };
+      }).filter(Boolean);
+    }, engine);
+    const blocked = /\\/sorry\\//.test(p.url()) || (await p.locator('#captcha-form, iframe[src*="recaptcha"]').count()) > 0;
+    return 'JSON:' + JSON.stringify({ items, url: p.url(), blocked });
+  } finally { await p.close(); }
+}"""
+
+
+def gw3_search(g, args):
+    q = str(args.get("query") or "").strip()
+    if not q:
+        return error("invalid_argument", "query is required.", field="query")
+    engine = "google" if args.get("engine") == "google" else "bing"
+    pg = clamp(args.get("page"), 1, 1, 10)
+    key = (g["id"], sid_now())
+    mkt = args.get("market") or (SESSION_OPTS.get(key) or default_context()).get("locale", "en-US")
+    d = run_code(browser_for(g), SEARCH_JS % json.dumps([engine, q, pg, mkt]), 60)
+    if d.get("blocked"):
+        return error("search_blocked", f"{engine} asked for a human check. Try engine=bing, or read a known site directly.",
+                     True, engine=engine)
+    seen, results, dropped = set(), [], 0
+    for it in d.get("items") or []:
+        u = it.get("url") or ""
+        host = urlsplit(u).hostname or ""
+        if not u.startswith("http") or u in seen:
+            continue
+        seen.add(u)
+        if blocked_host(host):
+            dropped += 1
+            continue
+        results.append({"rank": len(results) + 1 + (pg - 1) * 10, "title": it.get("title", ""), "url": u,
+                        "snippet": (it.get("snippet") or "")[:400]})
+    o = {"engine": engine, "query": q, "page": pg, "results": results}
+    if not results and not dropped:
+        o["note"] = "No results were found on this page; try another query or engine."
+    if dropped:
+        o["blocklisted_removed"] = dropped
+    if results:
+        o["next_page"] = pg + 1
+    return result(o)
+
+
+# ---------------------------------------------------------------------- 读网页
+def read_expr(fmt, scope, links):
+    """页面里执行的读取代码：Readability 抽正文 → main/article → 整页，转 markdown。整段作为表达式求值，不受网页 CSP 的 eval 限制。"""
+    src = READABILITY_FILE.read_text(encoding="utf-8") if READABILITY_FILE.exists() and scope in ("auto", "article") else ""
+    return """(() => {
+  %s
+  const md = %s;
+  const [fmt, scope, wantLinks] = %s;
+  const links = (root) => wantLinks ? [...root.querySelectorAll('a[href]')].filter((a) => /^https?:/.test(a.href))
+    .map((a) => ({ text: (a.innerText || a.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120), url: a.href }))
+    .filter((x) => x.text).slice(0, 300) : undefined;
+  if ((scope === 'auto' || scope === 'article') && typeof Readability !== 'undefined') {
+    try {
+      const art = new Readability(document.cloneNode(true), { charThreshold: 300 }).parse();
+      if (art && art.content && (art.textContent || '').trim().length > 200) {
+        const d = document.createElement('div'); d.innerHTML = art.content;
+        return { text: md(d, fmt, true), scope: 'article', byline: art.byline || '', links: links(d) };
+      }
+    } catch (e) {}
+    if (scope === 'article') return { text: '', scope: 'article' };
+  }
+  if (scope !== 'page') {
+    const m = document.querySelector('main, [role=main]');
+    if (m) { const t = md(m, fmt, false); if (t.trim().length > 200 || scope === 'main') return { text: t, scope: 'main', links: links(m) }; }
+  }
+  return { text: md(document.body, fmt, false), scope: 'page', links: links(document.body) };
+})()""" % (src, MD_FN, json.dumps([fmt, scope, links]))
+
+
+READ_JS = """async (page) => {
+  const [ref, cap] = %s;
+  let ct = '';
+  try { ct = await page.evaluate(() => document.contentType); } catch (e) {}
+  if (!ref && ct === 'application/pdf') {
+    const r = await page.context().request.get(page.url(), { timeout: 45000 });
+    const b = await r.body();
+    if (b.length > cap) return 'JSON:' + JSON.stringify({ too_large: b.length, url: page.url() });
+    return 'JSON:' + JSON.stringify({ pdf: b.toString('base64'), url: page.url() });
+  }
+  let title = ''; try { title = await page.title(); } catch (e) {}
+  const out = ref ? { text: await page.locator('aria-ref=' + ref).evaluate(%s, %s), scope: 'element' } : await page.evaluate(%s);
+  return 'JSON:' + JSON.stringify({ ...out, url: page.url(), title });
+}"""
+
+
+def find_passages(text, query, limit):
+    """按关键词找段落（每段带前后各一行），按出现的词数排序后按原文顺序返回。query 里用引号括起的是短语。"""
+    terms = [a or b for a, b in re.findall(r'"([^"]+)"|(\S+)', query.lower()) if (a or b)]
+    if not terms:
+        return [], 0
+    lines = text.split("\n")
+    starts, pos = [], 0
+    for ln in lines:
+        starts.append(pos)
+        pos += len(ln) + 1
+    scored = []
+    for i, ln in enumerate(lines):
+        low = ln.lower()
+        n = sum(1 for t in terms if t in low)
+        if n:
+            scored.append((-n, i))
+    hits = len(scored)
+    picked, used = set(), 0
+    for _, i in sorted(scored):
+        block = [j for j in (i - 1, i, i + 1) if 0 <= j < len(lines) and lines[j].strip()]
+        size = sum(len(lines[j]) + 1 for j in block if j not in picked)
+        if used + size > limit and picked:
+            break
+        picked.update(block)
+        used += size
+    out, run = [], []
+    for j in sorted(picked):
+        if run and j != run[-1] + 1:
+            out.append({"offset": starts[run[0]], "text": "\n".join(lines[x] for x in run)})
+            run = []
+        run.append(j)
+    if run:
+        out.append({"offset": starts[run[0]], "text": "\n".join(lines[x] for x in run)})
+    return out, hits
+
+
+def gw3_read(g, args):
+    import base64
+    key = (g["id"], sid_now())
+    b = browser_for(g)
+    url = str(args.get("url") or "")
+    if url:
+        why = None if host_allowed(g, *host_port(url)) else url_problem(url)
+        if why:
+            return url_error(url, why)
+        acc = {"downloads": [], "events": [], "notes": []}
+        collect(g, "browser_navigate", pw(b, "browser_navigate", {"url": url}, WAIT_BUDGET), acc)
+        run_code(b, "async (page) => { try { await page.waitForLoadState('load', { timeout: 12000 }); } catch (e) {} return 'JSON:{}'; }", 20)
+    fmt = "text" if args.get("format") == "text" else "markdown"
+    scope = args.get("scope") if args.get("scope") in ("auto", "article", "main", "page") else "auto"
+    target = str(args.get("target") or "") or None
+    want_links = bool(args.get("links"))
+    offset = max(0, int(args.get("offset") or 0))
+    limit = clamp(args.get("limit"), TEXT_DEFAULT, 100, TEXT_MAX)
+    c = TEXT_CACHE.get(key)
+    sig = (fmt, scope, target, want_links)
+    if url or not (c and c.get("sig") == sig and (offset or args.get("find"))):
+        expr = read_expr(fmt, scope, want_links)
+        d = run_code(b, READ_JS % (json.dumps([target, FETCH_CAP]), json.dumps("(el) => (" + MD_FN + ")(el, %s, false)" % json.dumps(fmt)),
+                                   "undefined", json.dumps(expr)), 90)
+        if d.get("too_large"):
+            return error("too_large", f"The PDF is {d['too_large']} bytes; at most {FETCH_CAP} bytes can be extracted.", limit_bytes=FETCH_CAP)
+        if "pdf" in d:
+            try:
+                text, pages = pdf_text(base64.b64decode(d["pdf"]))
+            except ImportError:
+                return error("service_unavailable", "PDF text extraction is not installed on the PC.", True)
+            except Exception as e:
+                return error("browser_error", f"The PDF could not be read: {e}")
+            c = {"sig": sig, "text": text, "url": d["url"], "title": "", "source": "pdf", "pages": pages, "scope": "document"}
+        else:
+            c = {"sig": sig, "text": d.get("text") or "", "url": d.get("url", ""), "title": d.get("title", ""), "source": "html",
+                 "scope": d.get("scope", "page"), "byline": d.get("byline") or "", "links": d.get("links")}
+        TEXT_CACHE[key] = c
+    o = {"url": c["url"], "title": c["title"], "source": c["source"], "scope": c["scope"], "format": fmt}
+    if c.get("pages"):
+        o["pages"] = c["pages"]
+    if c.get("byline"):
+        o["byline"] = c["byline"]
+    if not c["text"].strip():
+        o["note"] = "No readable text was found. Try scope=page, or browser_observe for the page's elements."
+    if args.get("find"):
+        matches, hits = find_passages(c["text"], str(args["find"]), limit)
+        o.update(find=str(args["find"]), matches=matches, match_lines=hits, total_chars=len(c["text"]))
+    else:
+        o.update(page_slice(c["text"], offset, limit))
+    if want_links and c.get("links") is not None:
+        o["links"] = c["links"]
+    return result(o)
+
+
+def gw3_files(g, args):
+    if (args.get("action") or ("read" if args.get("name") else "list")) == "list":
+        return result({"downloads": download_files(g)})
+    return gw_read_download(g, args)
+
+
+# ---------------------------------------------------------------------- 定义
+OBS = {"type": "string", "enum": ["interactive", "full", "none"],
+       "description": "Page state to return: interactive (default) = compact list of actionable elements with refs; "
+                      "full = accessibility snapshot; none = url, title and scroll only."}
+GW3_TOOLS = [
+    {"name": "web_search",
+     "description": "Search the web (Bing by default, or Google) in this browser and return results: rank, title, url, snippet. "
+                    "Sites on the owner's blocklist are removed. Use web_read on a result url to read it.",
+     "inputSchema": {"type": "object", "properties": {
+         "query": {"type": "string"}, "engine": {"type": "string", "enum": ["bing", "google"]},
+         "page": {"type": "integer", "description": "Result page, 1-10 (default 1)."},
+         "market": {"type": "string", "description": "Language-region such as en-US or zh-CN (default: the browser locale)."}},
+         "required": ["query"]}},
+    {"name": "web_read",
+     "description": "Read a page as text in one call: opens url if given (otherwise the current page), extracts the article "
+                    "(Readability), falling back to the main content, then the whole page; PDFs are extracted with [page N] markers. "
+                    "find returns only the passages containing the words (quote phrases). Pages with offset/limit.",
+     "inputSchema": {"type": "object", "properties": {
+         "url": {"type": "string"}, "find": {"type": "string", "description": "Words or \"phrases\" to look for."},
+         "scope": {"type": "string", "enum": ["auto", "article", "main", "page"], "description": "Default auto."},
+         "format": {"type": "string", "enum": ["markdown", "text"], "description": "Default markdown."},
+         "target": {"type": "string", "description": "Element ref, to read only that part."},
+         "links": {"type": "boolean", "description": "Also return the links in the extracted part (up to 300)."},
+         "offset": {"type": "integer"}, "limit": {"type": "integer", "description": f"Characters (default {TEXT_DEFAULT}, max {TEXT_MAX})."}}}},
+    {"name": "browser_open",
+     "description": "Open a url and return the page state: url, title, scroll, and the actionable elements with refs.",
+     "inputSchema": {"type": "object", "properties": {
+         "url": {"type": "string"}, "new_tab": {"type": "boolean"},
+         "wait_until": {"type": "string", "enum": ["domcontentloaded", "load", "networkidle"], "description": "Default load."},
+         "observe": OBS}, "required": ["url"]}},
+    {"name": "browser_observe",
+     "description": "Get the current page state: actionable elements (default) or the full accessibility snapshot. "
+                    "offset pages through the last result without taking a new one.",
+     "inputSchema": {"type": "object", "properties": {
+         "mode": {"type": "string", "enum": ["interactive", "full"]}, "target": {"type": "string", "description": "Element ref (full mode)."},
+         "offset": {"type": "integer"}, "limit": {"type": "integer"}}}},
+    {"name": "browser_act",
+     "description": "Run actions in order and return the resulting page state. Each action is one of: {click: ref | {ref, double, button}}, "
+                    "{click_xy: [x, y]}, {type: {ref, text, submit}}, {fill: {ref: text, ...}}, {select: {ref, values}}, "
+                    "{check: ref}, {uncheck: ref}, {press: \"Enter\"}, {hover: ref}, {scroll: {dy} | {to: ref | \"top\" | \"bottom\"}}, "
+                    "{drag: {from: ref, to: ref}}, {drag_xy: [x1, y1, x2, y2]}, {wait: {text | gone | seconds | load}}, "
+                    "{upload: {ref, files: [{name, content_base64}] | paths}}, {dialog: {accept, text}}, {back: true}, "
+                    "{forward: true}, {reload: true}, {goto: url}, {tab: {new: url} | {select: i} | {close: i}}. "
+                    "Stops at the first failing action; the error says which.",
+     "inputSchema": {"type": "object", "properties": {
+         "actions": {"type": "array", "items": {"type": "object"}}, "observe": OBS}, "required": ["actions"]}},
+    {"name": "browser_screenshot", "description": "Screenshot of the viewport, the full page, or one element.",
+     "inputSchema": {"type": "object", "properties": {"target": {"type": "string"}, "full_page": {"type": "boolean"}}}},
+    {"name": "browser_eval",
+     "description": "Run a JavaScript function in the page (or on an element) and return its result as JSON, "
+                    "e.g. \"() => [...document.querySelectorAll('tr')].map(r => r.innerText)\".",
+     "inputSchema": {"type": "object", "properties": {"function": {"type": "string"}, "target": {"type": "string"}},
+                     "required": ["function"]}},
+    {"name": "browser_tabs", "description": "List, open, select or close tabs.",
+     "inputSchema": {"type": "object", "properties": {
+         "action": {"type": "string", "enum": ["list", "new", "select", "close"]}, "index": {"type": "integer"}, "url": {"type": "string"}}}},
+    {"name": "browser_files",
+     "description": "Files the browser downloaded or recorded: list them, or read one (text, PDFs as text; base64 for raw bytes), with paging.",
+     "inputSchema": {"type": "object", "properties": {
+         "action": {"type": "string", "enum": ["list", "read"]}, "name": {"type": "string"},
+         "encoding": {"type": "string", "enum": ["text", "base64"]}, "offset": {"type": "integer"}, "limit": {"type": "integer"}}}},
+    {"name": "browser_inspect",
+     "description": "Browser state with paging: network requests (filter; index + part for headers or body), cookies "
+                    "(filter = domain), storage (localStorage and sessionStorage of the page), console messages. "
+                    "Cookie values of saved logins and Cookie/Authorization headers are redacted.",
+     "inputSchema": {"type": "object", "properties": {
+         "kind": {"type": "string", "enum": ["network", "cookies", "storage", "console"]}, "filter": {"type": "string"},
+         "index": {"type": "integer"}, "part": {"type": "string", "enum": ["request-headers", "request-body", "response-headers", "response-body"]},
+         "static": {"type": "boolean"}, "offset": {"type": "integer"}, "limit": {"type": "integer"}}}},
+    {"name": "browser_reset",
+     "description": "Start this session's browser over (no cookies, storage or tabs; the grant's saved logins are loaded again), "
+                    "optionally with another locale and time zone. Default: matching the exit location.",
+     "inputSchema": {"type": "object", "properties": {"locale": {"type": "string"}, "timezone_id": {"type": "string"}}}},
+]
+GW3_HANDLERS = {"web_search": gw3_search, "web_read": gw3_read, "browser_open": gw3_open, "browser_observe": gw3_observe,
+                "browser_act": gw3_act, "browser_screenshot": gw3_screenshot, "browser_eval": gw3_eval, "browser_tabs": gw3_tabs,
+                "browser_files": gw3_files, "browser_inspect": gw3_inspect, "browser_reset": gw_reset}
+GW3_NAMES = set(GW3_HANDLERS)
+STATE_SCHEMA = _o(page={"type": "object"}, tabs={"type": "array"}, scroll={"type": "object"},
+                  elements={"type": "object", "properties": dict(SLICE, snapshot_chars=I)},
+                  snapshot={"type": "object", "properties": SLICE}, downloads={"type": "array"}, events={"type": "array"},
+                  notes={"type": "array"}, completed=I)
+GW3_SCHEMAS = {
+    "web_search": _o(engine=S, query=S, page=I, next_page=I, blocklisted_removed=I, note=S,
+                     results={"type": "array", "items": {"type": "object", "properties": {"rank": I, "title": S, "url": S, "snippet": S}}}),
+    "web_read": _o(url=S, title=S, source=S, scope=S, format=S, pages=I, byline=S, note=S, find=S, match_lines=I,
+                   matches={"type": "array", "items": {"type": "object", "properties": {"offset": I, "text": S}}},
+                   links={"type": "array"}, **SLICE),
+    "browser_open": STATE_SCHEMA, "browser_observe": STATE_SCHEMA, "browser_act": STATE_SCHEMA,
+    "browser_screenshot": _o(page={"type": "object"}, attachments={"type": "array"}),
+    "browser_eval": _o(value={}, value_json=S, truncated=B, total_chars=I),
+    "browser_tabs": _o(tabs={"type": "array"}, result=S),
+    "browser_files": DOWNLOAD_SCHEMA,
+    "browser_inspect": _o(kind=S, items={"type": "array"}, origin=S, local={"type": "object"}, session={"type": "object"},
+                          index=I, part=S, total=I, **SLICE),
+    "browser_reset": RESET_SCHEMA,
+}
+WEB_OPS.update({"web_search": "搜索", "web_read": "读取网页", "browser_open": "打开网页", "browser_observe": "读取页面",
+                "browser_act": "操作页面", "browser_screenshot": "截图", "browser_eval": "执行脚本", "browser_files": "读取下载",
+                "browser_inspect": "查看状态"})
+
+
+def gw3_target(name, args):
+    if name == "web_search":
+        return str(args.get("query") or "")[:200]
+    if name in ("web_read", "browser_open"):
+        return str(args.get("url") or args.get("find") or "")[:300]
+    if name == "browser_act":
+        acts = args.get("actions") or []
+        acts = acts if isinstance(acts, list) else [acts]
+        return f"{len(acts)} 个操作：" + "、".join(next(iter(a)) for a in acts if isinstance(a, dict) and a)[:200]
+    if name == "browser_eval":
+        return str(args.get("function") or "")[:200]
+    if name == "browser_inspect":
+        return str(args.get("kind") or "network")
+    return ""
+
+
+def call_gw3(g, name, args):
+    gid, t0, op = g["id"], now(), web_op(name)
+    target = gw3_target(name, args or {})
+    try:
+        res = GW3_HANDLERS[name](g, dict(args or {}))
+    except TooManySessions:
+        return error("service_unavailable", f"This grant already has {MAX_SESSIONS} browser sessions open. Wait until an idle one "
+                                            "closes (15 minutes) or end another session.", True)
+    except ActErr as e:
+        res = e.res
+    except RuntimeError as e:
+        res = browser_error(str(e), args or {})
+    except Exception as e:
+        add_log(gid, op, target, "error", str(e)[:200], now() - t0)
+        if isinstance(e, TimeoutError):
+            return error("timeout", "The browser did not finish within 75 s; the page may still be loading.", True,
+                         timeout_ms=WAIT_BUDGET * 1000)
+        return error("service_unavailable", f"The browser is not available: {e}", True)
+    err = res.get("isError")
+    add_log(gid, op, target, "error" if err else "ok",
+            (res.get("structuredContent") or {}).get("error", {}).get("message", "")[:200] if err else "", now() - t0)
+    return res
 
 
 # ---------------------------------------------------------------------- 保存的登录（按网站域名）
@@ -2680,7 +3530,7 @@ def mcp_instructions(g):
         allow = v["allow_hosts"]
         text += ("浏览器：经代理访问外网，不计次数，不需确认；"
                  + ("本机和局域网地址只能访问 " + "、".join(allow) + "；" if allow else "不能打开本机或局域网地址；") + "不能打开本地文件。"
-                 "读正文和 PDF 用 browser_get_text；快照默认截到 2 万字，用 browser_snapshot 的 offset 翻页，或传 snapshot=none。"
+                 "查资料用 web_search、web_read（含 PDF，find 取相关段落）；操作网页用 browser_open 看可操作元素，browser_act 批量执行操作。"
                  "遇到登录页、验证码或邮件验证时，调用 request_login，由电脑主人在自己的窗口中完成登录；不要索要或输入密码、验证码。"
                  "返回 logged_in 后，浏览器已带上登录状态并刷新了页面。"
                  + ("已带上以下网站的登录：" + "、".join(v["logins"]) + "。" if v["logins"] else ""))

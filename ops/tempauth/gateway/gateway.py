@@ -7,7 +7,9 @@
 
 设计见《MCP 控制台需求》第 5 节。测试：python gateway.py --demo（假助手，直接在本机跑命令，没有隔离）。
 """
+import base64
 import hashlib
+import ipaddress
 import json
 import os
 import queue
@@ -23,6 +25,7 @@ import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PureWindowsPath
+from urllib.parse import urlsplit
 
 IS_WIN = os.name == "nt"
 DEMO = "--demo" in sys.argv
@@ -33,7 +36,7 @@ DATA = Path(os.environ.get("TMCP_DATA", str(Path.home() / "TempAuth")))
 ADMIN_TOKEN_FILE = Path(os.environ.get("TMCP_ADMIN_TOKEN_FILE",
                                        r"C:\ProgramData\BlenderMCP\tempauth.token" if IS_WIN else str(DATA / "tempauth.token")))
 PIPE = r"\\.\pipe\aitemp-helper"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 WAIT_BUDGET = 75          # Cloudflare 约 100 秒断开；一次调用最多等这么久
 OUTPUT_KEEP = 64 * 1024   # 执行记录里只存输出的前 64 KB
@@ -387,6 +390,11 @@ class Store:
         CREATE INDEX IF NOT EXISTS logs_grant ON logs(grant_id, id);
         CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
         """)
+        cols = {r[1] for r in self.db.execute("PRAGMA table_info(grants)").fetchall()}
+        if "browser" not in cols:
+            self.db.execute("ALTER TABLE grants ADD COLUMN browser INTEGER DEFAULT 0")
+        if "logins" not in cols:
+            self.db.execute("ALTER TABLE grants ADD COLUMN logins TEXT DEFAULT '[]'")
 
     def q(self, sql, args=()):
         with self.lock:
@@ -426,6 +434,10 @@ def grant_view(g):
          "confirm": bool(g["confirm"]), "state": st, "remaining": max(0, int(g["expires"] - t)),
          "restorable": st == "revoked" and not g["released"] and g["expires"] > t and t - g["revoked_at"] < RESTORE_WINDOW}
     v["created_hm"], v["expires_at"] = hms(g["created"]), datetime.fromtimestamp(g["expires"]).strftime("%m-%d %H:%M")
+    v["browser"] = bool(g["browser"])
+    v["logins"] = json.loads(g["logins"] or "[]")
+    v["browser_ops"] = STORE.q("SELECT COUNT(*) n FROM logs WHERE grant_id=? AND op NOT IN ('run','read','write','list')",
+                               (g["id"],))[0]["n"] if g["browser"] else 0
     return v
 
 
@@ -486,6 +498,8 @@ def counts():
     active = sum(1 for g in STORE.q("SELECT * FROM grants WHERE released=0") if grant_state(g) == "active")
     with TASK_LOCK:
         pending = sum(1 for t in TASKS.values() if t["state"] == "approval")
+    with LOGIN_LOCK:
+        pending += sum(1 for r in LOGINREQ.values() if r["state"] in ("pending", "active"))
     return {"active": active, "pending": pending, "blocked_today": blocked_today()}
 
 
@@ -653,10 +667,13 @@ def tail_text(s, n=8000):
 # ====================================================================== 授权：签发、吊销、恢复、到期
 def make_prompt(g, url):
     folders = json.loads(g["folders"])
+    if not folders:
+        return make_browser_prompt(g, url)
     lim = "不限" if g["lim"] < 0 else f"{g['lim']} 次"
     exp = datetime.fromtimestamp(g["expires"]).strftime("%Y-%m-%d %H:%M")
     lines = [
-        "我给你开了一个临时 MCP 连接，可以在我电脑（Windows）的指定文件夹里执行命令、读写文件。",
+        "我给你开了一个临时 MCP 连接，可以在我电脑（Windows）的指定文件夹里执行命令、读写文件"
+        + ("，并使用一个浏览器。" if g["browser"] else "。"),
         f"连接地址：{url}",
         "把它添加为自定义连接器（远程 MCP 服务，不需要登录）。地址里带着令牌，请不要转给别人。",
         "",
@@ -674,7 +691,34 @@ def make_prompt(g, url):
         "要装包请先在文件夹里建虚拟环境：python -m venv .venv，再用 .venv\\Scripts\\python -m pip install …。"
         "Node 和 npm、git、Blender（blender -b）都能用。命令最长等 75 秒返回，没跑完会给任务编号，用 get_command_result 取结果。",
     ]
+    if g["browser"]:
+        lines += ["", *browser_prompt_lines(g)]
     return "\n".join(lines)
+
+
+def browser_prompt_lines(g):
+    logins = json.loads(g["logins"] or "[]")
+    return [
+        "浏览器：",
+        "- 允许，经代理访问外网；浏览器操作不计次数，不需要我确认",
+        "- 已带登录：" + ("、".join(logins) if logins else "无"),
+        "- 不能打开本机或局域网地址、本地文件，不能上传本地文件",
+        "- 需要登录其他网站，或遇到验证码、邮件验证时，调用 request_login，由我在电脑上登录；不要向我索要密码或验证码",
+    ]
+
+
+def make_browser_prompt(g, url):
+    exp = datetime.fromtimestamp(g["expires"]).strftime("%Y-%m-%d %H:%M")
+    return "\n".join([
+        "我给你开了一个临时 MCP 连接，可以使用我电脑上的一个浏览器。",
+        f"连接地址：{url}",
+        "把它添加为自定义连接器（远程 MCP 服务，不需要登录）。地址里带着令牌，请不要转给别人。",
+        "",
+        f"用途：{g['name']}",
+        f"到期：{exp}，之后地址失效",
+        "",
+        *browser_prompt_lines(g),
+    ])
 
 
 def issue(body):
@@ -682,8 +726,14 @@ def issue(body):
     if isinstance(folders, str):
         folders = [folders]
     folders = [wpath(f.strip().strip('"')) for f in folders if f and f.strip()]
-    if not folders:
-        return {"ok": False, "msg": "请选择文件夹"}, 400
+    browser = bool(body.get("browser"))
+    if not folders and not browser:
+        return {"ok": False, "msg": "请选择文件夹或浏览器"}, 400
+    logins = [d for d in (body.get("logins") or []) if isinstance(d, str)] if browser else []
+    saved = {x["domain"] for x in saved_logins()}
+    missing = [d for d in logins if d not in saved]
+    if missing:
+        return {"ok": False, "msg": "没有这些网站的登录：" + "、".join(missing)}, 400
     seen, reals = set(), []
     for f in folders:
         p = folder_problem(f) if IS_WIN else None
@@ -703,7 +753,7 @@ def issue(body):
         minutes = max(5, min(minutes, 7 * 1440))
     lim = int(body.get("limit") if body.get("limit") is not None else 20)
     lim = -1 if lim < 0 else max(1, min(lim, 100000))
-    name = (body.get("name") or "").strip()[:60] or Path(reals[0].replace("\\", "/")).name or reals[0]
+    name = (body.get("name") or "").strip()[:60] or (Path(reals[0].replace("\\", "/")).name or reals[0] if reals else "浏览器")
     names = {r["name"] for r in STORE.q("SELECT name FROM grants")}
     base, i = name, 2
     while name in names:
@@ -711,18 +761,20 @@ def issue(body):
     gid = "g" + secrets.token_hex(5)
     token = secrets.token_urlsafe(32)
     t = now()
-    try:
-        HELPER.call({"op": "prepare", "grant": gid, "folders": reals})
-    except HelperError as e:
-        return {"ok": False, "msg": str(e)}, 400
-    except HelperDown as e:
-        return {"ok": False, "msg": str(e)}, 503
-    STORE.x("INSERT INTO grants (id, name, folders, token_hash, created, expires, lim, used, net, confirm, minutes) "
-            "VALUES (?,?,?,?,?,?,?,0,?,?,?)",
+    if reals:
+        try:
+            HELPER.call({"op": "prepare", "grant": gid, "folders": reals})
+        except HelperError as e:
+            return {"ok": False, "msg": str(e)}, 400
+        except HelperDown as e:
+            return {"ok": False, "msg": str(e)}, 503
+    STORE.x("INSERT INTO grants (id, name, folders, token_hash, created, expires, lim, used, net, confirm, minutes, browser, logins) "
+            "VALUES (?,?,?,?,?,?,?,0,?,?,?,?,?)",
             (gid, name, json.dumps(reals, ensure_ascii=False), hashlib.sha256(token.encode()).hexdigest(), t,
-             t + minutes * 60, lim, 1 if body.get("net") else 0, 1 if body.get("confirm") else 0, minutes))
+             t + minutes * 60, lim, 1 if body.get("net") else 0, 1 if body.get("confirm") else 0, minutes,
+             1 if browser else 0, json.dumps(logins)))
     STORE.meta("last_issue", {"folders": reals, "minutes": minutes, "limit": lim, "net": bool(body.get("net")),
-                              "confirm": bool(body.get("confirm"))})
+                              "confirm": bool(body.get("confirm")), "browser": browser, "logins": logins})
     g = get_grant(gid)
     url = f"{PUBLIC_BASE}/t/{token}/mcp"
     publish_grant(gid)
@@ -761,6 +813,8 @@ def revoke(gid):
     except (HelperDown, HelperError) as e:
         print("kill_grant:", e, file=sys.stderr)
     cancel_tasks(gid, "授权已被收回")
+    close_browser(gid)
+    cancel_logins(gid, "授权已被收回")
     publish_grant(gid)
     return {"ok": True, "grant": grant_view(get_grant(gid)), "ms": int((now() - t0) * 1000)}, 200
 
@@ -800,6 +854,9 @@ def ticker():
                     except Exception:
                         pass
                     cancel_tasks(g["id"], "授权已到期")
+                if st in ("expired", "revoked"):
+                    close_browser(g["id"])
+                    cancel_logins(g["id"], "授权已失效")
                 if st == "used":
                     cancel_tasks(g["id"], "次数已用完", ("approval",))
                 with TASK_LOCK:
@@ -816,6 +873,7 @@ def ticker():
                         publish_grant(g["id"])
                     except (HelperDown, HelperError, OSError) as e:
                         print("release:", e, file=sys.stderr)
+            expire_logins()
             if not any_live and STORE.meta("cleaned") is not True:
                 try:
                     HELPER.call({"op": "clean"})
@@ -837,6 +895,7 @@ def reconcile():
 
 
 # ====================================================================== MCP 工具
+TOOL_NAMES = {"run_command", "get_command_result", "cancel_command", "read_file", "write_file", "list_directory"}
 TOOLS = [
     {"name": "run_command",
      "description": "Run a shell command as the sandbox user, inside the granted folder on the owner's Windows PC. "
@@ -904,10 +963,34 @@ def text_result(s, err=False):
     return {"content": [{"type": "text", "text": s}], "isError": bool(err)}
 
 
+def tools_for(g):
+    out = []
+    if json.loads(g["folders"]):
+        out += [t for t in TOOLS if t["name"] != "grant_info"]
+    if g["browser"]:
+        out += browser_tools(g) + LOGIN_TOOLS
+    out.append(next(t for t in TOOLS if t["name"] == "grant_info"))
+    return out
+
+
 def call_tool(g, name, args):
     """返回 MCP tools/call 的 result。每次调用一条执行记录。"""
     gid = g["id"]
     st = grant_state(g)
+    if name.startswith("browser_") or name in ("request_login", "check_login"):
+        if not g["browser"]:
+            return text_result("这次授权不包含浏览器。", True)
+        if st != "active" and name != "check_login":
+            why = {"revoked": "授权已被主人收回", "expired": "授权已到期", "used": "次数已用完"}[st]
+            add_log(gid, WEB_OPS.get(name, name), str(args.get("url") or ""), "denied", why)
+            return text_result(why + "，这个地址不能再用了。", True)
+        if name == "request_login":
+            return tool_request_login(g, args)
+        if name == "check_login":
+            return tool_check_login(g, args)
+        return call_browser(g, name, args)
+    if name in TOOL_NAMES and not json.loads(g["folders"]):
+        return text_result("这次授权不包含文件夹。", True)
     op = OP_OF.get(name)
     if name == "grant_info":
         v = grant_view(g)
@@ -1073,12 +1156,495 @@ def decide(tid, allow):
     return {"ok": True}, 200
 
 
+
+# ====================================================================== 浏览器授权
+# 每条带浏览器的授权一个 Playwright MCP（stdio，无界面 Edge，配置只在内存里）。网关是它的客户端：
+# 只把下面允许的工具转给对方 AI；写入登录信息时网关自己调用 browser_run_code_unsafe，这个工具不给对方。
+PLAYWRIGHT_CLI = Path(os.environ.get("TMCP_PLAYWRIGHT", r"C:\Program Files\BlenderMCP\node\node_modules\@playwright\mcp\cli.js"))
+NODE = os.environ.get("TMCP_NODE", r"D:\Program Files\node.EXE")
+BROWSER_PROXY = os.environ.get("TMCP_BROWSER_PROXY", "http://127.0.0.1:7899")
+BLOCKED_ORIGINS = ";".join(f"{s}://{h}" for s in ("http", "https") for h in ("127.0.0.1", "localhost", "[::1]", "0.0.0.0"))
+LOGIN_DIR = DATA / "logins"
+BROWSER_DIR = DATA / "browser"
+LOGIN_TIMEOUT = 600        # 登录请求 10 分钟没处理就取消
+WEB_OPS = {
+    "browser_navigate": "打开网页", "browser_navigate_back": "返回", "browser_tabs": "标签页", "browser_find": "查找",
+    "browser_snapshot": "读取页面", "browser_take_screenshot": "截图", "browser_click": "点击", "browser_type": "输入",
+    "browser_fill_form": "填写表单", "browser_select_option": "选择", "browser_press_key": "按键", "browser_hover": "悬停",
+    "browser_wait_for": "等待", "browser_drag": "拖动", "browser_handle_dialog": "对话框", "browser_console_messages": "控制台",
+    "browser_close": "关闭页面", "browser_resize": "调整窗口", "browser_pdf_save": "保存 PDF",
+    "request_login": "登录", "check_login": "登录",
+}
+NO_WINDOW = 0x08000000 if IS_WIN else 0
+NEW_GROUP = 0x00000200 if IS_WIN else 0
+
+
+class StdioMCP:
+    """一个 stdio 上的 MCP 服务端子进程（换行分隔的 JSON-RPC）。"""
+
+    def __init__(self, args, cwd=None, log=None):
+        self.p = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log or subprocess.DEVNULL,
+                                  cwd=cwd, creationflags=NO_WINDOW | NEW_GROUP)
+        self.lock, self.pending, self.next_id = threading.Lock(), {}, 1
+        threading.Thread(target=self._read, daemon=True).start()
+        self.call("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                 "clientInfo": {"name": "tempauth", "version": VERSION}}, 60)
+        self._send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def _send(self, msg):
+        data = (json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8")
+        with self.lock:
+            self.p.stdin.write(data)
+            self.p.stdin.flush()
+
+    def _read(self):
+        for line in self.p.stdout:
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if "method" in msg and "id" in msg:      # 服务端发来的请求（如 roots/list）：不支持
+                try:
+                    self._send({"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32601, "message": "not supported"}})
+                except OSError:
+                    pass
+                continue
+            q = self.pending.pop(msg.get("id"), None)
+            if q:
+                q.put(msg)
+        for q in list(self.pending.values()):
+            q.put({"error": {"message": "浏览器进程已退出"}})
+
+    def call(self, method, params, timeout=80):
+        with self.lock:
+            mid = self.next_id
+            self.next_id += 1
+        q = queue.Queue()
+        self.pending[mid] = q
+        self._send({"jsonrpc": "2.0", "id": mid, "method": method, "params": params})
+        try:
+            r = q.get(timeout=timeout)
+        except queue.Empty:
+            self.pending.pop(mid, None)
+            raise TimeoutError("浏览器 %d 秒没有响应" % timeout)
+        if "error" in r:
+            raise RuntimeError(r["error"].get("message", "浏览器出错"))
+        return r["result"]
+
+    def alive(self):
+        return self.p.poll() is None
+
+    def close(self):
+        if self.p.poll() is None:
+            if IS_WIN:
+                subprocess.run(["taskkill", "/PID", str(self.p.pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+            else:
+                self.p.kill()
+
+
+BROWSERS = {}
+BROWSER_LOCK = threading.Lock()
+TOOL_SCHEMAS = {}
+
+
+def browser_args(gid, state_file, outdir, headless=True, proxy=True):
+    args = [NODE, str(PLAYWRIGHT_CLI), "--browser", "msedge", "--isolated", "--output-dir", str(outdir), "--ignore-roots",
+            "--codegen", "none", "--no-webmcp", "--caps", "pdf", "--idle-timeout", "0", "--blocked-origins", BLOCKED_ORIGINS]
+    if headless:
+        args.append("--headless")
+    if proxy:
+        # 回环地址也走代理：请求到了代理节点上，碰不到这台电脑的本机服务
+        args += ["--proxy-server", BROWSER_PROXY, "--proxy-bypass", "<-loopback>"]
+    if state_file:
+        args += ["--storage-state", str(state_file)]
+    return args
+
+
+def grant_outdir(g):
+    folders = json.loads(g["folders"])
+    d = Path(folders[0]) / "downloads" if folders else BROWSER_DIR / g["id"] / "output"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def browser_for(g):
+    gid = g["id"]
+    with BROWSER_LOCK:
+        b = BROWSERS.get(gid)
+        if b and b.alive():
+            return b
+        state = merged_state(json.loads(g["logins"] or "[]"))
+        state_file = None
+        if state["cookies"] or state["origins"]:
+            d = BROWSER_DIR / gid
+            d.mkdir(parents=True, exist_ok=True)
+            state_file = d / "state.json"
+            state_file.write_text(json.dumps(state), encoding="utf-8")
+        BROWSER_DIR.mkdir(parents=True, exist_ok=True)
+        log = open(BROWSER_DIR / f"{gid}.log", "ab")
+        b = StdioMCP(browser_args(gid, state_file, grant_outdir(g)), cwd=str(grant_outdir(g)), log=log)
+        if state_file:
+            try:
+                state_file.unlink()          # Playwright 启动时已读入；不在磁盘上留登录信息
+            except OSError:
+                pass
+        if not TOOL_SCHEMAS:
+            for t in b.call("tools/list", {}, 60)["tools"]:
+                TOOL_SCHEMAS[t["name"]] = t
+        BROWSERS[gid] = b
+        return b
+
+
+def close_browser(gid):
+    with BROWSER_LOCK:
+        b = BROWSERS.pop(gid, None)
+    if b:
+        b.close()
+
+
+def browser_tools(g):
+    if not TOOL_SCHEMAS:
+        try:
+            browser_for(g)
+        except Exception as e:
+            print("browser_tools:", e, file=sys.stderr)
+    return [TOOL_SCHEMAS[n] for n in WEB_OPS if n in TOOL_SCHEMAS]
+
+
+def url_problem(url):
+    """本机、局域网和本地文件拦下；返回原因或 None。"""
+    try:
+        u = urlsplit(url.strip())
+    except ValueError:
+        return "网址不对"
+    if u.scheme not in ("http", "https", ""):
+        return "只能打开 http、https 网址"
+    host = (u.hostname or "").strip("[]").lower()
+    if not host and u.scheme:
+        return "网址不对"
+    if host in ("localhost", "localhost.localdomain") or host.endswith(".localhost") or host.endswith(".local"):
+        return "本机地址"
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_unspecified or ip.is_reserved:
+            return "本机或局域网地址"
+    except ValueError:
+        pass
+    return None
+
+
+def web_target(name, args):
+    if name == "browser_navigate":
+        return str(args.get("url", ""))
+    if name in ("browser_click", "browser_hover", "browser_select_option"):
+        return str(args.get("element") or args.get("ref") or "")
+    if name == "browser_type":
+        return f"{args.get('element') or args.get('ref') or ''}（{len(str(args.get('text', '')))} 个字符）"
+    if name == "browser_fill_form":
+        return f"{len(args.get('fields') or [])} 个字段"
+    if name == "browser_press_key":
+        return str(args.get("key", ""))
+    if name == "browser_find":
+        return str(args.get("text") or args.get("query") or "")
+    if name in ("browser_take_screenshot", "browser_pdf_save"):
+        return str(args.get("filename") or "")
+    return ""
+
+
+def call_browser(g, name, args):
+    gid = g["id"]
+    if name not in WEB_OPS:
+        return text_result("这个浏览器工具不提供：" + name, True)
+    op, target, t0 = WEB_OPS[name], web_target(name, args), now()
+    if name == "browser_navigate":
+        why = url_problem(str(args.get("url", "")))
+        if why:
+            add_log(gid, op, target, "blocked", why)
+            publish_counts()
+            return text_result(f"已拦截：{why}。", True)
+    try:
+        b = browser_for(g)
+        r = b.call("tools/call", {"name": name, "arguments": args}, WAIT_BUDGET)
+    except Exception as e:
+        add_log(gid, op, target, "error", str(e)[:200], now() - t0)
+        if isinstance(e, TimeoutError):
+            return text_result("浏览器在 75 秒内没有完成这一步，页面可能还在加载；稍后用 browser_snapshot 查看。", True)
+        return text_result("浏览器出错：" + str(e), True)
+    err = bool(r.get("isError"))
+    note = ""
+    if err:
+        texts = [c.get("text", "") for c in r.get("content", []) if c.get("type") == "text"]
+        note = (texts[0] if texts else "")[:200]
+    add_log(gid, op, target, "error" if err else "ok", note, now() - t0)
+    return r
+
+
+# ---------------------------------------------------------------------- 保存的登录（按网站域名）
+SLD2 = {"com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn", "ac.cn", "co.uk", "org.uk", "ac.uk", "co.jp", "ne.jp", "or.jp",
+        "com.hk", "com.tw", "com.au", "net.au", "co.kr", "com.sg", "com.br", "co.in"}
+
+
+def site_of(host):
+    host = (host or "").lstrip(".").lower().strip("[]")
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
+    parts = host.split(".")
+    if len(parts) <= 2:
+        return host
+    return ".".join(parts[-3:]) if ".".join(parts[-2:]) in SLD2 else ".".join(parts[-2:])
+
+
+def login_file(domain):
+    if not re.fullmatch(r"[a-z0-9.-]{1,120}", domain or ""):
+        raise ValueError("域名不对")
+    return LOGIN_DIR / f"{domain}.json"
+
+
+def saved_logins(with_use=False):
+    out = []
+    if LOGIN_DIR.exists():
+        for f in sorted(LOGIN_DIR.glob("*.json")):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            v = {"domain": d["domain"], "title": d.get("title", ""), "saved": d.get("saved", 0),
+                 "saved_at": datetime.fromtimestamp(d.get("saved", 0)).strftime("%m-%d %H:%M"),
+                 "stale": now() - d.get("saved", 0) > 7 * 86400}
+            if with_use:
+                v["in_use"] = sum(1 for g in STORE.q("SELECT * FROM grants WHERE released=0 AND browser=1")
+                                  if grant_state(g) == "active" and d["domain"] in json.loads(g["logins"] or "[]"))
+            out.append(v)
+    return out
+
+
+def merged_state(domains):
+    cookies, origins = [], []
+    for d in domains:
+        try:
+            x = json.loads(login_file(d).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        cookies += x.get("cookies", [])
+        origins += x.get("origins", [])
+    return {"cookies": cookies, "origins": origins}
+
+
+def filter_state(state, domain):
+    def ok(host):
+        return site_of(host) == domain
+    cookies = [c for c in state.get("cookies", []) if ok(c.get("domain", ""))]
+    origins = [o for o in state.get("origins", []) if ok(urlsplit(o.get("origin", "")).hostname or "")]
+    return {"cookies": cookies, "origins": origins}
+
+
+def delete_login(domain):
+    try:
+        f = login_file(domain)
+    except ValueError as e:
+        return {"ok": False, "msg": str(e)}, 400
+    if f.exists():
+        f.unlink()
+    HUB.publish("logins.changed", {})
+    return {"ok": True}, 200
+
+
+def save_login(body):
+    """控制台在用户点“完成”或“保存登录”后调用：state 是登录窗口的 storageState，domains 是用户选中的网站。"""
+    state = body.get("state") or {}
+    domains = [d for d in (body.get("domains") or []) if isinstance(d, str)]
+    titles = body.get("titles") or {}
+    if not domains:
+        return {"ok": False, "msg": "没有选中网站"}, 400
+    LOGIN_DIR.mkdir(parents=True, exist_ok=True)
+    picked = {"cookies": [], "origins": []}
+    for d in domains:
+        part = filter_state(state, d)
+        picked["cookies"] += part["cookies"]
+        picked["origins"] += part["origins"]
+        if body.get("save", True):
+            try:
+                f = login_file(d)
+            except ValueError:
+                continue
+            f.write_text(json.dumps({"domain": d, "title": titles.get(d, ""), "saved": now(), **part}, ensure_ascii=False),
+                         encoding="utf-8")
+    HUB.publish("logins.changed", {})
+    rid = body.get("request")
+    if rid:
+        with LOGIN_LOCK:
+            r = LOGINREQ.get(rid)
+        if not r or r["state"] not in ("pending", "active"):
+            return {"ok": False, "msg": "这条登录请求已经结束"}, 409
+        g = get_grant(r["grant"])
+        if body.get("save", True):          # 授权的浏览器重启时也带上
+            have = json.loads(g["logins"] or "[]")
+            STORE.x("UPDATE grants SET logins=? WHERE id=?", (json.dumps(sorted(set(have) | set(domains))), g["id"]))
+            g = get_grant(g["id"])
+        try:
+            inject_state(g, picked)
+        except Exception as e:
+            return {"ok": False, "msg": "写入授权的浏览器失败：" + str(e)}, 500
+        finish_login(r, "logged_in", "已保存" if body.get("save", True) else "未保存")
+    return {"ok": True, "domains": domains}, 200
+
+
+def run_code_arg():
+    t = TOOL_SCHEMAS.get("browser_run_code_unsafe") or {}
+    props = (t.get("inputSchema") or {}).get("properties") or {}
+    return "code" if "code" in props or not props else next(iter(props))
+
+
+def inject_state(g, state):
+    b = browser_for(g)
+    code = ("async (page) => { const s = %s; if (s.cookies.length) await page.context().addCookies(s.cookies); "
+            "try { await page.reload({ waitUntil: 'domcontentloaded', timeout: 20000 }); } catch (e) {} return page.url(); }"
+            % json.dumps(state))
+    r = b.call("tools/call", {"name": "browser_run_code_unsafe", "arguments": {run_code_arg(): code}}, 60)
+    if r.get("isError"):
+        raise RuntimeError(" ".join(c.get("text", "") for c in r.get("content", []))[:200])
+
+
+def current_url(g):
+    b = browser_for(g)
+    r = b.call("tools/call", {"name": "browser_run_code_unsafe", "arguments": {run_code_arg(): "async (page) => page.url()"}}, 20)
+    for c in r.get("content", []):
+        m = re.search(r"https?://[^\s\"'`]+", c.get("text", ""))
+        if m:
+            return m.group(0)
+    return ""
+
+
+# ---------------------------------------------------------------------- 登录请求（request_login）
+LOGINREQ = {}
+LOGIN_LOCK = threading.Lock()
+
+LOGIN_TOOLS = [
+    {"name": "request_login",
+     "description": "Ask the PC owner to sign in to a website for this browser. Use it when a page asks for a login, a "
+                    "verification code or an email link. Do not ask for or type passwords or codes yourself. The owner signs "
+                    "in in a window on their own desktop; the login is then added to this browser and the page is reloaded. "
+                    "Waits up to 75 s. Returns status: logged_in | pending (with request_id; call check_login) | declined | cancelled.",
+     "inputSchema": {"type": "object", "properties": {
+         "url": {"type": "string", "description": "The login page. Default: the current page."},
+         "reason": {"type": "string", "description": "One sentence shown to the owner, e.g. why the login is needed."}},
+         "required": ["reason"]}},
+    {"name": "check_login", "description": "Wait for a login request started with request_login.",
+     "inputSchema": {"type": "object", "properties": {
+         "request_id": {"type": "string"},
+         "wait_seconds": {"type": "integer", "description": "Default 60, max 75."}}, "required": ["request_id"]}},
+]
+
+
+def login_view(r):
+    g = get_grant(r["grant"])
+    return {"id": r["id"], "grant_id": r["grant"], "grant": g["name"] if g else "", "url": r["url"], "domain": r["domain"],
+            "reason": r["reason"], "state": r["state"], "at": r["created"], "time": hms(r["created"])}
+
+
+def login_result(r):
+    st = r["state"]
+    if st in ("pending", "active"):
+        return text_result(json.dumps({"status": "pending", "request_id": r["id"],
+                                       "message": "等待电脑主人登录；用 check_login 继续等待。"}, ensure_ascii=False))
+    msg = {"logged_in": "已登录，浏览器已带上登录状态并刷新了页面，继续原来的步骤。",
+           "declined": "电脑主人拒绝了这次登录。告诉用户这一步需要登录。",
+           "cancelled": "登录请求已取消（主人取消、超时或授权失效）。"}[st]
+    return text_result(json.dumps({"status": st, "request_id": r["id"], "message": msg}, ensure_ascii=False), st != "logged_in")
+
+
+def tool_request_login(g, args):
+    url = str(args.get("url") or "").strip()
+    if not url:
+        try:
+            url = current_url(g)
+        except Exception:
+            url = ""
+    if not url:
+        return text_result("没有给登录页地址，当前也没有打开的页面。", True)
+    why = url_problem(url)
+    if why:
+        add_log(g["id"], "登录", url, "blocked", why)
+        return text_result(f"已拦截：{why}。", True)
+    r = {"id": "l" + uuid.uuid4().hex[:10], "grant": g["id"], "url": url, "domain": site_of(urlsplit(url).hostname or ""),
+         "reason": str(args.get("reason") or "")[:200], "state": "pending", "created": now(), "done": threading.Event()}
+    r["log"] = add_log(g["id"], "登录", r["domain"], "pending", r["reason"][:100])
+    with LOGIN_LOCK:
+        LOGINREQ[r["id"]] = r
+    HUB.publish("login.created", login_view(r))
+    publish_counts()
+    r["done"].wait(WAIT_BUDGET)
+    return login_result(r)
+
+
+def tool_check_login(g, args):
+    with LOGIN_LOCK:
+        r = LOGINREQ.get(str(args.get("request_id", "")))
+    if not r or r["grant"] != g["id"]:
+        return text_result("没有这个登录请求", True)
+    r["done"].wait(min(max(int(args.get("wait_seconds") or 60), 0), WAIT_BUDGET))
+    return login_result(r)
+
+
+def finish_login(r, state, note=""):
+    with LOGIN_LOCK:
+        if r["state"] not in ("pending", "active"):
+            return
+        r["state"] = state
+    update_log(r["log"], result={"logged_in": "done", "declined": "denied", "cancelled": "cancelled"}[state],
+               note=note or {"declined": "主人拒绝", "cancelled": "已取消"}.get(state, ""), seconds=now() - r["created"])
+    r["done"].set()
+    HUB.publish("login.resolved", {"id": r["id"], "state": state})
+    publish_counts()
+
+
+def login_action(rid, action):
+    with LOGIN_LOCK:
+        r = LOGINREQ.get(rid)
+    if not r or r["state"] not in ("pending", "active"):
+        return {"ok": False, "msg": "这条登录请求已经结束"}, 409
+    if action == "start":
+        r["state"] = "active"
+        HUB.publish("login.changed", login_view(r))
+    elif action == "decline":
+        finish_login(r, "declined")
+    elif action == "cancel":
+        finish_login(r, "cancelled", "主人取消")
+    else:
+        return {"ok": False, "msg": "不支持的操作"}, 400
+    return {"ok": True, "request": login_view(r)}, 200
+
+
+def cancel_logins(gid, why):
+    with LOGIN_LOCK:
+        rs = [r for r in LOGINREQ.values() if r["grant"] == gid and r["state"] in ("pending", "active")]
+    for r in rs:
+        finish_login(r, "cancelled", why)
+
+
+def expire_logins():
+    with LOGIN_LOCK:
+        rs = [r for r in LOGINREQ.values() if r["state"] in ("pending", "active") and now() - r["created"] > LOGIN_TIMEOUT]
+    for r in rs:
+        finish_login(r, "cancelled", "等待超过 10 分钟")
+
+
 def mcp_instructions(g):
     v = grant_view(g)
-    return (f"这是电脑主人给你的临时授权（{v['name']}）。只能在 {'、'.join(v['folders'])} 里执行命令和读写文件，"
-            f"{v['expires_at']} 到期。Windows；命令默认 cmd，可选 powershell、bash。Python 是只读的 conda，装包先建 venv。"
-            + ("可以联网（经代理）。" if v["net"] else "不能联网。")
-            + ("每条命令要主人确认。" if v["confirm"] else ""))
+    text = f"这是电脑主人给你的临时授权（{v['name']}），{v['expires_at']} 到期。"
+    if v["folders"]:
+        text += (f"只能在 {'、'.join(v['folders'])} 里执行命令和读写文件。Windows；命令默认 cmd，可选 powershell、bash。"
+                 "Python 是只读的 conda，装包先建 venv。" + ("命令可以联网（经代理）。" if v["net"] else "命令不能联网。")
+                 + ("每条命令要主人确认。" if v["confirm"] else ""))
+    if v["browser"]:
+        text += ("本授权包含浏览器，经代理访问外网，不能打开本机或局域网地址、本地文件。"
+                 "遇到登录页、验证码或邮件验证时，调用 request_login，由电脑主人在自己的窗口中完成登录；不要索要或输入密码、验证码。"
+                 "返回 logged_in 后，浏览器已带上登录状态并回到原页面。"
+                 + ("本次授权已带上以下网站的登录状态：" + "、".join(v["logins"]) + "。" if v["logins"] else ""))
+    return text
 
 
 def handle_rpc(g, msg):
@@ -1092,7 +1658,7 @@ def handle_rpc(g, msg):
     elif method == "ping":
         res = {}
     elif method == "tools/list":
-        res = {"tools": TOOLS}
+        res = {"tools": tools_for(get_grant(g["id"]))}
     elif method == "tools/call":
         try:
             res = call_tool(get_grant(g["id"]), params.get("name", ""), params.get("arguments") or {})
@@ -1185,6 +1751,18 @@ def admin_route(method, path, query, body):
             return {"ok": True, "passed": r["passed"], "checks": r["checks"], "fixed": r.get("fixed", []), "ms": r.get("ms")}, 200
         except (HelperDown, HelperError) as e:
             return {"ok": False, "msg": str(e)}, 503
+    if key == "logins" and method == "GET":
+        return {"ok": True, "logins": saved_logins(with_use=True)}, 200
+    if len(parts) == 3 and parts[0] == "logins" and parts[2] == "delete" and method == "POST":
+        return delete_login(parts[1])
+    if key == "logins/save" and method == "POST":
+        return save_login(body)
+    if key == "logins/requests" and method == "GET":
+        with LOGIN_LOCK:
+            rs = sorted([r for r in LOGINREQ.values() if r["state"] in ("pending", "active")], key=lambda r: r["created"])
+        return {"ok": True, "requests": [login_view(r) for r in rs]}, 200
+    if len(parts) == 3 and parts[:2] == ["logins", "requests"] and method == "POST":
+        return login_action(parts[2], body.get("action", ""))
     if key == "fs" and method == "GET":
         return fs_list(query.get("path", ""))
     if key == "fs/check" and method == "POST":

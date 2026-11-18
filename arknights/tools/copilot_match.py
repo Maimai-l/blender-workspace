@@ -35,7 +35,7 @@ def check(op):
             have += c["skills"][sk - 1].get("specializeLevel", 0)
         if have < sl:
             why.append(f"需{sk}技能{sl}级(有{have})")
-    if len(c["skills"]) < sk:
+    if len(c["skills"]) < sk and c["skills"]:   # 没有技能的干员（Lancet-2 等）作业里写的技能编号无所谓
         why.append(f"没有{sk}技能")
     m = r.get("module", -1)
     if m and m > 0:

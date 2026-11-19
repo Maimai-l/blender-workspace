@@ -96,3 +96,11 @@
 - 其他：UA 换成同版本普通 Edge（去掉 HeadlessChrome，版本号取 Edge 安装目录）；`Downloaded file … to "…"` 事件和控制台日志（`console-….log#L2-L3`）解析进结果；Playwright 自己的文件在浏览器关闭或结果被替换时删除；助手回 busy 时网关重试 15 秒。
 - 安装包带 `pypdf-7.1.1` 的 wheel（stage.py 下载到 `.wheels/`，不进仓库），install.ps1 解到 `tempauth\vendor`。
 - 验收：browser_accept.py 49/49（含 18099 本机测试页、上传下载、arxiv PDF、维基百科分页、httpbin 打码、trace、重置、两个会话、登录流程），accept.py 42/42；经 tmcp 从云端实测：会话编号能过隧道，arxiv PDF 24 页 4.7 秒，出口在美国洛杉矶（Google 显示中文只因为浏览器语言）。
+
+## 网关 3.0：按任务设计的浏览器工具（2026-11-19）
+- 设计见《MCP 控制台需求》第 7 节。默认 11 个浏览器工具（web_search、web_read、browser_open、browser_observe、browser_act、browser_screenshot、browser_eval、browser_tabs、browser_files、browser_inspect、browser_reset），加 request_login、check_login、grant_info；Playwright 原始工具只在 `browser_full` 授权里列出，其余授权里仍可调用。
+- 实现都在 gateway.py 的“浏览器工具 3.0”一节，底层仍是每个会话一个 Playwright MCP。页面状态 `page_state`：先 browser_snapshot，再从快照里取可操作元素（`elements_from`）。读正文 `read_expr`：Readability（vendor/Readability.js）→ main → body，整段作为表达式求值，不受网页 CSP 限制。搜索在同一上下文的新标签页里打开 Bing/Google 解析结果。
+- 屏蔽列表 `blocklist.txt`：url 检查、浏览器启动时 `context.route` 拦请求、搜索结果过滤。
+- 坑：用 % 格式化的 JS 模板里不能有裸 %（SEARCH_JS 的 `% 4` 曾让搜索静默返回空）；`page.evaluate('() => …')` 不会调用字符串形式的函数，要写成 `(函数)()`；关 Edge 的 edge://downloads-hub 标签页会让 Playwright 卡住，只能在列表里隐藏；ref 可能带框架前缀（f4e16）。
+- 验收：browser_accept.py 32/32、accept.py 42/42；经 tmcp 从云端实测：14 个工具定义（含 outputSchema）约 1.7 万字符，web_read+find 5.4 秒，JS 渲染页的元素列表 199 字符；会话里第一次搜索约 16 秒（含启动浏览器）。
+- 安装包的注册表修正：创建 `Winlogon\SpecialAccounts\UserList` 时只在键不存在时建（`New-Item -Force` 曾清掉 Codex 沙盒账号的隐藏项）。

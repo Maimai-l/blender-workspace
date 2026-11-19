@@ -84,7 +84,8 @@ if (-not (Get-LocalUser $user -ErrorAction SilentlyContinue)) {
     Note '- 新建了 aitemp'
 } else { Set-LocalUser $user -Password $sec; Note '- aitemp 已存在，换了新密码' }
 $sid = Sid
-New-Item $hideKey -Force | Out-Null
+# 只在键不存在时创建：对已有的键 New-Item -Force 会清空键里原有的值（2026-11-18 因此清掉了 Codex 沙盒账号的隐藏项）
+if (-not (Test-Path $hideKey)) { New-Item $hideKey | Out-Null }
 Set-ItemProperty $hideKey -Name $user -Value 0 -Type DWord
 UserRights $sid $true
 Note "- 登录界面已隐藏，已禁止远程桌面和网络登录（SID $sid）"

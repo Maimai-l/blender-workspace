@@ -90,7 +90,8 @@ if (-not (Get-LocalUser $user -ErrorAction SilentlyContinue)) {
     Write-Host '    新建了 aitemp（密码由授权助手每次启动时随机重设，不落盘）'
 }
 $sid = (Get-LocalUser $user).SID.Value
-New-Item $hideKey -Force | Out-Null
+# 只在键不存在时创建：对已有的键 New-Item -Force 会清空键里原有的值（2026-11-18 因此清掉了 Codex 沙盒账号的隐藏项）
+if (-not (Test-Path $hideKey)) { New-Item $hideKey | Out-Null }
 Set-ItemProperty $hideKey -Name $user -Value 0 -Type DWord
 Set-AitempUserRights $sid
 foreach ($d in Get-ChildItem D:\ -Directory -Force | Where-Object { $_.Name -notin $skipDirs }) {

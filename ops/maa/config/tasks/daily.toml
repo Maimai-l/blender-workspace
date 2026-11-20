@@ -51,7 +51,9 @@ params = { stage = "Annihilation", medicine = 0, stone = 0, times = 1, series = 
 [[tasks]]
 name = "理智作战"
 type = "Fight"
-params = { stage = "TL-7", medicine = 999, stone = 0, times = 2, series = 0, client_type = "Official" }
+# 不限次数，把理智打完（times=2 时每次只打两场，12:00 后理智 16:40 左右就满，到 0:00 一直溢出）；
+# 只用 2 天内过期的理智药，不动长期的药；不碎石
+params = { stage = "TL-7", medicine = 0, medicine_expire_days = 2, stone = 0, series = 0, client_type = "Official" }
 
 [[tasks]]
 name = "自动公招"

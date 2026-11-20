@@ -9,6 +9,7 @@ import calendar
 import json
 import shutil
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -23,6 +24,7 @@ import gateway  # noqa: E402  只用它的 PipeHelper
 ROOT = Path(r"D:\Projects\aitemp-test")
 A, B, C = ROOT / "a", ROOT / "b", ROOT / "c"
 TOK = Path(r"C:\ProgramData\BlenderMCP\tempauth.token").read_text().strip()
+DB = Path(os.environ.get("TMCP_DATA", str(Path.home() / "TempAuth"))) / "tempauth.db"
 OP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 H = gateway.PipeHelper()
 RESULTS = []
@@ -31,6 +33,22 @@ RESULTS = []
 def rec(group, name, ok, detail=""):
     RESULTS.append((group, name, bool(ok), str(detail).replace("\n", " / ")[:300]))
     print(("PASS " if ok else "FAIL ") + group + " | " + name + " | " + str(detail)[:160].replace("\n", " / "), flush=True)
+
+
+def last_issue(v=None, put=False):
+    """网关把最后一次签发记作 last_issue，控制台的签发框按它预填。验收签发的授权不应留在那里：开始时读出，结束时写回。"""
+    c = sqlite3.connect(DB, timeout=10)
+    try:
+        if not put:
+            r = c.execute("SELECT v FROM meta WHERE k='last_issue'").fetchone()
+            return r[0] if r else None
+        with c:
+            if v is None:
+                c.execute("DELETE FROM meta WHERE k='last_issue'")
+            else:
+                c.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('last_issue', ?)", (v,))
+    finally:
+        c.close()
 
 
 def adm(method, path, body=None):
@@ -290,4 +308,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    saved = last_issue()
+    try:
+        main()
+    finally:
+        last_issue(saved, put=True)

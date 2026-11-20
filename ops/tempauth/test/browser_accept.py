@@ -1,7 +1,7 @@
 # 浏览器授权验收（网关 3.0，blender 账号运行）。结果直接打印；签发浏览器授权，测完吊销。
 # 用到外网（example.com、维基百科、arxiv、Bing、httpbin），本机起一个 18099 的测试页。
 # 备用网关上跑：TA_ADMIN=18087 TA_MCP=18086 TA_DATA=<数据目录> TA_TOKEN=<令牌文件>
-import base64, http.server, json, os, re, subprocess, threading, time, urllib.request, urllib.error
+import atexit, base64, http.server, json, os, re, sqlite3, subprocess, threading, time, urllib.request, urllib.error
 from pathlib import Path
 ADMIN, MCP = os.environ.get("TA_ADMIN", "8087"), os.environ.get("TA_MCP", "8086")
 DATA = Path(os.environ.get("TA_DATA", r"C:\Users\blender\TempAuth"))
@@ -9,6 +9,25 @@ TOK = Path(os.environ.get("TA_TOKEN", r"C:\ProgramData\BlenderMCP\tempauth.token
 DEMO = os.environ.get("TA_DEMO") == "1"          # 备用网关是 --demo：登录不写进浏览器
 OP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 res = []
+
+
+# 网关把最后一次签发记作 last_issue，控制台的签发框按它预填。验收签发的授权不应留在那里，跑完恢复原值。
+def _last_issue(v=None, put=False):
+    c = sqlite3.connect(DATA / ("tempauth-demo.db" if DEMO else "tempauth.db"), timeout=10)
+    try:
+        if not put:
+            r = c.execute("SELECT v FROM meta WHERE k='last_issue'").fetchone()
+            return r[0] if r else None
+        with c:
+            if v is None:
+                c.execute("DELETE FROM meta WHERE k='last_issue'")
+            else:
+                c.execute("INSERT OR REPLACE INTO meta (k, v) VALUES ('last_issue', ?)", (v,))
+    finally:
+        c.close()
+
+
+atexit.register(_last_issue, _last_issue(), True)
 PAGE = b"""<!doctype html><html><head><title>Local Test</title></head><body>
 <main><h1>Local test page</h1><p>Hello from <b>18099</b>. The quick brown fox jumps over the lazy dog in this paragraph,
 which is long enough for article extraction to keep it as the main content of the page and not a fragment.</p>

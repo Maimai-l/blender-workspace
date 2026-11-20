@@ -39,6 +39,9 @@
 | `gateway/gateway.py` | 网关（blender 账号，标准库）。8086 对外 MCP（`/t/<令牌>/mcp`，7 个工具），8087 管理接口（令牌在 `C:\ProgramData\BlenderMCP\tempauth.token`）。数据 `C:\Users\blender\TempAuth\tempauth.db`。由 agent.py 随代理启动。`--demo` 用假助手，可在 Linux 上测 |
 | `install.ps1` + `stage.py` | 安装包：`python3 ops/tempauth/stage.py <目录>` 把文件和 SHA256 整理好，传到 `D:\Projects\mcp-console-stage\tempauth\`，用户在主账号管理员 PowerShell 7 运行 |
 | `test/accept.py` | 装好后在 blender 账号跑的验收测试，报告 `D:\Projects\aitemp-test\accept-report.md` |
+| `test/browser_accept.py` | 浏览器授权的验收测试 |
+
+验收脚本在电脑上不常驻：要跑时从仓库传上去，跑完删掉，测试文件夹 `D:\Projects\aitemp-test`（脚本会自动重建）、安装包暂存目录 `D:\Projects\mcp-console-stage` 也一并删掉。两个验收脚本开始时读出网关的 `last_issue`，结束时写回原值（2026-11-20 起）。控制台签发框按这条记录预填上次的设置，以前验收签发的 `D:\aitemp-toptest` 会一直留在签发框里。
 
 要点：
 - **每条授权一个本地组** `AITemp-<授权编号>`，授权文件夹上只加这个组的“修改”权限。运行前把 aitemp 临时加进组、`LogonUser` 拿令牌、立刻移出：令牌里的组在登录时就定了，所以同时有几条授权时，一条授权的命令碰不到另一条的文件夹。令牌按授权缓存。aitemp 自己的拒绝项始终有效。

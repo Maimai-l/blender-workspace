@@ -48,7 +48,7 @@ type = "Fight"
 params = { stage = "Annihilation", medicine = 0, stone = 0, times = 1, series = 0, client_type = "Official" }
 # <<< annihilation
 
-# >>> fight  (sanity_plan.py rewrites the stage before each daily run, from ops/maa/sanity_plan.json)
+# >>> fight  (sanity_plan.py writes the Fight tasks here before each daily run, from ops/maa/sanity_plan.json)
 [[tasks]]
 name = "理智作战"
 type = "Fight"

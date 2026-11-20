@@ -54,7 +54,9 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 | 启动脚本 | `D:\Projects\maa-cli\run.ps1`、`copilot.ps1` | `ops/maa/` |
 | 剿灭开关、改建检查、数据导出 | `annihilation_gate.py`、`after_rebuild.py`、`export_data.py` | `ops/maa/` |
 | 活动关首通 | `D:\Projects\maa-cli\ev_run.py`、`ev_run.ps1` | `arknights/tools/` |
-| 保全派驻扫荡 | `D:\Projects\maa-cli\tower_sweep.py`（每步截图在 `state\tower\`） | `arknights/tools/tower_sweep.py` |
+| 界面流程引擎（MAA 做不了的界面操作） | `D:\Projects\maa-cli\uiflow.py`（每步截图在 `state\uiflow\<流程>\`） | `arknights/tools/uiflow.py`；录制和生成用 `arknights/tools/ui.py rec/gen/check`，录下的画面在 `arknights/flows/`；做法见 skill `.claude/skills/arknights-ui-flow` |
+| 保全派驻扫荡（第一个界面流程） | `D:\Projects\maa-cli\tower_sweep.py` | `arknights/tools/tower_sweep.py` |
+| 打开游戏但不推送（录制、测试界面流程用） | `D:\Projects\maa-cli\open_game.ps1` | `ops/maa/open_game.ps1` |
 | 选关 | `sanity_plan.py`、`sanity_plan.json` | `ops/maa/` |
 | 手机推送（Bark） | `notify.py`；设备 key 只在 `C:\Users\blender\.bark\key` | `ops/maa/notify.py` |
 | 作业筛选 | `state\copilot_match.py` | `arknights/tools/copilot_match.py`、`copilot_rank.py` |
@@ -108,6 +110,7 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
   - 路径：主界面“终端”→ 终端页右上 TO-DO 卡片“数据增补条”→ 塔列表，点记录 6/6 的塔的卡片图（“6/6”字样左下方；点塔名没反应）→ 详情页，“开始保全作战”下方显示“-2”表示全权委托已开，否则点一次“全权委托”→“开始保全作战”→ 确认框 →“确认使用”→“保全作战完成”，点屏幕中间回详情页 → 返回键退到“常态事务”页，再退到主界面。
   - 防误操作：每一步先用 OCR 核对整页特征文字，对不上就中止；只点认出来的指定文字，且必须落在该画面该按钮的允许框里（`ALLOW`）；合成玉和源石的“+”、主界面理智旁的“+”、左下礼包区在任何画面都禁止点击（`NO_TAP`）；主界面以外出现“源石、寻访、购买、时装、兑换、¥、充值、礼包、采购、支付、抽取、招募”任一字样就中止；中止只按返回键退回主界面（在对话框上等于取消），最多 40 步。
   - `python tower_sweep.py --dry`：走到确认框后点“取消”。
+  - 2026-11-21 起跑在通用引擎 `uiflow.py` 上（保护机制都在引擎里）；确认框的卡数字太小有时漏读，漏读时把那一行截下来放大 3 倍重读（`read_region`）。
   - 2026-11-20 真机测试：第一次被禁点区拦下（当时顶栏禁点区划到 y<95，罩住了终端页的 TO-DO 卡片），中止后用返回键回到主界面，什么都没点；改成按画面的允许框后，完整走到确认框，读出“最早 9 天 5 张”，点取消回到主界面，源石、合成玉不变。
 - **无人机**（`after_rebuild.py`）：3 个贸易站都到 3 级后改回 `Money`。2026-11-16 已完成，之后不再做事。
 
@@ -186,3 +189,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 | 2026-11-20 | 新增 `sanity_plan.py` 和 `sanity_plan.json`：每次日常前按日期、开放日和库存选关（活动关闭后自动切换）；README 开头补上用户的调度器设计文档链接和各期落地情况 |
 | 2026-11-20 | 新增 `tower_sweep.py`：日常后用 2 天内过期的代理卡扫荡保全派驻（界面路径和防误操作见第 4 节）；当天手动扫荡一次，并在理智满 210 时手动刷 TL-7 |
 | 2026-11-20 | 新增 `notify.py`：经 Bark 推送到用户 iPhone（开始、结束、出错、拒绝运行），避免托管时用户登录互相挤号；测试通知用户已收到 |
+| 2026-11-21 | 界面流程引擎 `uiflow.py` + 录制工具（`ui.py rec/gen/check`）+ skill `arknights-ui-flow`：走一遍界面就能生成受保护的自动流程；保全派驻扫荡改用它。选关脚本改成照搬 MAA 界面版“库存保持”的做法：带目标的条目生成带 `drops` 的刷图任务，掉够就停，剩余理智交给下一条 |

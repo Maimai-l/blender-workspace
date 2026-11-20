@@ -1,12 +1,18 @@
 """sanity_plan.py - runs ON THE PC before each `daily` run (called by run.ps1, after annihilation_gate.py).
 
-Chooses the stage of the 理智作战 task in config/tasks/daily.toml from the rules in sanity_plan.json: the first rule
-whose time window, game-day weekday and inventory need all apply wins. The game day changes at 04:00 UTC+8, so a
-0:00 run still counts as the previous day (the same convention as maa-cli's `timezone = "Official"`). Inventory
-comes from the last Skland export (export/skland_cultivate_latest.json). The task block sits between the lines
-`# >>> fight` and `# <<< fight`; only its `stage = "..."` value and the `# plan:` comment are rewritten.
+Writes the sanity-farming Fight tasks of config/tasks/daily.toml (the block between `# >>> fight` and
+`# <<< fight`) from sanity_plan.json. It ports the idea of MAA GUI's 库存保持 (DepotMaintain,
+src/MaaWpfGui/ViewModels/UserControl/TaskQueue/DepotMaintainTaskUserControlModel.cs) to maa-cli:
+  - an entry with a need: missing = target - stock (other items weighted by count_as, e.g. a dual chip counts as
+    2 chip packs); if missing > 0 it becomes a Fight task with drops = {item: missing}, so MaaCore stops as soon
+    as that many have dropped and the next task gets the remaining sanity;
+  - an entry without a need spends whatever sanity is left; the list ends there.
+Entries also have an optional `until` (ISO time) and `weekdays` (game day: it changes at 04:00 UTC+8, so a 0:00
+run still counts as the previous day, as maa-cli's timezone = "Official"). Stock comes from the last Skland
+export (export/skland_cultivate_latest.json). Every task: no ordinary potions, potions expiring within 2 days,
+no originium, series 0 (the most the stage allows).
 
-    python sanity_plan.py [--dry]          (--dry: print the decision, leave daily.toml alone)
+    python sanity_plan.py [--dry]          --dry: print the tasks, leave daily.toml alone
     PLAN_NOW=2026-11-22T08:00:00+08:00     (env, for testing: pretend it is this time)
 Standard library only (Blender's bundled Python)."""
 import datetime as dt
@@ -22,6 +28,7 @@ TOML = ROOT / 'config' / 'tasks' / 'daily.toml'
 RULES = HERE / 'sanity_plan.json'
 CST = dt.timezone(dt.timedelta(hours=8))
 DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+COMMON = 'medicine = 0, medicine_expire_days = 2, stone = 0, series = 0, client_type = "Official"'
 
 
 def inventory():
@@ -29,51 +36,64 @@ def inventory():
         d = json.loads((ROOT / 'export' / 'skland_cultivate_latest.json').read_text(encoding='utf-8'))['data']
         return {x['id']: int(x['count']) for x in d['items']}
     except Exception as e:
-        print(f'no Skland inventory ({e}); rules with a need are skipped')
+        print(f'no Skland inventory ({e}); entries with a need are skipped')
         return None
 
 
-def choose(now, inv, rules):
-    game_day = DAYS[(now - dt.timedelta(hours=4)).weekday()]
-    for r in rules:
-        if 'until' in r and now > dt.datetime.fromisoformat(r['until']):
+def plan(now, inv, entries):
+    """[(stage, drops or None, reason)] in order; the last one has no drops (it spends the rest)."""
+    day = DAYS[(now - dt.timedelta(hours=4)).weekday()]
+    out = []
+    for e in entries:
+        if 'until' in e and now > dt.datetime.fromisoformat(e['until']):
             continue
-        if 'weekdays' in r and game_day not in r['weekdays']:
+        if 'weekdays' in e and day not in e['weekdays']:
             continue
-        if 'need' in r:
+        n = e.get('need')
+        if n:
             if inv is None:
                 continue
-            have = sum(inv.get(i, 0) * w for i, w in r['need']['items'].items())
-            if have >= r['need']['target']:
+            have = inv.get(n['item'], 0) + sum(inv.get(i, 0) * w for i, w in n.get('count_as', {}).items())
+            missing = n['target'] - have
+            if missing <= 0:
                 continue
-            return r, f"{r['why']}（现有 {have}/{r['need']['target']}）", game_day
-        return r, r['why'], game_day
-    return None, 'no rule applies', game_day
+            out.append((e['stage'], {n['item']: missing}, f"{e['why']}（现有 {have}/{n['target']}，再刷 {missing} 个）"))
+            continue
+        out.append((e['stage'], None, e['why']))
+        break
+    return out, day
+
+
+def render(tasks, now):
+    lines = []
+    for i, (stage, drops, why) in enumerate(tasks, 1):
+        d = ('drops = { %s }, ' % ', '.join('"%s" = %d' % kv for kv in drops.items())) if drops else ''
+        lines += [f'# plan {i}: {stage}, {why} (sanity_plan.py, {now:%m-%d %H:%M})',
+                  '[[tasks]]', f'name = "理智作战 {stage}"', 'type = "Fight"',
+                  f'params = {{ stage = "{stage}", {d}{COMMON} }}', '']
+    return '\n'.join(lines)
 
 
 def main():
     now = dt.datetime.fromisoformat(os.environ['PLAN_NOW']) if os.environ.get('PLAN_NOW') else dt.datetime.now(CST)
-    rules = json.loads(RULES.read_text(encoding='utf-8'))['rules']
-    r, why, day = choose(now, inventory(), rules)
-    if not r:
-        print(f'{why}; daily.toml unchanged')
+    entries = json.loads(RULES.read_text(encoding='utf-8'))['entries']
+    tasks, day = plan(now, inventory(), entries)
+    if not tasks:
+        print('no entry applies; daily.toml unchanged')
         return
-    stage = r['stage']
+    summary = '; '.join(f"{s}{' until %s more' % sum(d.values()) if d else ''}" for s, d, _ in tasks)
     if '--dry' in sys.argv:
-        print(f'{now:%m-%d %H:%M} game day {day}: {stage} ({why})')
+        print(f'{now:%m-%d %H:%M} game day {day}: {summary}')
         return
     s = TOML.read_text(encoding='utf-8')
     m = re.search(r'(# >>> fight[^\n]*\n)(.*?)(# <<< fight)', s, re.S)
-    if not m or 'stage = "' not in m.group(2):
+    if not m:
         print('fight markers not found; daily.toml unchanged')
         return
-    body = re.sub(r'stage = "[^"]*"', f'stage = "{stage}"', m.group(2), count=1)
-    body = re.sub(r'# plan:[^\n]*\n', '', body)
-    body = f'# plan: {stage}, {why} (sanity_plan.py, {now:%m-%d %H:%M})\n' + body
-    t = s[:m.start(2)] + body + s[m.end(2):]
+    t = s[:m.start(2)] + render(tasks, now) + s[m.end(2):]
     if t != s:
         TOML.write_text(t, encoding='utf-8')
-    print(f'{stage}: {why}')
+    print(summary)
 
 
 if __name__ == '__main__':

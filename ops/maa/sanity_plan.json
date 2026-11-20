@@ -1,11 +1,11 @@
 {
-  "_doc": "sanity_plan.py: rules in order, the first that applies decides the stage of the 理智作战 task in daily.toml. Fields: stage; why; until (ISO time with offset, rule ends then); weekdays (game day, Mon..Sun, changing at 04:00 UTC+8); need {items: {item id: weight}, target}: applies while the weighted Skland inventory is below target. Stage open days: arknights/GAME_NOTES.md.",
-  "rules": [
+  "_doc": "sanity_plan.py: entries in order (the same idea as MAA GUI's 库存保持 / DepotMaintain, ported to maa-cli). An entry applies when its time window (until), game-day weekdays and need all hold. An entry with need {item, count_as, target} becomes a Fight task with drops = {item: target - stock} (MaaCore stops when that many dropped) and the next entry still runs; an entry without need spends the rest of the sanity and ends the list. count_as weights other items into the stock, e.g. a dual chip = 2 chip packs (MAA: 芯片组计入双芯片折算). Stock: last Skland export. Stage open days: arknights/GAME_NOTES.md. Orders behind the needs: arknights/goals.json.",
+  "entries": [
     {"stage": "TL-7", "until": "2026-11-22T03:59:59+08:00",
      "why": "活动「时间啊，向前！」：代币换商店材料"},
     {"stage": "PR-D-2", "weekdays": ["Tue", "Wed", "Sat", "Sun"],
-     "need": {"items": {"3282": 1, "3283": 2}, "target": 8},
-     "why": "异格德克萨斯精二和专精缺 8 个特种芯片组（特种双芯片按 2 个计）"},
+     "need": {"item": "3282", "count_as": {"3283": 2}, "target": 8},
+     "why": "缄默德克萨斯精二缺特种芯片组"},
     {"stage": "CE-6", "weekdays": ["Tue", "Thu", "Sat", "Sun"],
      "why": "龙门币缺口最大"},
     {"stage": "LS-6",

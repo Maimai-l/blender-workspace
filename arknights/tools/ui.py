@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """ui.py - look at and tap the LDPlayer screen (instance 0, 1600x900) through exec, for game UI work MAA cannot do.
 
-    python3 -I ui.py shot [name]        screenshot -> scratchpad/<name>.jpg (960x540; prints the path)
+    python3 -I ui.py shot [name]        screenshot -> $UI_OUT/<name>.jpg (default ~/.cache/arknights-ui) (960x540; prints the path)
     python3 -I ui.py ocr [min_score]    text + coordinates on screen (agent-ocr), one "x,y  text" line each
     python3 -I ui.py tap X Y            tap at screenshot coordinates (960x540 space, scaled to 1600x900)
     python3 -I ui.py swipe X1 Y1 X2 Y2 [ms]
@@ -19,7 +19,7 @@ import pcx  # noqa: E402
 ADB = '/d/leidian/LDPlayer9/adb.exe -s emulator-5554'
 PY = '"/d/Program Files/Blender Foundation/Blender 5.2/5.2/python/bin/python.exe"'
 PYLIB = 'PYTHONPATH="D:/Blender/Projects/awakening2/pylib"'
-OUT = os.environ.get('UI_OUT', '/tmp/claude-0/-home-user-blender-workspace/91c2cead-ddd1-513a-a35d-d0dd6d67ae15/scratchpad/ui')
+OUT = os.environ.get('UI_OUT') or os.path.join(os.path.expanduser('~'), '.cache', 'arknights-ui')   # screenshots land here
 K = 1600 / 960
 
 

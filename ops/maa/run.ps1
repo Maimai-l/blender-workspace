@@ -82,6 +82,12 @@ try {
     $p = Start-Process -FilePath $Maa -ArgumentList @("run", $Task, "--batch", "--log-file=$maaLog") -NoNewWindow -Wait -PassThru `
         -RedirectStandardOutput "$Logs\$stamp-$Task.out" -RedirectStandardError "$Logs\$stamp-$Task.err"
     $code = $p.ExitCode
+    # Security Deployment sweep with proxy cards that expire within 2 days (after annihilation took its cards).
+    # tower_sweep.py checks every screen by OCR, never taps the top bar, and leaves by the back key only.
+    if ($Task -eq "daily" -and (Test-Path "$Root\tower_sweep.py") -and (Test-Path $ocrPy)) {
+        $env:PYTHONIOENCODING = "utf-8"
+        & $ocrPy "$Root\tower_sweep.py" 2>&1 | Out-Null    # it writes its own [tower] lines to runs.log
+    }
 
     if (-not $KeepEmulator) { & "$LD\ldconsole.exe" quit --index 0 | Out-Null }
     # Depot / OperBox results only exist in MaaCore's log: export them as JSON (same format as the GUI's data\)

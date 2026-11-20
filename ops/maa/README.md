@@ -33,6 +33,7 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
        ├─ ev_run.py              活动 EX/S 首通（OCR 导航 + prts.plus 作业 + 漏怪即退）
        ├─ ocr.py --stop          关掉 OCR 服务，释放内存
        ├─ maa run daily          日常队列（见第 3 节）
+       ├─ tower_sweep.py         保全派驻：用 2 天内过期的代理卡扫荡（OCR 导航，见第 4 节）
        ├─ 关模拟器
        ├─ export_data.py         从 MaaCore 日志导出仓库、干员
        ├─ node sync.mjs          森空岛同步（练度、基建、库存）
@@ -51,6 +52,8 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 | 启动脚本 | `D:\Projects\maa-cli\run.ps1`、`copilot.ps1` | `ops/maa/` |
 | 剿灭开关、改建检查、数据导出 | `annihilation_gate.py`、`after_rebuild.py`、`export_data.py` | `ops/maa/` |
 | 活动关首通 | `D:\Projects\maa-cli\ev_run.py`、`ev_run.ps1` | `arknights/tools/` |
+| 保全派驻扫荡 | `D:\Projects\maa-cli\tower_sweep.py`（每步截图在 `state\tower\`） | `arknights/tools/tower_sweep.py` |
+| 选关 | `sanity_plan.py`、`sanity_plan.json` | `ops/maa/` |
 | 作业筛选 | `state\copilot_match.py` | `arknights/tools/copilot_match.py`、`copilot_rank.py` |
 | OCR（PP-OCRv6，onnxruntime） | `D:\Projects\agent-ocr\`（`.venv`、`ocr.py`、`ocr_server.py`），端口 8767 | `ops/pc/agent_ocr_*.ps1` |
 | 森空岛 | `D:\Projects\skland\`（`login.mjs`、`sync.mjs`）；凭证在 `C:\Users\blender\.skland\store`，只留在电脑上 | `arknights/skland/` |
@@ -97,6 +100,12 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
   3. CE-6（周二、四、六、日）；
   4. 其余日子 LS-6。
   `python sanity_plan.py --dry` 只打印决定；环境变量 `PLAN_NOW` 可模拟时间。改规则只改 json。
+- **保全派驻扫荡**（`tower_sweep.py`，日常跑完、关模拟器前运行，2026-11-20 起）：
+  - 只用快过期的常态事务代理卡：确认框按过期时间列出各组卡（如“2天 2”“9天 5”），游戏先用最早过期的。最早一组在 2 天内过期且至少 2 张才确认，否则点“取消”。剿灭要用的卡不会被动到。
+  - 路径：主界面“终端”→ 终端页右上 TO-DO 卡片“数据增补条”→ 塔列表，点记录 6/6 的塔的卡片图（“6/6”字样左下方；点塔名没反应）→ 详情页，“开始保全作战”下方显示“-2”表示全权委托已开，否则点一次“全权委托”→“开始保全作战”→ 确认框 →“确认使用”→“保全作战完成”，点屏幕中间回详情页 → 返回键退到“常态事务”页，再退到主界面。
+  - 防误操作：每一步先用 OCR 核对整页特征文字，对不上就中止；只点认出来的指定文字，且必须落在该画面该按钮的允许框里（`ALLOW`）；合成玉和源石的“+”、主界面理智旁的“+”、左下礼包区在任何画面都禁止点击（`NO_TAP`）；主界面以外出现“源石、寻访、购买、时装、兑换、¥、充值、礼包、采购、支付、抽取、招募”任一字样就中止；中止只按返回键退回主界面（在对话框上等于取消），最多 40 步。
+  - `python tower_sweep.py --dry`：走到确认框后点“取消”。
+  - 2026-11-20 真机测试：第一次被禁点区拦下（当时顶栏禁点区划到 y<95，罩住了终端页的 TO-DO 卡片），中止后用返回键回到主界面，什么都没点；改成按画面的允许框后，完整走到确认框，读出“最早 9 天 5 张”，点取消回到主界面，源石、合成玉不变。
 - **无人机**（`after_rebuild.py`）：3 个贸易站都到 3 级后改回 `Money`。2026-11-16 已完成，之后不再做事。
 
 ## 5. 当前计划
@@ -130,7 +139,7 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 | 11-19 08:40 | 已设提醒：看 S-4 普通和突袭的结果，失败就换备选作业 |
 | 11-22 03:59 | 活动关卡关闭：`sanity_plan.py` 会自动从 TL-7 切到 PR-D-2 / CE-6 / LS-6，不用手动改 |
 | 11-22 10:00 | 已设提醒：清活动商店，先买异格德克萨斯的材料；然后把理智作战从 TL-7 改成 PR-D-2（芯片本开放日，直到 8 个特种芯片组），其余日子打 CE-6 |
-| 11-23 03:59 | 7 张常态事务代理卡到期：剿灭用剩的卡，拿去扫一次保全派驻（每次 2 张；“荒废灯塔”记录已满） |
+| 11-23 03:59 | 2 张常态事务代理卡到期：11-20 已手动扫荡一次保全派驻用掉（数据增补条 +20、增补仪 +10）；之后由 `tower_sweep.py` 自动处理 |
 | 12-01 | 凭证交易所月度刷新：绿票第一、二层的定期购买（待实现） |
 | 12-15 | 保全派驻本期结束（奖励是数据增补条、增补仪，价值低） |
 
@@ -157,7 +166,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 1. 按设计文档第 3 期做“理智不溢出”：每次跑完读理智和回满时刻，按最早到期的事件（理智将满、基建换班、药临期）定下次运行时间，取代固定的一天三次；再做第 4 期，用养成订单和 ArkPlanner 取代 `sanity_plan.json` 的手写规则。
 2. 绿票第一、二层的月度购买（OCR 操作）。
 3. 每周抽卡收入报告：现有抽数，以及各来源实际收入和满额的差距。
-4. 代理卡快过期时扫荡保全派驻。
+4. ~~代理卡快过期时扫荡保全派驻~~（2026-11-20 完成，`tower_sweep.py`）。
 
 ## 变更记录
 
@@ -172,3 +181,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 - 2026-11-17：保存 MAA 和 maa-cli 官方文档副本到 `ops/maa/upstream/`（突袭问题本可以从文档里提前看出来）。
 | 2026-11-20 | 理智作战改为不限次数、只用 2 天内过期的理智药（原来 times=2 每次只打两场，12:00 后约 16:40 理智满，到 0:00 溢出约 70） |
 | 2026-11-20 | 新增 `sanity_plan.py` 和 `sanity_plan.json`：每次日常前按日期、开放日和库存选关（活动关闭后自动切换）；README 开头补上用户的调度器设计文档链接和各期落地情况 |
+| 2026-11-20 | 新增 `tower_sweep.py`：日常后用 2 天内过期的代理卡扫荡保全派驻（界面路径和防误操作见第 4 节）；当天手动扫荡一次，并在理智满 210 时手动刷 TL-7 |

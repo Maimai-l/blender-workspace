@@ -48,12 +48,14 @@ type = "Fight"
 params = { stage = "Annihilation", medicine = 0, stone = 0, times = 1, series = 0, client_type = "Official" }
 # <<< annihilation
 
+# >>> fight  (sanity_plan.py rewrites the stage before each daily run, from ops/maa/sanity_plan.json)
 [[tasks]]
 name = "理智作战"
 type = "Fight"
 # 不限次数，把理智打完（times=2 时每次只打两场，12:00 后理智 16:40 左右就满，到 0:00 一直溢出）；
 # 只用 2 天内过期的理智药，不动长期的药；不碎石
 params = { stage = "TL-7", medicine = 0, medicine_expire_days = 2, stone = 0, series = 0, client_type = "Official" }
+# <<< fight
 
 [[tasks]]
 name = "自动公招"

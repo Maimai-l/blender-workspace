@@ -59,6 +59,10 @@ try {
     if ($Task -eq "daily" -and (Test-Path "$Root\annihilation_gate.py")) {
         & "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe" "$Root\annihilation_gate.py" 2>&1 | ForEach-Object { Say "gate: $_" }
     }
+    # stage of the sanity farming task: first matching rule of sanity_plan.json (date, game-day weekday, inventory)
+    if ($Task -eq "daily" -and (Test-Path "$Root\sanity_plan.py")) {
+        & "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe" "$Root\sanity_plan.py" 2>&1 | ForEach-Object { Say "plan: $_" }
+    }
     # side-story first clears (EX/S, normal then raid) with prts.plus copilots, before the daily task spends the
     # sanity on farming. ev_run.py navigates by OCR (agent-ocr) and stops when sanity runs short.
     $ocrPy = "D:\Projects\agent-ocr\.venv\Scripts\python.exe"

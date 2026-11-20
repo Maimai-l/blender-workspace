@@ -28,19 +28,23 @@ $runLog = "$Logs\runs.log"
 $t0 = Get-Date
 
 function Say($msg) { $line = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $Task, $msg; Write-Output $line; Add-Content -Path $runLog -Value $line -Encoding UTF8 }
+$Py = "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe"
+# push status to the user's phone (Bark) so they do not log in mid-run; notify.py never fails the run
+function Notify { if (Test-Path "$Root\notify.py") { & $Py "$Root\notify.py" @args 2>&1 | Out-Null } }
 function LdRunning { (& "$LD\ldconsole.exe" isrunning --index 0 2>$null) -match "running" }
 
 # one run at a time (a scheduled run and a manual one must not overlap)
 $lock = $null
 try { $lock = [System.IO.File]::Open("$Root\run.lock", 'OpenOrCreate', 'ReadWrite', 'None') }
-catch { Say "REFUSED: another run.ps1 is running"; exit 91 }
+catch { Say "REFUSED: another run.ps1 is running"; Notify refused $Task 91; exit 91 }
 
 try {
     $me = (Get-Process -Id $PID).SessionId
     $gui = Get-Process -Name MAA -ErrorAction SilentlyContinue
-    if ($gui) { Say ("REFUSED: MAA GUI is open (session {0})" -f (($gui | ForEach-Object SessionId) -join ",")); exit 92 }
+    if ($gui) { Say ("REFUSED: MAA GUI is open (session {0})" -f (($gui | ForEach-Object SessionId) -join ",")); Notify refused $Task 92; exit 92 }
     $foreign = Get-Process -Name dnplayer, Ld9BoxHeadless -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -ne $me }
-    if ($foreign) { Say "REFUSED: the emulator is running in another session"; exit 93 }
+    if ($foreign) { Say "REFUSED: the emulator is running in another session"; Notify refused $Task 93; exit 93 }
+    Notify start $Task
 
     $started = $false
     if (-not (LdRunning)) {
@@ -52,7 +56,7 @@ try {
         Start-Sleep -Seconds 2
         $boot = (& $Adb -s emulator-5554 shell getprop sys.boot_completed 2>$null | Out-String).Trim()
     } while ($boot -ne "1" -and (Get-Date) -lt $deadline)
-    if ($boot -ne "1") { Say "FAILED: Android did not finish booting in $BootTimeout s"; exit 94 }
+    if ($boot -ne "1") { Say "FAILED: Android did not finish booting in $BootTimeout s"; Notify refused $Task 94; exit 94 }
     Say ("emulator ready ({0})" -f $(if ($started) { "started" } else { "was running" }))
 
     # skip Annihilation while this week's orundum reward is already full (25 sanity per run otherwise)
@@ -106,6 +110,7 @@ try {
         }
     }
     Say ("maa exit {0} after {1:n0} s; log {2}" -f $code, ((Get-Date) - $t0).TotalSeconds, $maaLog)
+    Notify end $Task $code $stamp
     exit $code
 }
 finally {

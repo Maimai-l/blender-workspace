@@ -26,7 +26,8 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 ```
 计划任务 (0:00 / 8:00 / 12:00)
   └─ run.ps1 -Task daily
-       ├─ 加锁、检查（没开界面版 MAA、模拟器不在别的会话）
+       ├─ 加锁、检查（没开界面版 MAA、模拟器不在别的会话）；不通过就推送“托管没有运行”
+       ├─ notify.py start        推送“托管开始，预计 HH:MM 结束，期间请不要登录游戏”
        ├─ 启动雷电模拟器 0 号，等安卓开机
        ├─ annihilation_gate.py   本周剿灭满了就注释掉剿灭任务
        ├─ maa run wake           打开游戏到主界面
@@ -37,7 +38,8 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
        ├─ 关模拟器
        ├─ export_data.py         从 MaaCore 日志导出仓库、干员
        ├─ node sync.mjs          森空岛同步（练度、基建、库存）
-       └─ after_rebuild.py       改建完成后自动改回无人机（已完成，现在不做事）
+       ├─ after_rebuild.py       改建完成后自动改回无人机（已完成，现在不做事）
+       └─ notify.py end          推送“结束，可以登录了”：刷了哪关几次、吃药、剿灭、保全扫荡、剩余理智和回满时间；出错时标题写“出错”并列出问题
 ```
 
 ## 2. 位置
@@ -54,6 +56,7 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 | 活动关首通 | `D:\Projects\maa-cli\ev_run.py`、`ev_run.ps1` | `arknights/tools/` |
 | 保全派驻扫荡 | `D:\Projects\maa-cli\tower_sweep.py`（每步截图在 `state\tower\`） | `arknights/tools/tower_sweep.py` |
 | 选关 | `sanity_plan.py`、`sanity_plan.json` | `ops/maa/` |
+| 手机推送（Bark） | `notify.py`；设备 key 只在 `C:\Users\blender\.bark\key` | `ops/maa/notify.py` |
 | 作业筛选 | `state\copilot_match.py` | `arknights/tools/copilot_match.py`、`copilot_rank.py` |
 | OCR（PP-OCRv6，onnxruntime） | `D:\Projects\agent-ocr\`（`.venv`、`ocr.py`、`ocr_server.py`），端口 8767 | `ops/pc/agent_ocr_*.ps1` |
 | 森空岛 | `D:\Projects\skland\`（`login.mjs`、`sync.mjs`）；凭证在 `C:\Users\blender\.skland\store`，只留在电脑上 | `arknights/skland/` |
@@ -182,3 +185,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 | 2026-11-20 | 理智作战改为不限次数、只用 2 天内过期的理智药（原来 times=2 每次只打两场，12:00 后约 16:40 理智满，到 0:00 溢出约 70） |
 | 2026-11-20 | 新增 `sanity_plan.py` 和 `sanity_plan.json`：每次日常前按日期、开放日和库存选关（活动关闭后自动切换）；README 开头补上用户的调度器设计文档链接和各期落地情况 |
 | 2026-11-20 | 新增 `tower_sweep.py`：日常后用 2 天内过期的代理卡扫荡保全派驻（界面路径和防误操作见第 4 节）；当天手动扫荡一次，并在理智满 210 时手动刷 TL-7 |
+| 2026-11-20 | 新增 `notify.py`：经 Bark 推送到用户 iPhone（开始、结束、出错、拒绝运行），避免托管时用户登录互相挤号；测试通知用户已收到 |

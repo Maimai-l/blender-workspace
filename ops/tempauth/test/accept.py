@@ -7,6 +7,7 @@
 """
 import calendar
 import json
+import shutil
 import os
 import subprocess
 import sys
@@ -249,6 +250,26 @@ def main():
     mine = [l for l in logs if l["grant_id"] in (ida, idb, idc)]
     rec("记录", "每次调用都有记录（含拦截、拒绝）", any(l["result"] == "blocked" for l in mine) and any(l["result"] == "denied" for l in mine),
         f"{len(mine)} 条")
+
+    # ---- D 盘顶层目录（助手 1.0.2）：授权期间 aitemp 的拒绝项换成拒绝其他授权组，释放后恢复
+    top = Path(r"D:\aitemp-toptest")
+    top.mkdir(exist_ok=True)
+    gt = adm("POST", "grants", {"folders": [str(top)], "name": "验收 顶层目录", "minutes": 30, "limit": 10, "net": False, "confirm": False})
+    def top_acl():
+        return [l.strip() for l in subprocess.run(["icacls", str(top)], capture_output=True, text=True, errors="replace").stdout.splitlines()
+                if "aitemp" in l.lower()]
+    rec("顶层目录", "D 盘顶层目录可以签发", gt.get("ok"), gt.get("msg"))
+    if gt.get("ok"):
+        idt = gt["grant"]["id"]
+        err, sc = tool(gt["url"], "write_file", path="t.txt", content="top")
+        code, _, out = hrun(idb, f'type "{top}\\t.txt"')
+        acl = top_acl()
+        rec("顶层目录", "授权能写，并行的另一条授权读不到", not err and code != 0 and not any("MAIMAI\\aitemp:" in l for l in acl), acl)
+        adm("POST", f"grants/{idt}/revoke")
+        H.call({"op": "release", "grant": idt})
+        acl = top_acl()
+        rec("顶层目录", "释放后恢复 aitemp 的拒绝项", any("aitemp:(OI)(CI)(N)" in l for l in acl) and not any("AITemp-" in l for l in acl), acl)
+    shutil.rmtree(top, ignore_errors=True)
 
     # ---- 撤权（释放）
     for g in (ida, idb, idc):

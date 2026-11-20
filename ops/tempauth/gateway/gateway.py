@@ -218,7 +218,8 @@ class PipeHelper:
             except FileNotFoundError:
                 raise HelperDown("授权助手没有运行（服务 AITempHelper）")
             except OSError as e:
-                if getattr(e, "winerror", None) in (231, 2):   # 管道忙
+                # 管道忙（231）；实例正在被关闭时 open 报 EINVAL（errno 22，没有 winerror）：都稍等再连
+                if getattr(e, "winerror", None) in (231, 2) or e.errno == 22:
                     time.sleep(0.05)
                     continue
                 raise HelperDown(f"连不上授权助手：{e}")
@@ -1622,8 +1623,10 @@ def close_browser(gid, sid=None):
         e["b"].close()
     try:
         g = get_grant(gid)
-        out = grant_outdir(g) if g else None
-        if out and not [k for k in BROWSERS if k[0] == gid]:
+        folders = json.loads(g["folders"]) if g else []
+        # 只算路径、不建目录：grant_outdir 会建目录，关浏览器时调用它会在没用过浏览器的授权文件夹里留下空的 downloads
+        out = (Path(folders[0]) / "downloads" if folders else BROWSER_DIR / gid / "output") if g else None
+        if out and out.is_dir() and not [k for k in BROWSERS if k[0] == gid]:
             for f in out.iterdir():
                 if f.is_file() and PW_FILE.match(f.name):
                     f.unlink()

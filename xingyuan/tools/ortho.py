@@ -3,7 +3,7 @@
 import sys, json, math
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import calib
 from xyp import S, font as _xyfont
 Zg = float(sys.argv[1]); x0, x1, y0, y1, res = map(float, sys.argv[2:7]); out = sys.argv[7]

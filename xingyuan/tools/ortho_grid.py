@@ -2,7 +2,7 @@
 import sys, math
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import ortho_arr as OA
 name = sys.argv[1]; Zg = float(sys.argv[2]); x0, x1, y0, y1, res = map(float, sys.argv[3:8])
 c, valid, XX, YY = OA.ortho(Zg, x0, x1, y0, y1, res)

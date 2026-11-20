@@ -1,6 +1,6 @@
 # Build a north-up world-coordinate version of the floor plan with a metric grid.
 # world: x_e (east, m) = 70.33 - (yv-182.7)/9.362 ; y_n (north, m) = (1119.8 - xv)/9.362  (v = 1800-wide preview coords)
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import sys
 from PIL import Image, ImageDraw, ImageFont
 from xyp import S, font as _xyfont

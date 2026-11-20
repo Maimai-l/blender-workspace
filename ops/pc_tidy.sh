@@ -45,8 +45,9 @@ if [ "$MODE" = clean ]; then
   printf '\n%s  end-of-session cleanup (ops/pc_tidy.sh), files older than %s min\n' "$(date '+%F %T')" "$MIN_AGE_MIN" >> "$LOG"
 fi
 
-# 1. transfer and relay scratch of pcx.py / putbig.py / rdefer.py: <project>\tmp\*
-for t in "$P"/*/tmp; do
+# 1. transfer and relay scratch of pcx.py / putbig.py / rdefer.py: D:\Projects\pc-tools\tmp\* (since 2026-11-20),
+#    and <project>\tmp\* (older tool copies and project pipelines)
+for t in "$P"/*/tmp /d/Projects/pc-tools/tmp; do
   [ -d "$t" ] || continue
   old "$t" -mindepth 1 -maxdepth 1 | while read -r f; do hit "$f" "tool scratch (tmp)"; done
 done
@@ -75,7 +76,7 @@ echo "-- Documents (only vocabulary.db, LDPlayer's leidian9 and junctions belong
 find /c/Users/blender/Documents -maxdepth 1 -mindepth 1 ! -name desktop.ini ! -name vocabulary.db ! -name leidian9 ! -type l 2>/dev/null | sed 's/^/   /'
 echo "-- C:\\Users\\blender (entries beyond the known set):"
 # .Ld9VirtualBox/.android: LDPlayer and adb; .cache/.modelscope/.paddlex: agent-ocr models; .skland: Skland login (stays on the PC)
-KNOWN='|.Ld9VirtualBox|.android|.cache|.modelscope|.paddlex|.skland|.claude|.claude.json|.thumbnails|.unity-mcp|AppData|Application Data|BlenderMCP-run|Contacts|Cookies|Desktop|Documents|Downloads|ExecMCP|ExecMCP-run|Favorites|Links|Local Settings|Music|My Documents|NetHood|OneDrive|Pictures|PrintHood|Recent|Saved Games|Searches|SendTo|Templates|Unity user templates|UnityMCP-run|Videos|blender-mcp-secret.txt|exec-mcp-secret.txt|unity-mcp-secret.txt|「开始」菜单|'
+KNOWN='|.Ld9VirtualBox|.android|.cache|.modelscope|.paddlex|.skland|.claude|.claude.json|.thumbnails|.unity-mcp|AppData|BrowserMCP-profile|BrowserMCP-run|TempAuth|browser-mcp-secret.txt|Application Data|BlenderMCP-run|Contacts|Cookies|Desktop|Documents|Downloads|ExecMCP|ExecMCP-run|Favorites|Links|Local Settings|Music|My Documents|NetHood|OneDrive|Pictures|PrintHood|Recent|Saved Games|Searches|SendTo|Templates|Unity user templates|UnityMCP-run|Videos|blender-mcp-secret.txt|exec-mcp-secret.txt|unity-mcp-secret.txt|「开始」菜单|'
 ls -A /c/Users/blender | while read -r n; do
   case "$n" in NTUSER.DAT*|ntuser.*) continue;; esac
   case "$KNOWN" in *"|$n|"*) ;; *) echo "   $n";; esac

@@ -1,6 +1,6 @@
 """Depth pass of the final view: every surface shaded with its distance and position (clouds off), written as
 renders\\_dbg\\<NAME>.npz (d = view distance in m, z = height in m, r = horizontal distance from the sketch camera in
-m, a = 0 on sky), at W x H. Run through tools/rdefer.py; tools/depthcheck.py reads the result.
+m, a = 0 on sky), at W x H. Run through <repo>/tools/rdefer.py (from mana_cafe/); tools/depthcheck.py reads the result.
 
     PRE: NAME = 'depth'; W = 960; H = 540"""
 import bpy, os, time

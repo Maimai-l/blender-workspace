@@ -4,7 +4,7 @@
     rdefer.py <script.py> ["PRE = 1; OTHER = 'x'"] [--timeout 3600]
 
 The script runs from a Blender timer (so the MCP call returns at once; the tunnel in front of the Blender endpoint
-cuts replies at about 100 s); what it prints is written to renders/job_<id>.txt on the PC, which this waits for
+cuts replies at about 100 s); what it prints is written to renders/job_<id>.txt on the PC (pc-tools\\tmp without a project), which this waits for
 through exec and then prints."""
 import argparse, os, sys, uuid
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -16,7 +16,8 @@ ap.add_argument('pre', nargs='?', default='')
 ap.add_argument('--timeout', type=int, default=3600)
 a = ap.parse_args()
 code = (a.pre + '\n' if a.pre else '') + open(a.script, encoding='utf-8').read()
-job = xyp.PC_ROOT + '\\renders\\job_%s.txt' % uuid.uuid4().hex[:8]
+# output file: <PC project>\renders\job_<id>.txt, or D:\Projects\pc-tools\tmp\job_<id>.txt without a project
+job = (xyp.PC_ROOT + '\\renders' if xyp.PC_ROOT else pcx.TMP) + '\\job_%s.txt' % uuid.uuid4().hex[:8]
 wrapper = '''
 import bpy, io, os, contextlib, traceback
 _JOB = %r

@@ -13,7 +13,7 @@ The full set is on the Blender PC under `C:\Users\blender\Documents\qiting\refs\
 - `web\大唐芙蓉园_旗亭_建模参考\`: the 8 web photos from `D:\Downloads\旗亭_建模参考图.zip`, extracted there in this round.
 - `_pdf\`: the PDF pages rendered as images.
 
-`tools/pcx.py fetch` copies any of them into the session. In this round they were kept in `~/.cache/qiting/ref/`.
+`../tools/pcx.py fetch` (the shared tools) copies any of them into the session. In this round they were kept in `~/.cache/qiting/ref/`.
 
 ## Copies in this folder
 

@@ -1,7 +1,9 @@
 #!/bin/bash
 # rvc <calib name> [extra dict items]  -> renders camera from cal/<name>_sol.json at the photo aspect, fetches, makes side-by-side
 TOOLS=$(cd "$(dirname "$0")" && pwd)
-T=$(python3 -I "$TOOLS/xyp.py")   # work folder (see xyp.py)
+SHARED=$(cd "$TOOLS/../../tools" && pwd)   # shared tools: xyp, bmcp, fetch, push
+export XY_PROJECT="$(dirname "$TOOLS")"
+T=$(python3 -I "$SHARED/xyp.py")   # work folder (see xyp.py)
 N=$1; EXTRA=${2:-}
 V=$(python3 -c "
 import json,sys

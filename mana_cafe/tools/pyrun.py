@@ -7,14 +7,15 @@ Pushes scripts/proc and scripts/lib first. The script runs in the background wit
 (numba, scipy, pillow, rasterio) and <PC project>\\proc; its output goes to tmp\\<name>.log, which this polls
 through exec and prints when the process has ended."""
 import os, sys, time, subprocess
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import xyp, pcx
 a = sys.argv[1:]
 timeout = 3600
 if '--timeout' in a:
     i = a.index('--timeout'); timeout = int(a[i + 1]); del a[i:i + 2]
 name = os.path.splitext(os.path.basename(a[0]))[0]
-subprocess.run([sys.executable, '-I', os.path.join(xyp.TOOLS, 'push.py')], check=True, stdout=subprocess.DEVNULL)
+subprocess.run([sys.executable, '-I', os.path.join(xyp.TOOLS, 'push.py')], check=True, stdout=subprocess.DEVNULL,
+               env=dict(os.environ, XY_PROJECT=xyp.PROJ))
 root = pcx._unix(xyp.PC_ROOT)
 tag = '%s_%s' % (name, time.strftime('%H%M%S'))
 args = ' '.join('"%s"' % x for x in a[1:])

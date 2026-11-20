@@ -1,5 +1,5 @@
 # pxgrid.py name x0 y0 x1 y1 scale [step]: crop of the full-res aerial with a pixel grid (labels in full-res px)
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import sys
 from PIL import Image, ImageDraw, ImageFont
 from xyp import S, font as _xyfont

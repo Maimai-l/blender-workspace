@@ -18,24 +18,30 @@ timeout = float(sys.argv[3]) if len(sys.argv) > 3 else 3600.0
 code = open(code_path, encoding='utf-8').read()
 
 t0 = time.time()
-s = socket.create_connection(('127.0.0.1', 9876), timeout=10)
-s.settimeout(timeout)
-s.sendall(json.dumps({'type': 'execute_code', 'params': {'code': code}}).encode('utf-8'))
 buf = b''
 resp = None
-while True:
-    d = s.recv(1 << 20)
-    if not d:
-        break
-    buf += d
-    try:
-        resp = json.loads(buf.decode('utf-8'))
-        break
-    except (ValueError, UnicodeDecodeError):
-        continue
-s.close()
+err = None
+try:
+    s = socket.create_connection(('127.0.0.1', 9876), timeout=10)
+    s.settimeout(timeout)
+    s.sendall(json.dumps({'type': 'execute_code', 'params': {'code': code}}).encode('utf-8'))
+    while True:
+        d = s.recv(1 << 20)
+        if not d:
+            break
+        buf += d
+        try:
+            resp = json.loads(buf.decode('utf-8'))
+            break
+        except (ValueError, UnicodeDecodeError):
+            continue
+    s.close()
+except OSError as e:          # Blender not running / add-on not listening / timeout: still write the .done marker
+    err = e
 
-if resp is None:
+if err is not None:
+    text = 'RELAY ERROR: %s (is Blender running with the MCP add-on on 127.0.0.1:9876?)' % err
+elif resp is None:
     text = 'RELAY ERROR: no complete response (%d bytes)' % len(buf)
 elif resp.get('status') != 'success':
     text = 'BLENDER ERROR: ' + str(resp.get('message', resp))

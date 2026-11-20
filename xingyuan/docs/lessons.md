@@ -75,7 +75,7 @@ Blender and the sandbox share no files (see CLAUDE.md). So:
 - renders come back as base64;
 - files go up in base64 chunks of about 300 kB.
 
-The helper tools are in [`../tools/`](../tools/README.md). They were written in the session scratchpad during the two rounds and moved into the repo afterwards, with their paths made relative. Each is a few dozen lines:
+The helper tools are in [`../tools/`](../tools/README.md). They were written in the session scratchpad during the two rounds and moved into the repo afterwards, with their paths made relative. (Since 2026-11-20 the general ones, `bmcp.py`, `execc.py`, `fetch.py`, `upload.py`, `push.py`, `xy`, `xyp.py` and `calib.py`, are the repo-wide [`../../tools/`](../../tools/README.md); the rest stay in `../tools/`.) Each is a few dozen lines:
 
 | Tool | What it did |
 | --- | --- |

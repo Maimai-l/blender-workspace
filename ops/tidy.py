@@ -6,7 +6,7 @@ tool by-products and appends each removal to D:\\Blender\\Projects\\_迁移日�
 Nothing is deleted while a background Blender job, render worker or ffmpeg is running. See ops/README.md."""
 import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..', 'qiting', 'tools'))
+sys.path.insert(0, os.path.join(HERE, '..', 'tools'))  # shared <repo>/tools
 import pcx
 
 a = sys.argv[1:]

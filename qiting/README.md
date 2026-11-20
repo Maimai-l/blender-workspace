@@ -103,7 +103,7 @@ Round 2 added:
 
 To rebuild:
 
-1. Copy `scripts/lib/*.py` to `C:\Users\blender\Documents\qiting\lib\` (`tools/push.py` does this).
+1. Copy `scripts/lib/*.py` to `C:\Users\blender\Documents\qiting\lib\` (`../tools/push.py`, run from `qiting/`, does this).
 2. Run `scripts/build_all.py` with `STEPS = ['all']` for the building. The steps are `mats`, `roof`, `frame`, `podium` and `boards`. Each step deletes its own objects and builds them again; the whole build takes about 6 s.
 3. Run `scripts/build_env.py` with `STEPS = ['all']` for the surroundings. The steps are `mats`, `terrain`, `paving`, `lake`, `plants`, `lamps`, `furniture` and `far`; together they take about 15 s.
 4. Render with `tools/cmpview.py` (the comparison views, using the solved cameras in `tools/cal/*_sol.json`) and `tools/heroes_run.py` (the beauty shots in `lib/heroes.py`). Both render from a Blender timer and wait through exec, because full-scene renders outlast the ~100 s limit of the Blender endpoint; see `tools/README.md`.
@@ -229,7 +229,7 @@ The figure field of the carved drum is now blurred: a 6 cm Gaussian, the relief 
 
 ## Checks
 
-Run on the final model of round 2, after the last change (the scripts run from a Blender timer through `tools/rdefer.py`):
+Run on the final model of round 2, after the last change (the scripts run from a Blender timer through `../tools/rdefer.py`, shared since 2026-11-20):
 
 - **Normals:** 3,311 closed shells, 0 inside out. Both roof decks face up.
   - The first run found 8 inside-out shells: the swept iron rails of the lakeside railing and the viewing platform. Their builders now recalculate normals.
@@ -257,14 +257,16 @@ On 2026-11-01 the cloud endpoint for Blender stopped working early in this sessi
 
 All the work in this session went through the exec server instead:
 
-- `tools/pcx.py` sends code to Blender's add-on socket on the PC with `tools/pc/brelay.py`.
-- It copies files with `tools/pc/pack.py`.
+- `pcx.py` sends code to Blender's add-on socket on the PC with `pc/brelay.py`.
+- It copies files with `pc/pack.py`.
+
+(These and `bmcp.py` were in `tools/` here; since 2026-11-20 they are the shared `../tools/`.)
 
 On 2026-11-07, with the user's consent, Blender was started on the PC and the Blender MCP service was started again. Both went through the exec server:
 
 - Blender was launched the way the PC's agent launches it, and the add-on's socket started by itself.
 - The service was started by a request to the agent on the PC, `POST /mcp/blender/start`, authenticated with its local token.
 
-The cloud endpoint answers again. `tools/bmcp.py` now uses the endpoint first and falls back to the exec route when the endpoint is down.
+The cloud endpoint answers again. `bmcp.py` now uses the endpoint first and falls back to the exec route when the endpoint is down.
 
-In round 2, replies longer than about 100 s came back as "No data received", because the tunnel in front of the endpoint drops them. Long renders and checks therefore run from a Blender timer and report through a file on the PC, which the session polls through exec (`tools/README.md`, "Long jobs").
+In round 2, replies longer than about 100 s came back as "No data received", because the tunnel in front of the endpoint drops them. Long renders and checks therefore run from a Blender timer and report through a file on the PC, which the session polls through exec (`rdefer.py` in `../tools/README.md`).

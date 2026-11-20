@@ -2,9 +2,10 @@
 """Talk to the Blender PC through the exec MCP server only (no Blender MCP endpoint needed).
 
 Used since 2026-11-01, when the cloud endpoint for Blender went down after an 11 MB reply. Two helper scripts
-live on the PC in <PC_ROOT>\\tools (sources in ../tools/pc/):
+live on the PC in D:\\Projects\\pc-tools (xyp.PC_TOOLS; sources in pc/ next to this file, uploaded on first use):
   brelay.py  runs a code file inside the live Blender through the add-on's local socket 127.0.0.1:9876;
   pack.py    wraps any file into lossless greyscale PNG pieces, which exec's file reader returns unchanged.
+Transfer scratch goes to D:\\Projects\\pc-tools\\tmp (ops/pc_tidy.sh clears it). Nothing here depends on a project.
 
   pcx.py blender <file.py> ["prepended code"]   run a local file in Blender (prints its output)
   pcx.py code "<python>"                         run inline code in Blender
@@ -17,8 +18,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import execc, xyp
 
 PY = r'D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe'
-PCT = xyp.PC_ROOT + r'\tools'
-TMP = xyp.PC_ROOT + r'\tmp'
+PCT = xyp.PC_TOOLS                      # brelay.py, pack.py
+TMP = xyp.PC_TOOLS + r'\tmp'           # transfer scratch
+HERE = os.path.dirname(os.path.abspath(__file__))
+_helpers_ok = False
 
 
 def _unix(p):
@@ -89,9 +92,31 @@ def put_text(remote, text):
         raise RuntimeError(out)
 
 
+def ensure_helpers():
+    """Upload pc/brelay.py and pc/pack.py to PC_TOOLS when missing or different from this repo's copies."""
+    global _helpers_ok
+    if _helpers_ok:
+        return
+    import hashlib
+    names = ('brelay.py', 'pack.py')
+    local = {n: open(os.path.join(HERE, 'pc', n), 'rb').read() for n in names}
+    out = bash('mkdir -p "%s/tmp" && cd "%s" && md5sum %s 2>/dev/null; true' % (_unix(PCT), _unix(PCT), ' '.join(names)))
+    have = {l.split()[-1].lstrip('*'): l.split()[0] for l in out.splitlines() if len(l.split()) == 2}
+    for n in names:
+        if have.get(n) != hashlib.md5(local[n]).hexdigest():
+            b64 = base64.b64encode(local[n]).decode('ascii')
+            tmp = TMP + '\\h_%s.b64' % uuid.uuid4().hex[:8]
+            write_text(tmp, b64)
+            r = bash('base64 -d "%s" > "%s/%s" && rm -f "%s" && echo ok' % (_unix(tmp), _unix(PCT), n, _unix(tmp)))
+            if 'ok' not in r:
+                raise RuntimeError('could not install %s on the PC: %s' % (n, r[:300]))
+    _helpers_ok = True
+
+
 def blender(code, poll=80, quiet=False):
     """Run code in the live Blender; returns everything it printed. Long jobs keep running on the PC while
     this polls in rounds of `poll` seconds (exec calls must finish within about 90 s)."""
+    ensure_helpers()
     job = 'job_%s_%s' % (time.strftime('%H%M%S'), uuid.uuid4().hex[:6])
     src = TMP + '\\' + job + '.py'
     out = _unix(TMP + '\\' + job + '.out')
@@ -100,8 +125,8 @@ def blender(code, poll=80, quiet=False):
             'if [ -f "%s.done" ]; then echo __DONE__ $(wc -c < "%s"); '
             '[ $(wc -c < "%s") -le 29000 ] && cat "%s" && rm -f "%s" "%s" "%s.done"; fi'
             % (poll * 4, out, out, out, out, out, _unix(src), out, out))
-    r = bash('cd "%s" && (nohup "%s" tools/brelay.py "tmp/%s.py" "tmp/%s.out" > /dev/null 2>&1 &) ; %s'
-             % (_unix(xyp.PC_ROOT), _unix(PY), job, job, wait), timeout_ms=(poll + 15) * 1000)
+    r = bash('cd "%s" && (nohup "%s" brelay.py "tmp/%s.py" "tmp/%s.out" > /dev/null 2>&1 &) ; %s'
+             % (_unix(PCT), _unix(PY), job, job, wait), timeout_ms=(poll + 15) * 1000)
     t0 = time.time()
     while '__DONE__' not in r:
         if not quiet:
@@ -121,6 +146,7 @@ def blender(code, poll=80, quiet=False):
 def fetch(remote, local, piece_mb=2.5):
     """Copy any file from the PC: pack.py turns it into PNG pieces, exec's Read returns them unchanged."""
     from PIL import Image
+    ensure_helpers()
     d = TMP + '\\pk_' + uuid.uuid4().hex[:8]
     lst = bash('"%s" "%s/pack.py" "%s" "%s" %s' % (_unix(PY), _unix(PCT), remote, d, piece_mb), timeout_ms=85000)
     paths = [l.split()[0] for l in lst.splitlines() if l.strip().endswith(tuple('0123456789')) and '.png' in l]

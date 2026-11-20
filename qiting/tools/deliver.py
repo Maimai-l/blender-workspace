@@ -10,7 +10,7 @@
 - 说明.md and 尺寸表.md: ../README.md and ../docs/dimensions.md
 The repo keeps downscaled copies of the side-by-sides, the overview and the beauty shots."""
 import os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import xyp, pcx
 from PIL import Image
 

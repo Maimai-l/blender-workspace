@@ -1,5 +1,5 @@
 # Build labelled side-by-side comparison sheets: reference photo (left) vs Blender render from the matched camera (right).
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 from PIL import Image, ImageDraw, ImageFont
 from xyp import S, font as _xyfont
 F = '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc'   # falls back via xyp.font

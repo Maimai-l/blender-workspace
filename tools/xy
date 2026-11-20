@@ -1,0 +1,12 @@
+#!/bin/bash
+# xy push [files] | xy run script.py ["prepended code"] [--out f] | xy runonly script.py | xy code "<python>"
+# The project comes from XY_PROJECT or the current directory (see xyp.py): cd <repo>/<project> first, or set XY_PROJECT.
+T=$(cd "$(dirname "$0")" && pwd)
+cmd=$1; shift
+case $cmd in
+  push) python3 -I "$T/push.py" "$@" ;;
+  run) python3 -I "$T/push.py" > /dev/null && python3 -I "$T/bmcp.py" run "$@" ;;
+  runonly) python3 -I "$T/bmcp.py" run "$@" ;;
+  code) python3 -I "$T/bmcp.py" code "$@" ;;
+  *) echo "usage: xy push|run|runonly|code ..." >&2; exit 2 ;;
+esac

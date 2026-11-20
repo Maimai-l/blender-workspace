@@ -6,7 +6,7 @@
 The shots render one by one from Blender timers; this waits for each renders/<name>.jpg.done marker through exec
 (not through the busy Blender) and copies renders/<name>.jpg into the sandbox's renders folder."""
 import argparse, os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import xyp, bmcp, pcx
 
 ap = argparse.ArgumentParser()

@@ -5,7 +5,7 @@
 
 Fetches renders\\_dbg\\<name>.jpg and prints tone statistics of a few picture regions."""
 import os, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import xyp, bmcp, pcx
 name, pre = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else '')
 remote = xyp.PC_ROOT + '\\renders\\_dbg\\%s.jpg' % name

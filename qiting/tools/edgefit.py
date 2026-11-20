@@ -11,7 +11,7 @@ edges cannot pull the fit), and the camera (position, yaw, pitch, roll, focal le
 Writes renders/edgefit_<name>.jpg showing the projected edges over the photo."""
 import argparse, json, math, os, sys
 import numpy as np
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts', 'lib'))
 import cv2
 from scipy import optimize

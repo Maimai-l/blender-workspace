@@ -7,7 +7,7 @@ Reads cal/<name>_sol.json (from calq.py), renders the camera in Blender at the p
 fetches the JPG and writes renders/sbs_<name>.jpg (reference | render) and renders/ovl_<name>.jpg (50 % blend),
 both cropped to the given box in reference-image pixels."""
 import argparse, json, os, subprocess, sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import xyp, bmcp, pcx
 from PIL import Image, ImageDraw, ImageFont
 
@@ -23,7 +23,7 @@ ap.add_argument('--thin', action='store_true', help='leave out planting and lamp
                 '(photos older than the 2026 aerials, taken before the trees grew)')
 a = ap.parse_args()
 
-sol = json.load(open(os.path.join(xyp.TOOLS, 'cal', a.name + '_sol.json')))
+sol = json.load(open(os.path.join(xyp.PTOOLS, 'cal', a.name + '_sol.json')))
 W, H = sol['W'], sol['H']
 rw, rh = int(round(W * a.scale)), int(round(H * a.scale))
 rname = 'cmp_' + a.name

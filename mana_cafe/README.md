@@ -75,19 +75,19 @@ SketchUp model `玛娜茶金总图咖啡厅.skp`. Everything around the building
 
 ## Rebuilding
 
-The scripts run from the cloud session through the tools in `tools/` (see `tools/README.md`).
+The scripts run from the cloud session through the project tools in `tools/` (see `tools/README.md`) and the shared ones in `../tools/` (run from `mana_cafe/`).
 
 ```bash
 tools/pyrun.py scripts/proc/fab_prep.py          # texture copies and manifest
 tools/pyrun.py scripts/proc/far_build.py far_hi  # then far_lo, near
 tools/pyrun.py scripts/proc/mesh_far.py          # then mesh_near.py, trees.py
 tools/pyrun.py scripts/proc/paving.py            # flagstone layout (dem/paving.npz); only for a paved terrace, not in the final frame
-tools/rdefer.py scripts/build_fab.py             # Megascans meshes into the open .blend
-tools/rdefer.py scripts/bake_ground.py && tools/pyrun.py scripts/proc/fab_seamless.py
-tools/rdefer.py scripts/build_terrain.py         # then build_site, build_building, look, build_forest,
+../tools/rdefer.py scripts/build_fab.py          # Megascans meshes into the open .blend
+../tools/rdefer.py scripts/bake_ground.py && tools/pyrun.py scripts/proc/fab_seamless.py
+../tools/rdefer.py scripts/build_terrain.py      # then build_site, build_building, look, build_forest,
                                                  # build_scatter, build_rocks, build_clouds, build_bags
 tools/rr.py name --scale 100 --samples 400 --res 3840x2160 --png
-tools/rdefer.py scripts/depth_pass.py && tools/depthcheck.py render.png   # planes by distance band
+../tools/rdefer.py scripts/depth_pass.py && tools/depthcheck.py render.png   # planes by distance band
 ```
 
 `tools/rr.py` leaves the scene at the resolution it was given: pass `--res 3840x2160` after any debug render, because

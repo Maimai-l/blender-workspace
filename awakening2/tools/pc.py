@@ -14,7 +14,7 @@ PC layout: C:\\Users\\blender\\Documents\\awakening2\\{code, pylib, cache, frame
 import os, sys, json, time, subprocess, tarfile, io
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..'))
-sys.path.insert(0, '/home/user/blender-workspace/qiting/tools')
+sys.path.insert(0, os.path.join(ROOT, '..', 'tools'))  # shared <repo>/tools
 import pcx
 
 PCROOT = 'C:\\Users\\blender\\Documents\\awakening2'

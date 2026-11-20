@@ -53,6 +53,6 @@ Textures: `python3 paint/make_all.py` regenerates `paint/out/` (about 40 s) dete
 
 ## Tools (cloud session side)
 
-`tools/` is the Qiting tool set (`bmcp.py`, `pcx.py`, `fetch.py`, `rdefer.py`, …) plus
-`upload_mcp.py` (fast file upload through Blender's Python, ~1 MB/s) and `putbig.py` (through
-exec). See `../qiting/tools/README.md`.
+The session-side tools (`bmcp.py`, `pcx.py`, `fetch.py`, `rdefer.py`, `upload_mcp.py` for fast uploads
+through Blender's Python at ~1 MB/s, `putbig.py` through exec) are the shared ones in `../tools/`
+(see `../tools/README.md`); `tools/` here keeps only `upload_all.sh`.

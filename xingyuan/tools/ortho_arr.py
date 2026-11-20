@@ -2,7 +2,7 @@
 import json, sys
 import numpy as np
 from PIL import Image
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import calib
 from xyp import S, font as _xyfont
 _P = json.load(open(S + '/cal/aerial_p.json'))['p']

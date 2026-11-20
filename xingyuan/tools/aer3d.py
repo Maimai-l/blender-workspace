@@ -1,7 +1,7 @@
 # Helpers on the calibrated aerial camera: pixel (full-res) <-> world.
 import json, sys, math
 import numpy as np
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import calib
 from xyp import S, font as _xyfont
 P = json.load(open(S + '/cal/aerial_p.json'))['p']

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Push ../scripts/lib/*.py to <PC project>\\lib and ../scripts/proc/*.py to <PC project>\\proc (one Blender call).
-With file arguments, push only those (their folder decides the target)."""
+"""Push <project>/scripts/lib/*.py to <PC project>\\lib and <project>/scripts/proc/*.py (if any) to <PC project>\\proc,
+in one Blender call. With file arguments, push only those: a bare name means scripts/lib/<name>, and the file's
+folder (lib or proc) decides the target. The project comes from xyp (XY_PROJECT, the calling script or the cwd)."""
 import os, sys, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bmcp, xyp
+xyp.need_project('push.py')
 PROC = os.path.join(xyp.SCRIPTS, 'proc')
 files = sys.argv[1:] or sorted(glob.glob(xyp.LIB + '/*.py')) + sorted(glob.glob(PROC + '/*.py'))
 srcs = {}
 for f in files:
-    f = os.path.abspath(f)
+    f = os.path.abspath(f) if os.path.isabs(f) or os.path.exists(f) else os.path.join(xyp.LIB, f)
     sub = 'proc' if os.path.basename(os.path.dirname(f)) == 'proc' else 'lib'
     srcs[sub + '\\' + os.path.basename(f)] = open(f, encoding='utf-8').read()
 code = ('import os\nR = %r\nS = %r\n'

@@ -7,7 +7,7 @@
 --border: fractions of the frame (0..1, origin top-left, like image coordinates); renders only that region at the
 given scale and crops to it. Output on the PC: renders\\_dbg\\<name>.jpg ; here: ~/.cache/mana_cafe/renders/<name>.jpg"""
 import argparse, os, sys, uuid, time
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import xyp, bmcp, pcx
 
 ap = argparse.ArgumentParser()

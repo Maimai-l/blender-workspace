@@ -1,6 +1,6 @@
 # usage: python3 -I crop.py <img_no> <x0> <y0> <x1> <y1> <out_name> [out_width]
 # coordinates are given in the 1800-px-wide preview space
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import sys
 from PIL import Image
 from xyp import S, font as _xyfont

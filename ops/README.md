@@ -69,7 +69,7 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 
 | 规则 | 来源 |
 | --- | --- |
-| `<项目>\tmp\*` | `pcx.py`、`putbig.py` 的中转文件和 `pk_*` 分片目录 |
+| `D:\Projects\pc-tools\tmp\*`、`<项目>\tmp\*` | `pcx.py`、`putbig.py` 的中转文件和 `pk_*` 分片目录（2026-11-20 起放 pc-tools；项目里的 tmp 是各项目流水线自己的） |
 | `<项目>\renders\job_*.txt`、`*.done`、`*.tmp` | `rdefer.py`、`heroes_run.py`、`cmpview.py` 的输出和完成标记 |
 | `*.tmp.png` | 被中断的渲染进程留下的半张帧 |
 | 项目根目录下的 `enc_*`、`list_v*.txt`、`pipeline_*`、`bg_S*.log`、`*code.tgz`、`pip*.log`、`build.log` | Awakening II 渲染农场（`pc.py`）的日志和上传包 |
@@ -98,7 +98,7 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
 | 三个域名都返回 530 | 隧道没开（cloudflared 在主账号） | 只能在控制台里开，blender 账号停不了也启动不了它 |
-| 某个域名返回 502 | 该服务的 mcp-proxy 没在运行 | 经 exec 调用 agent 的 `/mcp/<名字>/start`；Blender 端点的备用路径是 `qiting/tools/pcx.py` |
+| 某个域名返回 502 | 该服务的 mcp-proxy 没在运行 | 经 exec 调用 agent 的 `/mcp/<名字>/start`；Blender 端点的备用路径是 `tools/pcx.py`（只经 exec） |
 | Unity 返回 502 | 编辑器没开，或 Unity MCP 服务没启动 | 先确认编辑器真的开着（见第 5 节的问题 1），再调用 `/mcp/unity/start` |
 | 调用约 100 秒后没有回复 | Cloudflare 断开了回复 | 长任务放到 Blender 计时器里跑，再轮询结果文件（`rdefer.py`） |
 | Unity 报 “upstream request failed” | 域重载后桥接端口在 6400 和 6401 之间切换了 | `set_active_instance` 指定当前端口 |
@@ -259,6 +259,8 @@ python3 -I ops/tidy.py clean --min-age 0   # 会话结束、确认没有后台�
 - 所以长等待要么用 `pcx.wait_file` 这类直接客户端，要么拆成多次短调用。
 
 ## 8. 仓库里的 PC 脚本（`ops/pc/`）
+
+> 从沙箱连电脑的通用工具（`pcx.py`、`bmcp.py`、`execc.py`、`fetch.py`、`rdefer.py` 等）在仓库根目录的 `tools/`，用法见 `tools/README.md`。运维时在仓库根目录运行即可，例如 `python3 -I tools/pcx.py bash "..."`，不需要也不要借用某个项目的 `tools/`。它们在电脑上用的辅助脚本（`brelay.py`、`pack.py`）和中转目录 `tmp\` 在 `D:\Projects\pc-tools`，缺了会自动补上。
 
 这些脚本取自 exec 工作目录，适合在 PC 上直接调用，用 `powershell.exe -NoProfile -File` 运行：
 

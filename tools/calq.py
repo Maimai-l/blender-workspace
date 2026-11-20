@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pinhole camera fit for the Qiting views, from fixed points and from the silhouette tips of horizontal circles.
+"""Pinhole camera fit (first written for the Qiting photos) from fixed points and from the silhouette tips of horizontal circles.
 
     calq.py <view.json>            -> writes <view>_sol.json (loc, target, lens, roll) and prints residuals
 

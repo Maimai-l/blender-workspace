@@ -9,7 +9,7 @@ shadows that rise and turn bluer from band to band while the highlights hold."""
 import os, sys
 import numpy as np
 from PIL import Image
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import xyp, pcx
 a = [x for x in sys.argv[1:] if not x.startswith('--')]
 img = a[0]

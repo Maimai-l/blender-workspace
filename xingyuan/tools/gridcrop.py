@@ -1,6 +1,6 @@
 # Crop a region of a reference image (full-res pixel coords) and overlay a metric grid.
 # usage: gridcrop.py img_no x0 y0 x1 y1 out px_per_m x_datum y_datum [step_m] [out_w]
-import os, sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os, sys; sys.path[:0] = [os.path.dirname(os.path.abspath(__file__)), os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'tools')]  # this folder, then the shared <repo>/tools
 import sys
 from PIL import Image, ImageDraw, ImageFont
 from xyp import S, font as _xyfont

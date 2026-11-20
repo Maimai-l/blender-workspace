@@ -63,7 +63,8 @@
   }
 
   function renderGrants() {
-    var list = state.grants.filter(function (g) { return state.filter === 'all' || g.state === 'active' || g.restorable; });
+    // “生效中”只列真正生效的授权；吊销后 10 分钟内可恢复的放在“全部”里（带恢复按钮），吊销时的提示条也能撤销
+    var list = state.grants.filter(function (g) { return state.filter === 'all' || g.state === 'active'; });
     var box = $('grant-list');
     box.innerHTML = list.length ? list.map(grantCard).join('') :
       '<div class="mc-empty">' + (state.filter === 'active' ? '没有生效中的授权。' : '暂无授权记录。') + '</div>';

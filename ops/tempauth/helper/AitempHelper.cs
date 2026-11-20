@@ -58,7 +58,7 @@ public class HelperError : Exception
 
 public static class Helper
 {
-    public const string Version = "1.0.1";
+    public const string Version = "1.0.2";
     public static string ClientAccount = "blender";
     const string User = "aitemp";
     const string PipeName = "aitemp-helper";
@@ -110,6 +110,7 @@ public static class Helper
             CreateDesktop();
         }
         catch (Exception e) { startError = e.Message; Log("start failed: " + e); }
+        try { foreach (string c in SyncTopDirs()) Log("top dir: " + c); } catch (Exception e) { Log("top dirs: " + e.Message); }
         pipeThread = new Thread(PipeLoop) { IsBackground = true, Name = "pipe" };
         pipeThread.Start();
         sweepTimer = new Timer(delegate { try { Sweep(); } catch (Exception e) { Log("sweep: " + e.Message); } }, null, 20000, 20000);
@@ -324,8 +325,11 @@ public static class Helper
             var di = new DriveInfo(root);
             if (di.DriveType != DriveType.Fixed) throw new HelperError("folder", "只能授权本机硬盘上的文件夹");
             string rest = p.Substring(root.Length).Trim('\\');
-            if (rest.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries).Length < 2)
-                throw new HelperError("folder", "不能授权盘符或顶层目录，请选它下面的文件夹：" + p);
+            string[] parts = rest.Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 1)
+                throw new HelperError("folder", "不能授权盘符，请选其下的文件夹：" + p);
+            if (parts.Length == 1 && (Array.IndexOf(SkipDirsOnD, parts[0]) >= 0))
+                throw new HelperError("folder", "系统目录不能授权：" + p);
             foreach (string s in SystemRoots)
                 if (Under(p, s)) throw new HelperError("folder", "系统和程序目录不能授权：" + p);
             foreach (string s in Protected)
@@ -388,6 +392,7 @@ public static class Helper
         if (g != null) g.CloseToken();
         g = new Grant { Id = id, Group = group, Folders = folders, GroupSid = gsid };
         lock (grants) grants[id] = g;
+        foreach (string c in SyncTopDirs()) Log("top dir: " + c);
         Log("prepare " + id + " " + comment + " " + sw.ElapsedMilliseconds + "ms");
         var r = Ok(); r["folders"] = folders; r["ms"] = sw.ElapsedMilliseconds;
         return r;
@@ -446,6 +451,87 @@ public static class Helper
             throw new HelperError("acl", "改 " + dir + " 的权限失败：" + Marshal.GetLastWin32Error());
     }
 
+    /// <summary>D 盘顶层的数据目录（不含程序目录和系统目录）。这些目录上有 aitemp 的显式拒绝项。</summary>
+    static bool IsTopDataDir(string f)
+    {
+        string root = Path.GetPathRoot(f) ?? "";
+        if (!root.Equals(@"D:\", StringComparison.OrdinalIgnoreCase)) return false;
+        string[] parts = f.Substring(root.Length).Split(new[] { '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1 && Array.IndexOf(ProgramDirsOnD, parts[0]) < 0 && Array.IndexOf(SkipDirsOnD, parts[0]) < 0;
+    }
+
+    /// <summary>D 盘顶层数据目录的拒绝项。显式拒绝优先于同一目录上的允许，所以授权这种目录时：撤掉 aitemp 的拒绝项，
+    /// 改为拒绝其他授权组（各授权之间仍互不可见）；没有授权用它时恢复 aitemp 的拒绝项、去掉授权组的拒绝项。
+    /// 也给新建的、还没有拒绝项的顶层目录补上。准备、释放、自检和启动时调用。返回做了的改动。</summary>
+    static List<string> SyncTopDirs()
+    {
+        var changes = new List<string>();
+        var groups = LocalGroups();
+        var gsids = new Dictionary<string, SecurityIdentifier>(StringComparer.OrdinalIgnoreCase);
+        foreach (string n in groups.Keys) try { gsids[n] = GroupSid(n); } catch { }
+        var allowed = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        Action<string, string> add = (f, grp) =>
+        {
+            f = f.TrimEnd('\\');
+            if (!IsTopDataDir(f)) return;
+            HashSet<string> set;
+            if (!allowed.TryGetValue(f, out set)) allowed[f] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            set.Add(grp);
+        };
+        foreach (var kv in groups) foreach (string f in kv.Value.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)) add(f, kv.Key);
+        lock (grants) foreach (Grant g in grants.Values) foreach (string f in g.Folders) add(f, g.Group);
+        var inh = InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit;
+        foreach (string d in Directory.GetDirectories(@"D:\"))
+        {
+            if (!IsTopDataDir(d)) continue;
+            HashSet<string> ok;
+            allowed.TryGetValue(d, out ok);
+            try
+            {
+                var di = new DirectoryInfo(d);
+                var ds = di.GetAccessControl(AccessControlSections.Access);
+                bool changed = false, aitempDeny = false;
+                var groupDeny = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (FileSystemAccessRule r in ds.GetAccessRules(true, false, typeof(SecurityIdentifier)))
+                {
+                    if (r.AccessControlType != AccessControlType.Deny) continue;
+                    var sid = (SecurityIdentifier)r.IdentityReference;
+                    if (sid.Equals(Sid))
+                    {
+                        if (ok != null) { ds.RemoveAccessRuleSpecific(r); changed = true; } else aitempDeny = true;
+                        continue;
+                    }
+                    string gname = null;
+                    foreach (var kv in gsids) if (kv.Value.Equals(sid)) gname = kv.Key;
+                    bool orphan = false;
+                    if (gname == null && (r.FileSystemRights & FileSystemRights.FullControl) == FileSystemRights.FullControl)
+                        try { sid.Translate(typeof(NTAccount)); } catch { orphan = true; }   // 已删掉的授权组留下的拒绝项
+                    if (orphan || (gname != null && (ok == null || ok.Contains(gname)))) { ds.RemoveAccessRuleSpecific(r); changed = true; }
+                    else if (gname != null) groupDeny.Add(gname);
+                }
+                if (ok == null && !aitempDeny)
+                {
+                    ds.AddAccessRule(new FileSystemAccessRule(Sid, FileSystemRights.FullControl, inh, PropagationFlags.None, AccessControlType.Deny));
+                    changed = true;
+                    changes.Add(d + "：恢复或补上 aitemp 的拒绝项");
+                }
+                if (ok != null)
+                {
+                    foreach (var kv in gsids)
+                        if (!ok.Contains(kv.Key) && !groupDeny.Contains(kv.Key))
+                        {
+                            ds.AddAccessRule(new FileSystemAccessRule(kv.Value, FileSystemRights.FullControl, inh, PropagationFlags.None, AccessControlType.Deny));
+                            changed = true;
+                        }
+                    if (changed) changes.Add(d + "：授权中，aitemp 的拒绝项换成拒绝其他授权组");
+                }
+                if (changed) di.SetAccessControl(ds);
+            }
+            catch (Exception e) { changes.Add(d + "：出错 " + e.Message); }
+        }
+        return changes;
+    }
+
     static void RemoveAce(string folder, SecurityIdentifier sid)
     {
         if (!Directory.Exists(folder)) return;
@@ -481,6 +567,7 @@ public static class Helper
             int rc = N.NetLocalGroupDel(null, group);
             if (rc != 0 && rc != 2220) errors.Add("删组失败：" + rc);
         }
+        try { foreach (string c in SyncTopDirs()) Log("top dir: " + c); } catch (Exception e) { errors.Add("顶层目录：" + e.Message); }
         Log("release " + id + (errors.Count > 0 ? " errors: " + string.Join("; ", errors) : ""));
         var r = Ok(); r["errors"] = errors;
         return r;
@@ -1080,11 +1167,13 @@ print('AITEMP-PROBE ' + json.dumps(r))
         var checks = new List<object>();
         var fixedList = new List<string>();
         // 1 D 盘顶层目录：新出现的目录按数据目录处理（拒绝读写）；程序目录缺拒绝写入就补
+        foreach (string c in SyncTopDirs()) fixedList.Add(c);     // 数据目录（含授权中的）由它处理
         foreach (string d in Directory.GetDirectories(@"D:\"))
         {
             string name = Path.GetFileName(d);
             if (Array.IndexOf(SkipDirsOnD, name) >= 0) continue;
             bool program = Array.IndexOf(ProgramDirsOnD, name) >= 0;
+            if (!program) continue;
             try
             {
                 if (HasDeny(d)) continue;

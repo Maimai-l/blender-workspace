@@ -107,8 +107,9 @@ def folder_problem(p):
     if not re.match(r"^[A-Za-z]:\\", p):
         return "请填写完整路径，例如 D:\\Projects\\xxx"
     rest = [x for x in p[3:].split("\\") if x]
-    if len(rest) < 2:
-        return "盘符和顶层目录不能授权，请选择其下的文件夹"
+    if not rest:
+        return "盘符不能授权，请选择其下的文件夹"
+    # 顶层目录可以授权：D 盘顶层数据目录上 aitemp 的拒绝项由助手在授权期间换成拒绝其他授权组（助手 1.0.2 起）
     for s in PROTECTED:
         if under(p, s) or under(s, p):
             return "受保护位置"

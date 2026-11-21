@@ -16,6 +16,9 @@ mode = 10000
 filename = 'D:\Projects\maa-cli\config\infrast\333_两班.json'
 plan_index = 0
 facility = ["Mfg", "Trade", "Power", "Control", "Reception", "Office", "Dorm", "Processing", "Training", "AssistantChange"]
+# drones has no effect with mode = 10000 (MAA docs protocol/integration.md, field drones); the drones that
+# actually run are set per shift in the plan file (config/infrast/333_两班.json: plans[].drones = room + index,
+# protocol/base-scheduling-schema.md). Kept only so mode 0 would use the trading stations.
 drones = "Money"
 threshold = 0.3
 replenish = true

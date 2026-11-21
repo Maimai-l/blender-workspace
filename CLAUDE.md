@@ -26,6 +26,7 @@
   - 没核实之前，不要把用户或第三方的东西说成"未授权""违规"。
   - 2026-11-15 的教训：RIIC 的评估器 WASM 就在公开仓库 RIIC-Web 的 `apps/arknights/public/wasm/` 里，PolyForm Noncommercial 许可，个人使用允许。当时没核实就判定为"未授权"并停下来问，属于错误。
 - `.claude/settings.json` 已为 exec 的 6 个可用工具，以及本机的 `python3`、`node` 命令加了允许规则，并在 `autoMode.environment` 写明了上面这些背景，减少自动审核误拦。
+- MAA 和 maa-cli 的参数、字段、任务名、资源节点，凡是没亲眼在文档里见过的，一律先查 `ops/maa/upstream/` 里的官方文档（必要时再查 MAA 源码或电脑上的 `resource\tasks\tasks.json`），不要凭名字猜（用户 2026-11-21 的要求）。回答或写进文档时注明出处；文档没写清楚的就写“未确认、需要实测”，不要写成结论。2026-11-21 的例子：以为任务参数 `drones` 在自定义排班下有效（文档写明 `mode = 10000` 时无效），以为训练室能用通用的 `operators` 字段（文档规定只认 `operatorsA` / `operatorsB`）。
 - 用户的设计和需求常写在 Claude Docs 里（用 Artifact 的 list 能看到全部）。接手一件事前，先在列表里找有没有对应的设计文档，找到就把链接记进相关 README 和 `ops/HANDOFF.md`。2026-11-20 的教训：MAA 托管有一份《MAA 智能刷图调度器设计》（https://claude.ai/artifact/6c5EDFa1fy8J2jAwc3mP1c），之前的托管会话都没读过，日常队列照搬静态设置，理智溢出了两天。
 - 《明日方舟托管：现状与对接》（Claude Docs：https://claude.ai/artifact/FN2123fZA5U5CYn6hhrRUZ）是 MAA 托管对外的接口文档，归 Claude 维护（用户 2026-11-21 的要求）。用户做规划和设计的会话在它的「需求与变更」表里提需求；维护会话开工先看这张表，接手、做完都回填状态；托管有变动就同步改对应章节和顶部日期。
 - 《Windows 主机维护手册》（Claude Docs：https://claude.ai/artifact/S5uXRXaX1HmHiDhErUSg4Y）归 Claude 维护，内容由你决定（用户 2026-11-17 的要求）。电脑上的服务、路径、端口、启动方式或维护做法有变动，做完就同步改手册对应的标签页，并更新总览的日期。手册是给用户看的说明；仓库里的 `ops/` 文档是给维护会话看的细节，两边都要改。

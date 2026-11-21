@@ -102,6 +102,29 @@ def summary(txt):
     return parts, bad
 
 
+def kicked_since(started):
+    """How often MaaCore met the "登录认证已失效，请重新登录" popup (task OfflineConfirm) since `started`. MAA still
+    reports such a sub-task as Completed in the .out summary, so only asst.log shows it (tested 2026-11-21)."""
+    path = ROOT / 'state' / 'debug' / 'asst.log'
+    try:
+        with open(path, 'rb') as f:
+            f.seek(max(0, path.stat().st_size - 30 * 2**20))       # the last 30 MB cover any single run
+            data = f.read().decode('utf-8', 'replace')
+    except OSError:
+        return 0
+    n = 0
+    for line in data.splitlines():
+        if 'SubTaskStart' not in line or 'OfflineConfirm' not in line:
+            continue
+        try:
+            t = dt.datetime.strptime(line[1:20], '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            continue
+        if t >= started and re.search(r'"task":"[^"]*OfflineConfirm"', line):
+            n += 1
+    return n
+
+
 def start(task):
     d = recent_durations(task)
     name = TASK_NAME.get(task, task)
@@ -130,6 +153,9 @@ def end(task, code, stamp):
             parts.append('保全派驻扫荡 1 次')
     problems += [re.sub(r'^\[\w+\] ', '', l) for l in lines
                  if re.search(r'FAILED|aborted|error|could not|REFUSED', l) and '[notify]' not in l]
+    k = kicked_since(started)
+    if k:
+        problems.insert(0, '遇到「登录认证已失效」%d 次（手机上登录了游戏）' % k)
     if any('skland' in l and 'exit 3' in l for l in lines):
         problems.append('森空岛登录失效，需要扫码')
     s = sanity()

@@ -211,5 +211,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 | 2026-11-20 | 新增 `sanity_plan.py` 和 `sanity_plan.json`：每次日常前按日期、开放日和库存选关（活动关闭后自动切换）；README 开头补上用户的调度器设计文档链接和各期落地情况 |
 | 2026-11-20 | 新增 `tower_sweep.py`：日常后用 2 天内过期的代理卡扫荡保全派驻（界面路径和防误操作见第 4 节）；当天手动扫荡一次，并在理智满 210 时手动刷 TL-7 |
 | 2026-11-20 | 新增 `notify.py`：经 Bark 推送到用户 iPhone（开始、结束、出错、拒绝运行），避免托管时用户登录互相挤号；测试通知用户已收到 |
+| 2026-11-21 | 被挤下线实测（特征见 `arknights/GAME_NOTES.md`）；`notify.py` 从 `asst.log` 数 `OfflineConfirm`，结束推送里写出「遇到登录认证已失效 N 次」 |
 | 2026-11-21 | 界面流程引擎 `uiflow.py` + 录制工具（`ui.py rec/gen/check`）+ skill `arknights-ui-flow`：走一遍界面就能生成受保护的自动流程；保全派驻扫荡改用它。选关脚本改成照搬 MAA 界面版“库存保持”的做法：带目标的条目生成带 `drops` 的刷图任务，掉够就停，剩余理智交给下一条 |
 | 2026-11-21 | 新增 `prune_data.py`（每次运行末尾清理导出快照和流程截图）；README 补“数据怎么存、怎么管” |

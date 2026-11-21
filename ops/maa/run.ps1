@@ -140,6 +140,11 @@ try {
     # keep export snapshots and flow screenshots from growing without end (14 days in full, then one a day)
     if (Test-Path "$Root\prune_data.py") { & $Py "$Root\prune_data.py" 2>&1 | ForEach-Object { Say "prune: $_" } }
     Say ("maa exit {0} after {1:n0} s; log {2}" -f $code, ((Get-Date) - $t0).TotalSeconds, $maaLog)
+    # history database (history.db): this run, its fights and the new snapshots; after the line above, which
+    # history.py reads as the end of the run. Re-importing never adds a row twice.
+    if (Test-Path "$Root\history.py") { & $Py "$Root\history.py" 2>&1 | ForEach-Object { Say "history: $_" } }
+    # pull forecast of the planning session (forecast.py), inputs refreshed from history.db; once per game day
+    if ($Task -eq "daily" -and (Test-Path "$Root\forecast_update.py")) { & $Py "$Root\forecast_update.py" 2>&1 | ForEach-Object { Say "forecast: $_" } }
     Notify end $Task $code $stamp
     exit $code
 }

@@ -1,0 +1,20 @@
+{
+  "today": "2026-11-22",
+  "stock": {"lmd": 5270000, "gold": 4399, "rock": 1858, "shards": 0},
+  "lmd_floor": 3000000,
+  "lmd_income_per_day": 80000,
+  "order_lmd_per_day": 0,
+  "sanity_per_day": 240,
+  "annihilation_sanity_per_week": 125,
+  "order_sanity_per_day": 0,
+  "sanity_per_rock": 4.82,
+  "rock_reserved_for_orders": 0,
+  "shard_cap_per_day": 35,
+  "daily_orundum": 100,
+  "weekly_annihilation": 1800,
+  "weekly_tasks": 500,
+  "monthly": {"green_shop_orundum": 600, "green_shop_vouchers": 4, "signin_vouchers": 1,
+              "maintenance_originite": 5, "event_originite": 34.5, "event_vouchers": 3},
+  "checkpoints": [30, 60, 91, 182],
+  "deadlines": [14, 30, 60, 91]
+}

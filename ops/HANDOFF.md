@@ -16,7 +16,8 @@
 - MAA 托管的设计依据是用户的《MAA 智能刷图调度器设计》（https://claude.ai/artifact/6c5EDFa1fy8J2jAwc3mP1c）。各期进度见 `ops/maa/README.md` 开头；下一步是第 3 期“理智不溢出”（事件触发的下次运行时间）。
 - MAA 托管会经 Bark 推送到用户 iPhone（`ops/maa/notify.py`，key 在电脑 `C:\Users\blender\.bark\key`）。用户还想要状态页和“上号自动暂停”（方案 B、C：隧道子域名 + 主屏图标描述文件 + 快捷指令自动化），计划和第 3 期事件触发一起做。
 - 保全派驻扫荡已自动化（`tower_sweep.py`），11-20 真机测试通过。
-- 11-21 0:25 有一条自己设的提醒：核对 0:00 那次日常把理智打空了没有。
+- 11-22 起：每次运行末尾写 SQLite 历史库 `D:\Projects\maa-cli\history.db`（`ops/maa/history.py`，`--stats` / `--sql` 只读查询）；每个游戏日跑一次规划会话的抽卡资源预测（`forecast.py` 原样部署，`forecast_update.py` 刷新输入，结果在 `export\forecast_latest.md`）。`forecast.py` 以设计文档「预测脚本」标签页为准，那边改了就整份替换。
+- 11-22 03:00（北京时间）有一条自己设的定时任务：只读查看凭证交易所（绿票余额、本月商品）和寻访凭证、十连券数量，回填对接文档需求表最后一行的 ⑤⑥，更新 `forecast_inputs.json` 后重跑预测。⑦ 限定池日期等官方公告；③④ 碎片站倍率、搓玉排班后的龙门币收入，要等排班换好后实测。
 - 首次搜索约 16 秒（含启动浏览器），可考虑预热。
 
 ## 更新服务的流程

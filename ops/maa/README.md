@@ -84,6 +84,8 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 | MaaCore 详细日志 | `state\debug\asst.log` | MaaCore | MaaCore 自己轮转（约 64 MB 时改名为 `asst.bak.log`） |
 | 托管自己的状态 | `state\ev_done.json`、`ev_fail.json`、`copilot_match*.json` | `ev_run.py` 等 | 手动 |
 | 界面流程截图 | `state\uiflow\<流程>\` | `uiflow.py` 每步一张 | 7 天 |
+| 历史库 | 电脑 `history.db`（SQLite） | 每次运行末尾 `history.py`：运行、作战、理智读数、库存和干员快照、每游戏日库存差分；按主键去重，重复导入不多写 | 不清理（每天约 4,000 行，快照文件被清理后历史仍在库里） |
+| 抽卡资源预测 | 电脑 `export\forecast_latest.md`、`forecast_<日期>.md`；输入 `forecast_inputs.json` | 每个游戏日第一次日常后 `forecast_update.py`：从历史库刷新实测字段，运行规划会话的 `forecast.py` | 随导出目录 |
 | 规划报告 | `reports\` | 维护会话 | 手动 |
 | 登录凭证 | 森空岛 `C:\Users\blender\.skland\store`；Bark `C:\Users\blender\.bark\key` | `login.mjs`、维护会话 | 只在电脑上，不进仓库、不传云端 |
 | 配置、脚本、规则 | 电脑 `config\`、`*.py`、`*.ps1` | 维护会话从仓库部署 | 仓库 `ops/maa/`、`arknights/` 是源文件，电脑上是部署副本（剿灭开关和选关会改写电脑上的 `daily.toml`） |
@@ -91,6 +93,12 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 | 界面录制 | 仓库 `arknights/flows/<流程>/` | `ui.py rec`，已去掉昵称、ID、6 位以上数字 | 仓库 |
 
 - 仓库里不放账号数据。分析要用时，在电脑上临时生成只含所需干员和库存的文件，取回云端会话算完即删（`arknights/analysis/`）；游戏数据表每次从 ArknightsGameData 下载。
+- 历史库（2026-11-22）：
+  - 表结构按设计文档「资源分配规则」的历史库表：`run`、`sanity`、`fight`、`item_snapshot`、`operator_snapshot`、`base_daily`、`income`、`approval`。字段说明在 `history.py` 开头。
+  - `income`、`approval` 先建空表，等领奖结果和审批队列有了数据源再写。
+  - 首次导入已回填 11-15 以来的 39 次运行、22 次作战和 103 份快照。
+  - 作战的理智：每次出击前 MaaCore 都报一次 FightTimes（连战数和这一轮的理智）；理智不够时会降低连战数再报一次。真正打掉的那一轮，是 StageDrops 之前最近的一条 FightTimes。11-22 实测：理智 134 → 8，正好 126 = 6 × 21。
+  - 查询：`history.py --stats`；`history.py --sql "SELECT ..."` 以只读方式打开。
 - 森空岛文件名里的时间是 UTC（比如 0:17 的导出叫 `..._20261120-1617`），MAA 的是本地时间；清理按文件修改时间算，不受影响。
 
 ## 3. 日常队列（`daily.toml`）
@@ -197,7 +205,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 
 1. 按设计文档第 3 期做“理智不溢出”：每次跑完读理智和回满时刻，按最早到期的事件（理智将满、基建换班、药临期）定下次运行时间，取代固定的一天三次；再做第 4 期，用养成订单和 ArkPlanner 取代 `sanity_plan.json` 的手写规则。
 2. 绿票第一、二层的月度购买（OCR 操作）。
-3. 每周抽卡收入报告：现有抽数，以及各来源实际收入和满额的差距。
+3. ~~每周抽卡收入报告~~：规划会话 11-21 撤回（体检指标、产能指数、抽卡记账和周报都不再需要）；改为每天跑它的抽卡资源预测（`forecast.py`，已上线）。
 4. ~~代理卡快过期时扫荡保全派驻~~（2026-11-20 完成，`tower_sweep.py`）。
 
 ## 变更记录
@@ -220,3 +228,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 | 2026-11-21 | 被挤下线实测（特征见 `arknights/GAME_NOTES.md`）；`notify.py` 从 `asst.log` 数 `OfflineConfirm`，结束推送里写出「遇到登录认证已失效 N 次」 |
 | 2026-11-21 | 界面流程引擎 `uiflow.py` + 录制工具（`ui.py rec/gen/check`）+ skill `arknights-ui-flow`：走一遍界面就能生成受保护的自动流程；保全派驻扫荡改用它。选关脚本改成照搬 MAA 界面版“库存保持”的做法：带目标的条目生成带 `drops` 的刷图任务，掉够就停，剩余理智交给下一条 |
 | 2026-11-21 | 新增 `prune_data.py`（每次运行末尾清理导出快照和流程截图）；README 补“数据怎么存、怎么管” |
+| 2026-11-22 | 建 SQLite 历史库 `history.py`（每次运行末尾导入，已回填 11-15 以来的数据）；接入规划会话的抽卡资源预测：`forecast.py` 原样部署，`forecast_update.py` 每个游戏日刷新实测输入后运行 |

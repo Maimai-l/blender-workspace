@@ -9,7 +9,9 @@ Every flow gets, without writing anything for it:
   - NO_TAP areas: the orundum / originium "+" in the top bar, the sanity "+" and the home pack banner can never be
     tapped, whatever a flow asks;
   - ALLOW boxes: a tap must land inside the box the flow declared for that (screen, label), else it aborts;
-  - taps only on the centre of an OCR'd text that matches exactly (or a point the flow derives from one);
+  - taps only on the centre of an OCR'd text that matches exactly, a point the flow derives from one, or a MaaCore
+    template node found on screen (find_node / tap_node: the node's template, roi and threshold from MAA's
+    resource\tasks\tasks.json, matched as task-schema.md describes);
   - leaving: only the Android back key, until the home screen shows (back on a dialog = cancel);
   - MAX_STEPS screens per run, a screenshot per step in state\\uiflow\\<flow>\\ for the audit, one line per
     outcome in logs\\runs.log tagged [<flow>].
@@ -37,6 +39,8 @@ NO_TAP = [(440, 0, 960, 62),    # top bar: orundum "+" (~760, 44) and originium 
           (520, 100, 610, 180), # home: sanity "+" (~553, 140), opens 理智恢复 with originium
           (0, 395, 230, 540)]   # home: pack banner (礼包限时上架)
 HOME = ['理智/', '仓库']         # the home screen's signature, shared by every flow
+MAA_RES = r'D:\Projects\MAA\resource'   # MaaCore's resource: tasks\tasks.json nodes and template\ images
+_TASKS = None
 
 
 def norm(s):
@@ -74,6 +78,62 @@ class Abort(Exception):
     pass
 
 
+def maa_node(name):
+    """A node of MaaCore's resource/tasks/tasks.json, as written there (no baseTask / '@' inheritance: such nodes
+    are refused rather than half-resolved). Field meanings: ops/maa/upstream/maa/protocol/task-schema.md."""
+    global _TASKS
+    if _TASKS is None:
+        with open(os.path.join(MAA_RES, 'tasks', 'tasks.json'), encoding='utf-8') as f:
+            _TASKS = json.load(f)
+    n = _TASKS.get(name)
+    if n is None:
+        raise Abort('no MaaCore node %r' % name)
+    if n.get('baseTask') or ('@' in name and 'template' not in n):
+        raise Abort('MaaCore node %r inherits from another node; not supported, name a plain node' % name)
+    if n.get('algorithm', 'MatchTemplate') != 'MatchTemplate':
+        raise Abort('MaaCore node %r is not a template match (%s)' % (name, n.get('algorithm')))
+    return n
+
+
+def _template_path(fname):
+    for root, _, files in os.walk(os.path.join(MAA_RES, 'template')):   # MaaCore searches template\ recursively
+        if fname in files:
+            return os.path.join(root, fname)
+    raise Abort('template %s not found in the MaaCore resource' % fname)
+
+
+def match_node(png, name):
+    """Match a MaaCore template node on a screenshot the way task-schema.md describes MatchTemplate with the default
+    method Ccoeff: the screenshot scaled to 1280x720, cv::TM_CCOEFF_NORMED inside the node's roi, its templThreshold
+    (default 0.8), its maskRange if any. Returns (best score, centre in 960x540 space or None if below threshold)."""
+    import cv2
+    n = maa_node(name)
+    if n.get('method', 'Ccoeff') not in ('Ccoeff', ['Ccoeff']):
+        raise Abort('MaaCore node %r uses method %s; only Ccoeff is supported' % (name, n.get('method')))
+    tpls = n.get('template', name + '.png')
+    tpls = tpls if isinstance(tpls, list) else [tpls]
+    thr = n.get('templThreshold', 0.8)
+    thrs = thr if isinstance(thr, list) else [thr] * len(tpls)
+    x, y, w, h = n.get('roi', [0, 0, 1280, 720])
+    img = cv2.cvtColor(cv2.resize(cv2.imread(png), (1280, 720), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY)
+    area = img[y:y + h, x:x + w]
+    best = (-1.0, None)
+    for fname, t in zip(tpls, thrs):
+        tpl = cv2.imread(_template_path(fname), cv2.IMREAD_GRAYSCALE)
+        if tpl is None or tpl.shape[0] > area.shape[0] or tpl.shape[1] > area.shape[1]:
+            continue
+        mask = None
+        if n.get('maskRange'):
+            lo, hi = n['maskRange']
+            mask = cv2.inRange(tpl, lo, hi)
+        res = cv2.matchTemplate(area, tpl, cv2.TM_CCOEFF_NORMED, mask=mask)
+        _, score, _, loc = cv2.minMaxLoc(res)
+        if score > best[0]:
+            cx, cy = x + loc[0] + tpl.shape[1] / 2, y + loc[1] + tpl.shape[0] / 2
+            best = (score, (cx * 0.75, cy * 0.75) if score >= t else None)
+    return best
+
+
 class Flow:
     """One run of a flow: name (log tag), screens {name: [signature texts]}, allow {(screen, label): box}."""
 
@@ -97,6 +157,7 @@ class Flow:
         path = os.path.join(self.shots, '%s_%02d_%s.png' % (time.strftime('%Y%m%d-%H%M%S'), self.n, tag))
         with open(path, 'wb') as f:
             f.write(self.adb('exec-out', 'screencap', '-p').stdout)
+        self.last_png = path
         r = subprocess.run(OCR + ['--image', path, '--min-score', '0.5'], capture_output=True, timeout=600)
         j = json.loads(r.stdout.decode('utf-8'))
         if not j.get('ok'):
@@ -143,6 +204,18 @@ class Flow:
                 return items
             time.sleep(2)
         raise Abort('expected the %s screen, saw %s' % (want, name or 'an unknown screen'))
+
+    def find_node(self, name):
+        """Where a MaaCore template node matches on the last screenshot (960x540), or None. For icons and buttons
+        without text; the tap still has to pass ALLOW / NO_TAP (tap_node)."""
+        score, c = match_node(self.last_png, name)
+        return c
+
+    def tap_node(self, screen, name, wait=3.0):
+        c = self.find_node(name)
+        if not c:
+            raise Abort('MaaCore node %r not on screen' % name)
+        self.tap_point(*c, screen, name, wait=wait)
 
     def tap_text(self, items, screen, text, wait=3.0):
         c = find(items, text)

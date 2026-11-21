@@ -48,9 +48,17 @@ only declares its screens, the only places it may tap, and its decisions. Refere
    recorded screen. Add pure-function tests for parsing (as `card_groups` / `decide` in tower_sweep).
 6. On the PC: upload the flow and `uiflow.py` to `D:\Projects\maa-cli\`, run `--dry` (Start-Process, poll a
    done file; exec calls stop at ~90 s), then look at the screenshots in `state\uiflow\<flow>\`.
-7. Small digits (counts, levels) are often missed at full screen: read them with `Flow.read_region(box)`
+7. Icons and buttons without text (the ✓ of a dialog, a gear, an item icon): use MaaCore's own templates instead of
+   guessing coordinates. `Flow.find_node(name)` / `tap_node(screen, name)` take a node of
+   `D:\Projects\MAA\resource\tasks\tasks.json` and match its template inside its roi with its threshold, as
+   `ops/maa/upstream/maa/protocol/task-schema.md` describes (Ccoeff = TM_CCOEFF_NORMED on the screenshot scaled to
+   1280x720, default threshold 0.8, maskRange honoured). Look the node up in tasks.json first (never guess a node
+   name); nodes that inherit (`baseTask`, implicit `X@Y`) and other algorithms are refused. Tested 2026-11-21:
+   `OfflineConfirmImpl` 0.98 on the kicked-login popup and 0.25 elsewhere; `StartUp` 0.99 on the home screen.
+   Item icons for depot / shop work are in `resource\template\items\<item id>.png` (497 of them).
+8. Small digits (counts, levels) are often missed at full screen: read them with `Flow.read_region(box)`
    (enlarged crop), as tower_sweep does for the card counts.
-8. Wire it in: call it from `ops/maa/run.ps1` at the right point (after `maa run daily`, before the emulator is
+9. Wire it in: call it from `ops/maa/run.ps1` at the right point (after `maa run daily`, before the emulator is
    closed), document it in `ops/maa/README.md` (path, guards, test result) and `arknights/GAME_NOTES.md` (what the
    screens look like), and add a line to the user's manual tab 游戏托管与小工具. Results land in `runs.log` as
    `[<flow>]` lines, which `notify.py` turns into the phone message.

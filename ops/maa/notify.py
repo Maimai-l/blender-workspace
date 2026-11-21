@@ -141,21 +141,25 @@ def end(task, code, stamp):
     started = dt.datetime.strptime(stamp, '%Y%m%d-%H%M%S')
     lines = run_lines(started)
     parts = []
-    out = ROOT / 'logs' / ('%s-%s.out' % (stamp, task))
-    problems = []
-    try:
-        parts, bad = summary(out.read_text(encoding='utf-8', errors='replace'))
+    problems, parts = [], []
+    outs = [ROOT / 'logs' / ('%s-%s.out' % (stamp, task))] + sorted((ROOT / 'logs').glob('%s-%s-retry*.out' % (stamp, task)))
+    for out in outs:                                    # the first run and the reruns after being kicked off
+        try:
+            p, bad = summary(out.read_text(encoding='utf-8', errors='replace'))
+        except OSError:
+            continue
+        parts += p
         problems += bad
-    except OSError:
-        pass
     for l in lines:
         if '[tower] swept' in l:
             parts.append('保全派驻扫荡 1 次')
     problems += [re.sub(r'^\[\w+\] ', '', l) for l in lines
-                 if re.search(r'FAILED|aborted|error|could not|REFUSED', l) and '[notify]' not in l]
+                 if re.search(r'FAILED|aborted|error|could not|REFUSED', l) and '[notify]' not in l and 'kicked off' not in l]
     k = kicked_since(started)
-    if k:
-        problems.insert(0, '遇到「登录认证已失效」%d 次（手机上登录了游戏）' % k)
+    if k and any('giving up' in l for l in lines):
+        problems.insert(0, '被挤下线，重新登录补跑 2 次后仍被挤，剩下的任务没做')
+    elif k:
+        parts.append('中途被挤下线 %d 次，已重新登录补跑' % k)
     if any('skland' in l and 'exit 3' in l for l in lines):
         problems.append('森空岛登录失效，需要扫码')
     s = sanity()

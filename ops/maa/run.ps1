@@ -31,6 +31,18 @@ function Say($msg) { $line = "{0} [{1}] {2}" -f (Get-Date -Format "yyyy-MM-dd HH
 $Py = "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe"
 # push status to the user's phone (Bark) so they do not log in mid-run; notify.py never fails the run
 function Notify { if (Test-Path "$Root\notify.py") { & $Py "$Root\notify.py" @args 2>&1 | Out-Null } }
+# how often MaaCore met the "login expired" popup (task OfflineConfirm) in asst.log after byte $pos; MaaCore
+# stops the task there but still reports it Completed in the summary (tested 2026-11-21)
+function KickedSince($pos) {
+    try {
+        $fs = [System.IO.File]::Open("$Root\state\debug\asst.log", 'Open', 'Read', 'ReadWrite')
+        if ($pos -gt $fs.Length) { $pos = 0 }          # the log was rotated meanwhile
+        [void]$fs.Seek($pos, 'Begin')
+        $txt = (New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8)).ReadToEnd()
+        $fs.Close()
+        return ([regex]::Matches($txt, 'SubTaskStart[^\r\n]*"task":"[^"]*OfflineConfirm"')).Count
+    } catch { return 0 }
+}
 function LdRunning { (& "$LD\ldconsole.exe" isrunning --index 0 2>$null) -match "running" }
 
 # one run at a time (a scheduled run and a manual one must not overlap)
@@ -86,6 +98,22 @@ try {
     $p = Start-Process -FilePath $Maa -ArgumentList @("run", $Task, "--batch", "--log-file=$maaLog") -NoNewWindow -Wait -PassThru `
         -RedirectStandardOutput "$Logs\$stamp-$Task.out" -RedirectStandardError "$Logs\$stamp-$Task.err"
     $code = $p.ExitCode
+    # Kicked off by another login (e.g. the phone): log back in and rerun the list, whose tasks are safe to repeat
+    # (the first one, StartUp, taps the popup's confirm and logs in again). 2 tries, 3 minutes apart (user 2026-11-21).
+    if ($Task -eq "daily") {
+        $pos = $offset
+        for ($try = 1; $try -le 2; $try++) {
+            $k = KickedSince $pos
+            if ($k -eq 0) { break }
+            Say "kicked off (login expired popup x$k); logging in again and rerunning $Task in 3 min (try $try of 2)"
+            Start-Sleep -Seconds 180
+            $pos = (Get-Item $asst).Length
+            $p = Start-Process -FilePath $Maa -ArgumentList @("run", $Task, "--batch", "--log-file=$Logs\$stamp-$Task-retry$try.log") -NoNewWindow -Wait -PassThru `
+                -RedirectStandardOutput "$Logs\$stamp-$Task-retry$try.out" -RedirectStandardError "$Logs\$stamp-$Task-retry$try.err"
+            $code = $p.ExitCode
+            if ($try -eq 2 -and (KickedSince $pos) -gt 0) { Say "kicked off again after 2 retries; giving up until the next run" }
+        }
+    }
     # Security Deployment sweep with proxy cards that expire within 2 days (after annihilation took its cards).
     # tower_sweep.py checks every screen by OCR, never taps the top bar, and leaves by the back key only.
     if ($Task -eq "daily" -and (Test-Path "$Root\tower_sweep.py") -and (Test-Path $ocrPy)) {

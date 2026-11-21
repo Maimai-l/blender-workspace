@@ -70,6 +70,24 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 
 运行环境：maa-cli 要设 `MAA_CONFIG_DIR`、`MAA_STATE_DIR`、`MAA_CACHE_DIR`、`MAA_DATA_DIR`，都指向 `D:\Projects\maa-cli\` 下的同名目录，`run.ps1` 已经设好。
 
+## 2.1 数据怎么存、怎么管（2026-11-21）
+
+| 数据 | 在哪 | 谁写、何时写 | 保留 |
+|---|---|---|---|
+| 账号快照：仓库（MAA 识别）、干员（MAA 识别）、森空岛干员练度和基建、森空岛库存 | 电脑 `export\depot_* / operbox_* / skland_info_* / skland_cultivate_*`，各有 `*_latest.json` | 每次日常末尾：`export_data.py` 从 MaaCore 日志导出，`sync.mjs` 从森空岛拉取 | `prune_data.py`：14 天内全留，之后每类每天留最后一份，留 180 天 |
+| 运行记录 | `logs\runs.log`（每步一行，含 [ev] [tower] [notify]）、`logs\<时间>-<任务>.out/.err/.log` | `run.ps1` 和各脚本 | 都很小，暂不清理 |
+| MaaCore 详细日志 | `state\debug\asst.log` | MaaCore | MaaCore 自己轮转（约 64 MB 时改名为 `asst.bak.log`） |
+| 托管自己的状态 | `state\ev_done.json`、`ev_fail.json`、`copilot_match*.json` | `ev_run.py` 等 | 手动 |
+| 界面流程截图 | `state\uiflow\<流程>\` | `uiflow.py` 每步一张 | 7 天 |
+| 规划报告 | `reports\` | 维护会话 | 手动 |
+| 登录凭证 | 森空岛 `C:\Users\blender\.skland\store`；Bark `C:\Users\blender\.bark\key` | `login.mjs`、维护会话 | 只在电脑上，不进仓库、不传云端 |
+| 配置、脚本、规则 | 电脑 `config\`、`*.py`、`*.ps1` | 维护会话从仓库部署 | 仓库 `ops/maa/`、`arknights/` 是源文件，电脑上是部署副本（剿灭开关和选关会改写电脑上的 `daily.toml`） |
+| 养成订单、选关规则 | 仓库 `arknights/goals.json`、`ops/maa/sanity_plan.json` | 维护会话（订单需用户确认） | 仓库 |
+| 界面录制 | 仓库 `arknights/flows/<流程>/` | `ui.py rec`，已去掉昵称、ID、6 位以上数字 | 仓库 |
+
+- 仓库里不放账号数据。分析要用时，在电脑上临时生成只含所需干员和库存的文件，取回云端会话算完即删（`arknights/analysis/`）；游戏数据表每次从 ArknightsGameData 下载。
+- 森空岛文件名里的时间是 UTC（比如 0:17 的导出叫 `..._20261120-1617`），MAA 的是本地时间；清理按文件修改时间算，不受影响。
+
 ## 3. 日常队列（`daily.toml`）
 
 | 顺序 | 任务 | 当前设置 | 说明 |
@@ -190,3 +208,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\Projects\maa-cli\run.ps1 
 | 2026-11-20 | 新增 `tower_sweep.py`：日常后用 2 天内过期的代理卡扫荡保全派驻（界面路径和防误操作见第 4 节）；当天手动扫荡一次，并在理智满 210 时手动刷 TL-7 |
 | 2026-11-20 | 新增 `notify.py`：经 Bark 推送到用户 iPhone（开始、结束、出错、拒绝运行），避免托管时用户登录互相挤号；测试通知用户已收到 |
 | 2026-11-21 | 界面流程引擎 `uiflow.py` + 录制工具（`ui.py rec/gen/check`）+ skill `arknights-ui-flow`：走一遍界面就能生成受保护的自动流程；保全派驻扫荡改用它。选关脚本改成照搬 MAA 界面版“库存保持”的做法：带目标的条目生成带 `drops` 的刷图任务，掉够就停，剩余理智交给下一条 |
+| 2026-11-21 | 新增 `prune_data.py`（每次运行末尾清理导出快照和流程截图）；README 补“数据怎么存、怎么管” |

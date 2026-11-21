@@ -109,6 +109,8 @@ try {
             & "D:\Program Files\Blender Foundation\Blender 5.2\5.2\python\bin\python.exe" "$Root\after_rebuild.py" 2>&1 | ForEach-Object { Say "rebuild: $_" }
         }
     }
+    # keep export snapshots and flow screenshots from growing without end (14 days in full, then one a day)
+    if (Test-Path "$Root\prune_data.py") { & $Py "$Root\prune_data.py" 2>&1 | ForEach-Object { Say "prune: $_" } }
     Say ("maa exit {0} after {1:n0} s; log {2}" -f $code, ((Get-Date) - $t0).TotalSeconds, $maaLog)
     Notify end $Task $code $stamp
     exit $code

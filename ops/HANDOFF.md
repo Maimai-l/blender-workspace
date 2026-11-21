@@ -10,6 +10,7 @@
 - 测试授权已全部从网关数据库清掉；验收脚本跑完会恢复 `last_issue`，测试文件夹和暂存目录用完就删。
 
 ## 待办
+- 开工先看《明日方舟托管：现状与对接》（https://claude.ai/artifact/FN2123fZA5U5CYn6hhrRUZ）的「需求与变更」表。
 - 11-22 03:59 活动关闭：`sanity_plan.py` 会自动切关，不用手改；11-22 10:00 的提醒只剩清活动商店。
 - 11-23 代理卡改去保全派驻（见 `ops/maa/README.md` 日历）。
 - MAA 托管的设计依据是用户的《MAA 智能刷图调度器设计》（https://claude.ai/artifact/6c5EDFa1fy8J2jAwc3mP1c）。各期进度见 `ops/maa/README.md` 开头；下一步是第 3 期“理智不溢出”（事件触发的下次运行时间）。

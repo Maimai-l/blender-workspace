@@ -181,6 +181,9 @@ Windows 计划任务每天 0:00、8:00、12:00 各启动一次 `run.ps1 -Task da
 | 模拟器离线（`adb devices` 显示 offline） | `ldconsole quit --index 0`，下一次日常会重新开 |
 | exec 或 Blender 连不上 | 用户可能在重启服务，等一会儿，不要反复连 |
 | 森空岛同步退出码 3 | 登录失效，需要用户扫码（`node login.mjs`，二维码只在电脑上打开） |
+| 游戏闪断更新（运行中被要求重启或更新资源） | 用户 11-21 提醒，还没遇到过。遇到时：截图、记下 `asst.log` 里当时的 `SubTaskStart` 任务节点和 `.out` 状态，再查 MAA 文档和 `resource\tasks\tasks.json` 里对应节点怎么处理；确认前不改流程、不猜 |
+| 游戏版本更新（要跟随游戏内指引下载） | 同上，还没遇到过。启动卡住时推送会报“开始唤醒”出错；按游戏指引下载需要的点击，要先看清画面再决定，必要时做成界面流程（skill `arknights-ui-flow`） |
+| MAA 更新 | MaaCore 和资源：偶尔用 `--skip-startup-auto-run` 启动复制版界面 MAA，让它自己更新（第 6 节）；maa-cli 本身不从 GitHub 自更新。活动关数据 maa-cli 会从 api.maa.plus 自动热更新。更新后核对 `maa.exe` 还在、日常能跑通，并把 `ops/maa/upstream/` 文档同步到新版本 |
 
 手动命令（经 exec 用 `Start-Process` 让它在后台跑，再轮询 `runs.log`）：
 
